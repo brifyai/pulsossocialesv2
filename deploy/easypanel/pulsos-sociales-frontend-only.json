@@ -14,11 +14,22 @@
         "type": "dockerfile",
         "dockerfile": "Dockerfile",
         "buildArgs": {
-          "VITE_MAPTILER_KEY": "orWgcmF4NtAAER2Tgjp2"
+          "VITE_MAPTILER_KEY": "orWgcmF4NtAAER2Tgjp2",
+          "VITE_SUPABASE_URL": "",
+          "VITE_SUPABASE_ANON_KEY": ""
         }
       },
       "deploy": {
-        "restartPolicy": "always"
+        "restartPolicy": "always",
+        "healthCheck": {
+          "path": "/health",
+          "port": 80,
+          "initialDelaySeconds": 10,
+          "periodSeconds": 10,
+          "timeoutSeconds": 5,
+          "successThreshold": 1,
+          "failureThreshold": 3
+        }
       },
       "networking": {
         "containerPort": 80,
