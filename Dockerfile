@@ -7,7 +7,7 @@
 #
 # Uso:
 #   docker build -t pulsos-sociales .
-#   docker run -p 80:80 -e VITE_SUPABASE_URL=... pulsos-sociales
+#   docker run -p 80:80 pulsos-sociales
 #
 # =============================================================================
 
@@ -35,6 +35,11 @@ COPY . .
 ARG VITE_MAPTILER_KEY
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
+
+# ✅ EXPORTAR ARGs COMO ENV para que Vite las vea durante el build
+ENV VITE_MAPTILER_KEY=$VITE_MAPTILER_KEY
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 
 # Build de producción con variables de entorno
 RUN npm run build
