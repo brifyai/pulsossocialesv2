@@ -1,0 +1,17 @@
+{
+  "is_valid": true,
+  "total_records": 14,
+  "valid_records": 14,
+  "invalid_records": 0,
+  "issues": [],
+  "summary": {
+    "total_population": 9444127,
+    "total_communes": 14,
+    "avg_population_per_commune": 674580.5,
+    "population_by_region": {
+      "RM": 7685999,
+      "VA": 1758128
+    }
+  },
+  "checked_at": "2026-03-15T14:36:06.203Z"
+}

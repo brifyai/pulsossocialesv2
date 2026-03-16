@@ -1,0 +1,26 @@
+{
+  "name": "versionconesteroides",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "pipeline": "tsx scripts/pipeline.ts",
+    "pipeline:ingest": "tsx scripts/pipeline.ts ingest",
+    "pipeline:normalize": "tsx scripts/pipeline.ts normalize",
+    "pipeline:integrate": "tsx scripts/pipeline.ts integrate",
+    "pipeline:synthesize": "tsx scripts/pipeline.ts synthesize",
+    "pipeline:validate": "tsx scripts/pipeline.ts validate"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "~5.9.3",
+    "vite": "^8.0.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.99.1",
+    "maplibre-gl": "^5.20.1"
+  }
+}

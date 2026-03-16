@@ -1,0 +1,210 @@
+[
+  {
+    "id": "RM",
+    "name": "Metropolitana de Santiago",
+    "code": "RM",
+    "level": "region",
+    "population": 7112808,
+    "centroid": [
+      -70.65,
+      -33.45
+    ],
+    "created_at": "2026-03-15T14:36:06.180Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "VA",
+    "name": "Valparaíso",
+    "code": "VA",
+    "level": "region",
+    "population": 1813202,
+    "centroid": [
+      -71.3,
+      -33
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "BI",
+    "name": "Biobío",
+    "code": "BI",
+    "level": "region",
+    "population": 1556821,
+    "centroid": [
+      -72.35,
+      -37.2
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "ML",
+    "name": "Maule",
+    "code": "ML",
+    "level": "region",
+    "population": 1041890,
+    "centroid": [
+      -72.4,
+      -35.5
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "AR",
+    "name": "La Araucanía",
+    "code": "AR",
+    "level": "region",
+    "population": 957224,
+    "centroid": [
+      -72.6,
+      -38.8
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "LI",
+    "name": "O'Higgins",
+    "code": "LI",
+    "level": "region",
+    "population": 914555,
+    "centroid": [
+      -71.5,
+      -34.5
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "CO",
+    "name": "Coquimbo",
+    "code": "CO",
+    "level": "region",
+    "population": 742178,
+    "centroid": [
+      -71,
+      -30
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "AN",
+    "name": "Antofagasta",
+    "code": "AN",
+    "level": "region",
+    "population": 670340,
+    "centroid": [
+      -69.8,
+      -23.5
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "LL",
+    "name": "Los Lagos",
+    "code": "LL",
+    "level": "region",
+    "population": 828708,
+    "centroid": [
+      -73,
+      -42.5
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "TA",
+    "name": "Tarapacá",
+    "code": "TA",
+    "level": "region",
+    "population": 330558,
+    "centroid": [
+      -69.5,
+      -20
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "AT",
+    "name": "Atacama",
+    "code": "AT",
+    "level": "region",
+    "population": 312486,
+    "centroid": [
+      -70,
+      -27
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "NB",
+    "name": "Ñuble",
+    "code": "NB",
+    "level": "region",
+    "population": 480609,
+    "centroid": [
+      -72.4,
+      -36.5
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "LR",
+    "name": "Los Ríos",
+    "code": "LR",
+    "level": "region",
+    "population": 384837,
+    "centroid": [
+      -72.5,
+      -40
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "AP",
+    "name": "Arica y Parinacota",
+    "code": "AP",
+    "level": "region",
+    "population": 226068,
+    "centroid": [
+      -69,
+      -18
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "AI",
+    "name": "Aysén",
+    "code": "AI",
+    "level": "region",
+    "population": 103158,
+    "centroid": [
+      -73,
+      -46
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  },
+  {
+    "id": "MA",
+    "name": "Magallanes",
+    "code": "MA",
+    "level": "region",
+    "population": 165593,
+    "centroid": [
+      -72.5,
+      -52
+    ],
+    "created_at": "2026-03-15T14:36:06.181Z",
+    "source": "INE Chile"
+  }
+]

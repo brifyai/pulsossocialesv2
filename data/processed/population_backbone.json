@@ -1,0 +1,40 @@
+[
+  {
+    "territory_code": "RM",
+    "territory_name": "Metropolitana de Santiago",
+    "territory_level": "region",
+    "total_population": 7112808,
+    "male_population": 3483509,
+    "female_population": 3629299,
+    "age_0_14": 1488256,
+    "age_15_64": 4874608,
+    "age_65_plus": 749944,
+    "age_dependency_ratio": 45.91548694787355,
+    "avg_per_capita_income": 287500,
+    "income_quintile_avg": 3,
+    "poverty_rate": 100,
+    "extreme_poverty_rate": 0,
+    "census_year": 2024,
+    "casen_year": 2022,
+    "created_at": "2026-03-15T14:36:06.181Z"
+  },
+  {
+    "territory_code": "VA",
+    "territory_name": "Valparaíso",
+    "territory_level": "region",
+    "total_population": 1813202,
+    "male_population": 887423,
+    "female_population": 925779,
+    "age_0_14": 362640,
+    "age_15_64": 1245079,
+    "age_65_plus": 205483,
+    "age_dependency_ratio": 45.629474113690776,
+    "avg_per_capita_income": 0,
+    "income_quintile_avg": 0,
+    "poverty_rate": 0,
+    "extreme_poverty_rate": 0,
+    "census_year": 2024,
+    "casen_year": 2022,
+    "created_at": "2026-03-15T14:36:06.181Z"
+  }
+]

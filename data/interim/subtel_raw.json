@@ -1,0 +1,32 @@
+[
+  {
+    "region_code": "RM",
+    "commune_code": "131",
+    "fixed_internet_connections": 2150000,
+    "broadband_connections": 2100000,
+    "average_speed_mbps": 250,
+    "mobile_connections": 8500000,
+    "connections_4g": 7200000,
+    "connections_5g": 1300000,
+    "population_4g_coverage": 99.5,
+    "population_5g_coverage": 75,
+    "internet_household_penetration": 85,
+    "mobile_penetration": 120,
+    "active_operators": 5
+  },
+  {
+    "region_code": "VA",
+    "commune_code": "051",
+    "fixed_internet_connections": 520000,
+    "broadband_connections": 510000,
+    "average_speed_mbps": 180,
+    "mobile_connections": 2100000,
+    "connections_4g": 1850000,
+    "connections_5g": 250000,
+    "population_4g_coverage": 98,
+    "population_5g_coverage": 45,
+    "internet_household_penetration": 72,
+    "mobile_penetration": 115,
+    "active_operators": 4
+  }
+]

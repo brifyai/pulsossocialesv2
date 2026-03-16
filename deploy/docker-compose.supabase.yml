@@ -1,0 +1,375 @@
+# =============================================================================
+# Supabase Self-Hosted - Docker Compose
+# Pulsos Sociales - Infraestructura de Persistencia
+# =============================================================================
+#
+# Este archivo configura una instancia completa de Supabase self-hosted
+# para uso con Pulsos Sociales.
+#
+# Uso:
+#   docker-compose -f docker-compose.supabase.yml up -d
+#
+# Requisitos:
+#   - Docker 20.10+
+#   - Docker Compose 2.0+
+#   - 4GB RAM mínimo recomendado
+#
+# =============================================================================
+
+version: "3.8"
+
+services:
+  # ===========================================================================
+  # PostgreSQL - Base de datos principal
+  # ===========================================================================
+  db:
+    container_name: pulsos-supabase-db
+    image: supabase/postgres:15.1.0.153
+    healthcheck:
+      test: pg_isready -U postgres -d postgres
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - pulsos-network
+
+  # ===========================================================================
+  # Supabase Studio - Interfaz de administración
+  # ===========================================================================
+  studio:
+    container_name: pulsos-supabase-studio
+    image: supabase/studio:20240326-5e7a8e2
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    ports:
+      - "${STUDIO_PORT:-3000}:3000"
+    environment:
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}
+      DEFAULT_ORGANIZATION_NAME: ${STUDIO_DEFAULT_ORGANIZATION:-Pulsos Sociales}
+      DEFAULT_PROJECT_NAME: ${STUDIO_DEFAULT_PROJECT:-pulsos-sociales}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL:-http://localhost:8000}
+      SUPABASE_ANON_KEY: ${ANON_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY:-}
+      AUTH_JWT_SECRET: ${JWT_SECRET:-}
+      AUTH_JWT_AUD: authenticated
+      AUTH_JWT_DEFAULT_GROUP_NAME: authenticated
+    networks:
+      - pulsos-network
+
+  # ===========================================================================
+  # Kong - API Gateway
+  # ===========================================================================
+  kong:
+    container_name: pulsos-supabase-kong
+    image: kong:2.8.1
+    restart: unless-stopped
+    entrypoint: bash -c 'eval "echo \"$$$(cat /home/kong/template.yml)\"" > /home/kong/kong.yml && kong start -c /home/kong/kong.yml'
+    ports:
+      - "${KONG_HTTP_PORT:-8000}:8000/tcp"
+      - "${KONG_HTTPS_PORT:-8443}:8443/tcp"
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: 160k
+    volumes:
+      - ./volumes/api/kong.yml:/home/kong/template.yml:ro
+    networks:
+      - pulsos-network
+
+  # ===========================================================================
+  # Auth - GoTrue (Autenticación)
+  # ===========================================================================
+  auth:
+    container_name: pulsos-supabase-auth
+    image: supabase/gotrue:v2.143.0
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    restart: unless-stopped
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${API_EXTERNAL_URL:-http://localhost:8000}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}@db:5432/${POSTGRES_DB:-postgres}?sslmode=disable
+      GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:3000}
+      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS:-}
+      GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP:-false}
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: ${JWT_EXPIRY:-3600}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET:-}
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: ${ENABLE_EMAIL_SIGNUP:-true}
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: ${ENABLE_ANONYMOUS_USERS:-false}
+      GOTRUE_MAILER_AUTOCONFIRM: ${MAILER_AUTOCONFIRM:-true}
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_INVITE: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/v1/verify
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-admin@example.com}
+      GOTRUE_SMTP_HOST: ${SMTP_HOST:-}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT:-}
+      GOTRUE_SMTP_USER: ${SMTP_USER:-}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS:-}
+      GOTRUE_SMTP_SENDER_NAME: ${SMTP_SENDER_NAME:-}
+      GOTRUE_EXTERNAL_PHONE_ENABLED: ${ENABLE_PHONE_SIGNUP:-false}
+      GOTRUE_SMS_AUTOCONFIRM: ${SMS_AUTOCONFIRM:-false}
+    networks:
+      - pulsos-network
+
+  # ===========================================================================
+  # REST API - PostgREST
+  # ===========================================================================
+  rest:
+    container_name: pulsos-supabase-rest
+    image: postgrest/postgrest:v12.0.1
+    depends_on:
+      db:
+        condition: service_healthy
+      analytics:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      PGRST_DB_URI: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}@db:5432/${POSTGRES_DB:-postgres}
+      PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS:-public,storage,graphql_public}
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET:-}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_DB_TX_END: commit-allow-override
+    networks:
+      - pulsos-network
+
+  # ===========================================================================
+  # Realtime - Suscripciones en tiempo real
+  # ===========================================================================
+  realtime:
+    container_name: pulsos-supabase-realtime
+    image: supabase/realtime:v2.28.32
+    depends_on:
+      db:
+        condition: service_healthy
+      analytics:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      PORT: 4000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}
+      DB_NAME: ${POSTGRES_DB:-postgres}
+      DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
+      DB_ENC_KEY: ${DB_ENC_KEY:-}
+      API_JWT_SECRET: ${JWT_SECRET:-}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-}
+      FLY_ALLOC_ID: ${FLY_ALLOC_ID:-}
+      FLY_APP_NAME: ${FLY_APP_NAME:-}
+      FLY_IMAGE_REF: ${FLY_IMAGE_REF:-}
+      FLY_IMAGE_REPOSITORY: ${FLY_IMAGE_REPOSITORY:-}
+      FLY_PRIVATE_IP: ${FLY_PRIVATE_IP:-}
+      FLY_REGION: ${FLY_REGION:-}
+      FLY_VM_MEMORY_MB: ${FLY_VM_MEMORY_MB:-}
+      POD_NAME: ${POD_NAME:-}
+      POD_NAMESPACE: ${POD_NAMESPACE:-}
+      CONTAINER_MEMORY_LIMIT: ${CONTAINER_MEMORY_LIMIT:-}
+      CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-}
+      ERL_AFLAGS: -proto_dist inet_tcp
+      ENABLE_TAILSCALE: ${ENABLE_TAILSCALE:-false}
+      DNS_NODES: "''"
+      MAX_HEADER_LENGTH: ${MAX_HEADER_LENGTH:-4096}
+      MAX_EVENTS_PER_SECOND: ${MAX_EVENTS_PER_SECOND:-100}
+      RUN_JANITOR: ${RUN_JANITOR:-true}
+      MAX_SUBSCRIBERS: ${MAX_SUBSCRIBERS:-100000}
+      MAX_CHANNELS_PER_CLIENT: ${MAX_CHANNELS_PER_CLIENT:-100}
+      MAX_JOINS_PER_SECOND: ${MAX_JOINS_PER_SECOND:-100}
+      MAX_SOCKETS: ${MAX_SOCKETS:-100000}
+      MAX_TOPICS: ${MAX_TOPICS:-100000}
+      TENANT_MAX_CHANNELS_PER_TOKEN: ${TENANT_MAX_CHANNELS_PER_TOKEN:-100}
+      TENANT_MAX_JOINS_PER_SECOND: ${TENANT_MAX_JOINS_PER_SECOND:-100}
+      TENANT_MAX_SOCKETS: ${TENANT_MAX_SOCKETS:-100000}
+    networks:
+      - pulsos-network
+
+  # ===========================================================================
+  # Storage - Almacenamiento de archivos
+  # ===========================================================================
+  storage:
+    container_name: pulsos-supabase-storage
+    image: supabase/storage-api:v1.2.1
+    depends_on:
+      db:
+        condition: service_healthy
+      rest:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/status"]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    restart: unless-stopped
+    environment:
+      ANON_KEY: ${ANON_KEY:-}
+      SERVICE_KEY: ${SERVICE_ROLE_KEY:-}
+      POSTGREST_URL: http://rest:3000
+      PGRST_JWT_SECRET: ${JWT_SECRET:-}
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}@db:5432/${POSTGRES_DB:-postgres}
+      FILE_SIZE_LIMIT: ${FILE_SIZE_LIMIT:-52428800}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-file}
+      DEFAULT_S3_BUCKET: ${DEFAULT_S3_BUCKET:-pulsos-storage}
+      S3_PROTOCOL: ${S3_PROTOCOL:-http}
+      S3_HOST: ${S3_HOST:-minio}
+      S3_PORT: ${S3_PORT:-9000}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${S3_REGION:-us-east-1}
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: ${TENANT_ID:-}
+      REGION: ${REGION:-}
+      ENABLE_IMAGE_TRANSFORMATION: ${ENABLE_IMAGE_TRANSFORMATION:-true}
+      IMGPROXY_URL: http://imgproxy:5001
+    volumes:
+      - storage_data:/var/lib/storage
+    networks:
+      - pulsos-network
+
+  # ===========================================================================
+  # Imgproxy - Transformación de imágenes
+  # ===========================================================================
+  imgproxy:
+    container_name: pulsos-supabase-imgproxy
+    image: darthsim/imgproxy:v3.8.0
+    healthcheck:
+      test: ["CMD", "imgproxy", "health"]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    environment:
+      IMGPROXY_BIND: ":5001"
+      IMGPROXY_LOCAL_FILESYSTEM_ROOT: /
+      IMGPROXY_USE_ETAG: "true"
+      IMGPROXY_ENABLE_WEBP_DETECTION: ${IMGPROXY_ENABLE_WEBP_DETECTION:-true}
+    volumes:
+      - storage_data:/var/lib/storage
+    networks:
+      - pulsos-network
+
+  # ===========================================================================
+  # Meta - Metadatos de PostgreSQL
+  # ===========================================================================
+  meta:
+    container_name: pulsos-supabase-meta
+    image: supabase/postgres-meta:v0.80.0
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: db
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: ${POSTGRES_DB:-postgres}
+      PG_META_DB_USER: ${POSTGRES_USER:-postgres}
+      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}
+    networks:
+      - pulsos-network
+
+  # ===========================================================================
+  # Functions - Edge Functions (opcional)
+  # ===========================================================================
+  functions:
+    container_name: pulsos-supabase-functions
+    image: supabase/edge-runtime:v1.54.10
+    restart: unless-stopped
+    environment:
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_ANON_KEY: ${ANON_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY:-}
+      SUPABASE_DB_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}@db:5432/${POSTGRES_DB:-postgres}
+      # Add other configuration as needed
+    volumes:
+      - functions_data:/home/deno/functions
+    networks:
+      - pulsos-network
+
+  # ===========================================================================
+  # Analytics - Logs y métricas (opcional)
+  # ===========================================================================
+  analytics:
+    container_name: pulsos-supabase-analytics
+    image: supabase/logflare:1.4.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    restart: unless-stopped
+    environment:
+      LOGFLARE_NODE_HOST: 127.0.0.1
+      LOGFLARE_API_KEY: ${LOGFLARE_API_KEY:-}
+      LOGFLARE_API_URL: ${LOGFLARE_API_URL:-}
+      LOGFLARE_MIN_CLUSTER_SIZE: ${LOGFLARE_MIN_CLUSTER_SIZE:-1}
+      POSTGRES_BACKEND_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}@db:5432/${POSTGRES_DB:-postgres}
+      POSTGRES_BACKEND_SCHEMA: _analytics
+      LOGFLARE_FEATURE_FLAG_OVERRIDE: multibackend
+    networks:
+      - pulsos-network
+
+  # ===========================================================================
+  # Vector - Agente de logs (opcional)
+  # ===========================================================================
+  vector:
+    container_name: pulsos-supabase-vector
+    image: timberio/vector:0.28.1-alpine
+    restart: unless-stopped
+    volumes:
+      - ./volumes/logs/vector.yml:/etc/vector/vector.yml:ro
+    command: ["--config", "/etc/vector/vector.yml"]
+    networks:
+      - pulsos-network
+
+# =============================================================================
+# Volúmenes persistentes
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  storage_data:
+    driver: local
+  functions_data:
+    driver: local
+
+# =============================================================================
+# Redes
+# =============================================================================
+networks:
+  pulsos-network:
+    driver: bridge
+    name: pulsos-network

@@ -1,0 +1,457 @@
+/**
+ * Methodology Page Styles - Sprint 7B
+ * Estilos para la página de metodología transparente
+ */
+
+/* ===========================================
+   Container & Layout
+   =========================================== */
+
+.methodology-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0a0f 0%, #12121a 50%, #0d0d14 100%);
+  color: #e0e0e0;
+  padding: 2rem 0;
+}
+
+.methodology-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+/* ===========================================
+   Header
+   =========================================== */
+
+.methodology-header {
+  text-align: center;
+  margin-bottom: 3rem;
+  padding: 2rem 0;
+  border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+}
+
+.methodology-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #00ffff;
+  margin: 0 0 0.5rem 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  text-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+}
+
+.methodology-title .icon {
+  font-size: 2rem;
+}
+
+.methodology-subtitle {
+  font-size: 1.1rem;
+  color: #a0a0b0;
+  margin: 0;
+  font-weight: 400;
+}
+
+/* ===========================================
+   Sections
+   =========================================== */
+
+.methodology-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.methodology-section {
+  background: rgba(20, 20, 30, 0.6);
+  border: 1px solid rgba(0, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 2rem;
+  backdrop-filter: blur(10px);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.methodology-section:hover {
+  border-color: rgba(0, 255, 255, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 255, 255, 0.05);
+}
+
+.methodology-section.limitations {
+  background: rgba(30, 20, 20, 0.6);
+  border-color: rgba(255, 100, 100, 0.2);
+}
+
+.methodology-section.limitations:hover {
+  border-color: rgba(255, 100, 100, 0.3);
+  box-shadow: 0 4px 20px rgba(255, 100, 100, 0.05);
+}
+
+.section-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #00ffff;
+  margin: 0 0 1.25rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid rgba(0, 255, 255, 0.2);
+}
+
+.methodology-section.limitations .section-title {
+  color: #ff6b6b;
+  border-bottom-color: rgba(255, 100, 100, 0.3);
+}
+
+.section-content {
+  color: #c0c0d0;
+  line-height: 1.7;
+}
+
+.section-content p {
+  margin: 0 0 1rem 0;
+}
+
+.section-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* ===========================================
+   Lists
+   =========================================== */
+
+.feature-list,
+.process-list {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+}
+
+.feature-list li,
+.process-list li {
+  margin-bottom: 0.75rem;
+  color: #c0c0d0;
+}
+
+.feature-list li strong,
+.process-list li strong {
+  color: #00ffff;
+}
+
+.process-list {
+  counter-reset: process-step;
+  list-style: none;
+  padding-left: 0;
+}
+
+.process-list li {
+  position: relative;
+  padding-left: 2.5rem;
+  counter-increment: process-step;
+}
+
+.process-list li::before {
+  content: counter(process-step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  background: linear-gradient(135deg, #00ffff, #0088ff);
+  color: #0a0a0f;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+/* ===========================================
+   Info Boxes
+   =========================================== */
+
+.highlight-box,
+.warning-box,
+.info-box {
+  padding: 1.25rem;
+  border-radius: 8px;
+  margin: 1.5rem 0;
+  font-size: 0.95rem;
+}
+
+.highlight-box {
+  background: rgba(0, 255, 255, 0.08);
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  color: #e0f0ff;
+}
+
+.highlight-box strong {
+  color: #00ffff;
+}
+
+.warning-box {
+  background: rgba(255, 200, 100, 0.08);
+  border: 1px solid rgba(255, 200, 100, 0.3);
+  color: #ffe0c0;
+}
+
+.warning-box strong {
+  color: #ffcc66;
+}
+
+.info-box {
+  background: rgba(100, 150, 255, 0.08);
+  border: 1px solid rgba(100, 150, 255, 0.2);
+  color: #d0e0ff;
+}
+
+.info-box strong {
+  color: #88aaff;
+}
+
+/* ===========================================
+   Source Cards
+   =========================================== */
+
+.source-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.25rem;
+  margin: 1.5rem 0;
+}
+
+.source-card {
+  background: rgba(30, 30, 45, 0.8);
+  border: 1px solid rgba(0, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 1.5rem;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.source-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 255, 255, 0.3);
+}
+
+.source-icon {
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.source-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #00ffff;
+  margin: 0 0 0.5rem 0;
+}
+
+.source-desc {
+  font-size: 0.9rem;
+  color: #a0a0b0;
+  margin: 0 0 0.75rem 0;
+  line-height: 1.5;
+}
+
+.source-status {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: rgba(0, 255, 255, 0.1);
+  color: #00ffff;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ===========================================
+   Limitation Cards
+   =========================================== */
+
+.limitation-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.limitation-card {
+  background: rgba(40, 30, 30, 0.8);
+  border: 1px solid rgba(255, 100, 100, 0.15);
+  border-radius: 10px;
+  padding: 1.25rem;
+  transition: border-color 0.2s ease;
+}
+
+.limitation-card:hover {
+  border-color: rgba(255, 100, 100, 0.25);
+}
+
+.limitation-icon {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.limitation-card h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ff9999;
+  margin: 0 0 0.5rem 0;
+}
+
+.limitation-card p {
+  font-size: 0.9rem;
+  color: #c0b0b0;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ===========================================
+   Interpretation Guide
+   =========================================== */
+
+.interpretation-guide {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.interpretation-do,
+.interpretation-dont {
+  background: rgba(30, 30, 45, 0.8);
+  border-radius: 10px;
+  padding: 1.5rem;
+}
+
+.interpretation-do {
+  border: 1px solid rgba(100, 255, 150, 0.2);
+}
+
+.interpretation-dont {
+  border: 1px solid rgba(255, 100, 100, 0.2);
+}
+
+.interpretation-do h3 {
+  color: #66ff99;
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+}
+
+.interpretation-dont h3 {
+  color: #ff6666;
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+}
+
+.interpretation-do ul,
+.interpretation-dont ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.interpretation-do li,
+.interpretation-dont li {
+  margin-bottom: 0.5rem;
+  color: #c0c0d0;
+}
+
+/* ===========================================
+   Contact & Version
+   =========================================== */
+
+.contact-box {
+  background: rgba(30, 30, 45, 0.8);
+  border: 1px solid rgba(0, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.contact-box p {
+  margin: 0;
+  color: #c0c0d0;
+  line-height: 1.8;
+}
+
+.contact-box strong {
+  color: #00ffff;
+}
+
+.version-info {
+  text-align: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  margin-top: 1.5rem;
+}
+
+.version-info p {
+  margin: 0;
+  color: #808090;
+  font-size: 0.85rem;
+}
+
+.version-info strong {
+  color: #a0a0b0;
+}
+
+/* ===========================================
+   Responsive
+   =========================================== */
+
+@media (max-width: 768px) {
+  .methodology-page {
+    padding: 1rem 0;
+  }
+  
+  .methodology-container {
+    padding: 0 1rem;
+  }
+  
+  .methodology-title {
+    font-size: 1.75rem;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .methodology-subtitle {
+    font-size: 1rem;
+  }
+  
+  .methodology-section {
+    padding: 1.5rem;
+  }
+  
+  .section-title {
+    font-size: 1.25rem;
+  }
+  
+  .source-cards,
+  .limitation-cards {
+    grid-template-columns: 1fr;
+  }
+  
+  .interpretation-guide {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===========================================
+   Scrollbar Styling
+   =========================================== */
+
+.methodology-page::-webkit-scrollbar {
+  width: 8px;
+}
+
+.methodology-page::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.methodology-page::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+.methodology-page::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 255, 0.5);
+}

@@ -1,0 +1,40 @@
+[
+  {
+    "region_code": "RM",
+    "total_population": 7112808,
+    "male_population": 3483509,
+    "female_population": 3629299,
+    "age_0_14": 1488256,
+    "age_15_64": 4874608,
+    "age_65_plus": 749944,
+    "total_dwellings": 2345678,
+    "occupied_dwellings": 2123456,
+    "no_education": 234567,
+    "basic_education": 1234567,
+    "middle_education": 2345678,
+    "higher_education": 3296996,
+    "economically_active": 3723456,
+    "employed": 3456789,
+    "unemployed": 266667,
+    "inactive": 3389352
+  },
+  {
+    "region_code": "VA",
+    "total_population": 1813202,
+    "male_population": 887423,
+    "female_population": 925779,
+    "age_0_14": 362640,
+    "age_15_64": 1245079,
+    "age_65_plus": 205483,
+    "total_dwellings": 623456,
+    "occupied_dwellings": 567890,
+    "no_education": 54321,
+    "basic_education": 456789,
+    "middle_education": 678901,
+    "higher_education": 623191,
+    "economically_active": 945678,
+    "employed": 876543,
+    "unemployed": 69135,
+    "inactive": 867524
+  }
+]

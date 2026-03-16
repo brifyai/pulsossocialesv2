@@ -1,0 +1,40 @@
+[
+  {
+    "household_id": "HH001",
+    "person_id": "P001",
+    "region_code": "RM",
+    "commune_code": "131",
+    "household_monetary_income": 800000,
+    "household_autonomous_income": 850000,
+    "per_capita_income": 200000,
+    "income_quintile": 3,
+    "dwelling_type": "casa",
+    "household_size": 4,
+    "bedrooms": 3,
+    "sex": "m",
+    "age": 35,
+    "education_level": "superior_completa",
+    "occupation": "profesional",
+    "poverty_status": "no_pobre",
+    "extreme_poverty": false
+  },
+  {
+    "household_id": "HH002",
+    "person_id": "P002",
+    "region_code": "RM",
+    "commune_code": "131",
+    "household_monetary_income": 350000,
+    "household_autonomous_income": 350000,
+    "per_capita_income": 87500,
+    "income_quintile": 1,
+    "dwelling_type": "departamento",
+    "household_size": 4,
+    "bedrooms": 2,
+    "sex": "f",
+    "age": 28,
+    "education_level": "media_completa",
+    "occupation": "tecnico",
+    "poverty_status": "pobre",
+    "extreme_poverty": false
+  }
+]

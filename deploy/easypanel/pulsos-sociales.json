@@ -1,0 +1,330 @@
+{
+  "name": "pulsos-sociales",
+  "description": "Pulsos Sociales - Simulación territorial y encuestas sintéticas para Chile",
+  "services": [
+    {
+      "type": "app",
+      "name": "pulsos-frontend",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/tu-usuario/pulsos-sociales.git",
+        "branch": "main"
+      },
+      "build": {
+        "type": "dockerfile",
+        "dockerfile": "Dockerfile"
+      },
+      "deploy": {
+        "restartPolicy": "always",
+        "command": null,
+        "args": null
+      },
+      "networking": {
+        "containerPort": 80,
+        "servicePort": 80
+      },
+      "env": [
+        "VITE_MAPTILER_KEY",
+        "VITE_SUPABASE_URL",
+        "VITE_SUPABASE_ANON_KEY"
+      ]
+    },
+    {
+      "type": "app",
+      "name": "supabase-db",
+      "source": {
+        "type": "image",
+        "image": "supabase/postgres:15.1.0.153"
+      },
+      "deploy": {
+        "restartPolicy": "always"
+      },
+      "networking": {
+        "containerPort": 5432,
+        "servicePort": 5432
+      },
+      "volumes": [
+        {
+          "name": "postgres-data",
+          "mountPath": "/var/lib/postgresql/data"
+        },
+        {
+          "name": "init-scripts",
+          "mountPath": "/docker-entrypoint-initdb.d"
+        }
+      ],
+      "env": [
+        "POSTGRES_PASSWORD",
+        "POSTGRES_USER=postgres",
+        "POSTGRES_DB=postgres"
+      ]
+    },
+    {
+      "type": "app",
+      "name": "supabase-studio",
+      "source": {
+        "type": "image",
+        "image": "supabase/studio:20240326-5e7a8e2"
+      },
+      "deploy": {
+        "restartPolicy": "always"
+      },
+      "networking": {
+        "containerPort": 3000,
+        "servicePort": 3000
+      },
+      "env": [
+        "STUDIO_PG_META_URL=http://supabase-meta:8080",
+        "POSTGRES_PASSWORD",
+        "DEFAULT_ORGANIZATION_NAME=Pulsos Sociales",
+        "DEFAULT_PROJECT_NAME=pulsos-sociales",
+        "SUPABASE_URL=http://supabase-kong:8000",
+        "SUPABASE_PUBLIC_URL",
+        "SUPABASE_ANON_KEY",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "AUTH_JWT_SECRET",
+        "AUTH_JWT_AUD=authenticated",
+        "AUTH_JWT_DEFAULT_GROUP_NAME=authenticated"
+      ]
+    },
+    {
+      "type": "app",
+      "name": "supabase-kong",
+      "source": {
+        "type": "image",
+        "image": "kong:2.8.1"
+      },
+      "deploy": {
+        "restartPolicy": "always",
+        "command": "bash",
+        "args": ["-c", "eval \"echo \\\"$$$(cat /home/kong/template.yml)\\\"\" > /home/kong/kong.yml && kong start -c /home/kong/kong.yml"]
+      },
+      "networking": {
+        "containerPort": 8000,
+        "servicePort": 8000
+      },
+      "volumes": [
+        {
+          "name": "kong-config",
+          "mountPath": "/home/kong/template.yml"
+        }
+      ],
+      "env": [
+        "KONG_DATABASE=off",
+        "KONG_DECLARATIVE_CONFIG=/home/kong/kong.yml",
+        "KONG_DNS_ORDER=LAST,A,CNAME",
+        "KONG_PLUGINS=request-transformer,cors,key-auth,acl,basic-auth",
+        "KONG_NGINX_PROXY_PROXY_BUFFER_SIZE=160k",
+        "KONG_NGINX_PROXY_PROXY_BUFFERS=160k"
+      ]
+    },
+    {
+      "type": "app",
+      "name": "supabase-auth",
+      "source": {
+        "type": "image",
+        "image": "supabase/gotrue:v2.143.0"
+      },
+      "deploy": {
+        "restartPolicy": "always"
+      },
+      "networking": {
+        "containerPort": 9999,
+        "servicePort": 9999
+      },
+      "env": [
+        "GOTRUE_API_HOST=0.0.0.0",
+        "GOTRUE_API_PORT=9999",
+        "API_EXTERNAL_URL",
+        "GOTRUE_DB_DRIVER=postgres",
+        "GOTRUE_DB_DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@supabase-db:5432/postgres?sslmode=disable",
+        "GOTRUE_SITE_URL",
+        "GOTRUE_URI_ALLOW_LIST",
+        "GOTRUE_DISABLE_SIGNUP=false",
+        "GOTRUE_JWT_ADMIN_ROLES=service_role",
+        "GOTRUE_JWT_AUD=authenticated",
+        "GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated",
+        "GOTRUE_JWT_EXP=3600",
+        "GOTRUE_JWT_SECRET",
+        "GOTRUE_EXTERNAL_EMAIL_ENABLED=true",
+        "GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED=false",
+        "GOTRUE_MAILER_AUTOCONFIRM=true",
+        "GOTRUE_MAILER_URLPATHS_CONFIRMATION=/auth/v1/verify",
+        "GOTRUE_MAILER_URLPATHS_INVITE=/auth/v1/verify",
+        "GOTRUE_MAILER_URLPATHS_RECOVERY=/auth/v1/verify",
+        "GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE=/auth/v1/verify",
+        "GOTRUE_SMTP_ADMIN_EMAIL=admin@example.com",
+        "GOTRUE_EXTERNAL_PHONE_ENABLED=false",
+        "GOTRUE_SMS_AUTOCONFIRM=false"
+      ]
+    },
+    {
+      "type": "app",
+      "name": "supabase-rest",
+      "source": {
+        "type": "image",
+        "image": "postgrest/postgrest:v12.0.1"
+      },
+      "deploy": {
+        "restartPolicy": "always"
+      },
+      "networking": {
+        "containerPort": 3000,
+        "servicePort": 3000
+      },
+      "env": [
+        "PGRST_DB_URI=postgres://postgres:${POSTGRES_PASSWORD}@supabase-db:5432/postgres",
+        "PGRST_DB_SCHEMAS=public,storage,graphql_public",
+        "PGRST_DB_ANON_ROLE=anon",
+        "PGRST_JWT_SECRET",
+        "PGRST_DB_USE_LEGACY_GUCS=false",
+        "PGRST_DB_TX_END=commit-allow-override"
+      ]
+    },
+    {
+      "type": "app",
+      "name": "supabase-realtime",
+      "source": {
+        "type": "image",
+        "image": "supabase/realtime:v2.28.32"
+      },
+      "deploy": {
+        "restartPolicy": "always"
+      },
+      "networking": {
+        "containerPort": 4000,
+        "servicePort": 4000
+      },
+      "env": [
+        "PORT=4000",
+        "DB_HOST=supabase-db",
+        "DB_PORT=5432",
+        "DB_USER=postgres",
+        "DB_PASSWORD",
+        "DB_NAME=postgres",
+        "DB_AFTER_CONNECT_QUERY=SET search_path TO _realtime",
+        "DB_ENC_KEY",
+        "API_JWT_SECRET",
+        "SECRET_KEY_BASE",
+        "ERL_AFLAGS=-proto_dist inet_tcp",
+        "ENABLE_TAILSCALE=false",
+        "DNS_NODES=''",
+        "MAX_HEADER_LENGTH=4096",
+        "MAX_EVENTS_PER_SECOND=100",
+        "RUN_JANITOR=true",
+        "MAX_SUBSCRIBERS=100000",
+        "MAX_CHANNELS_PER_CLIENT=100",
+        "MAX_JOINS_PER_SECOND=100",
+        "MAX_SOCKETS=100000",
+        "MAX_TOPICS=100000",
+        "TENANT_MAX_CHANNELS_PER_TOKEN=100",
+        "TENANT_MAX_JOINS_PER_SECOND=100",
+        "TENANT_MAX_SOCKETS=100000"
+      ]
+    },
+    {
+      "type": "app",
+      "name": "supabase-storage",
+      "source": {
+        "type": "image",
+        "image": "supabase/storage-api:v1.2.1"
+      },
+      "deploy": {
+        "restartPolicy": "always"
+      },
+      "networking": {
+        "containerPort": 5000,
+        "servicePort": 5000
+      },
+      "volumes": [
+        {
+          "name": "storage-data",
+          "mountPath": "/var/lib/storage"
+        }
+      ],
+      "env": [
+        "ANON_KEY",
+        "SERVICE_KEY",
+        "POSTGREST_URL=http://supabase-rest:3000",
+        "PGRST_JWT_SECRET",
+        "DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@supabase-db:5432/postgres",
+        "FILE_SIZE_LIMIT=52428800",
+        "STORAGE_BACKEND=file",
+        "DEFAULT_S3_BUCKET=pulsos-storage",
+        "FILE_STORAGE_BACKEND_PATH=/var/lib/storage",
+        "ENABLE_IMAGE_TRANSFORMATION=true",
+        "IMGPROXY_URL=http://supabase-imgproxy:5001"
+      ]
+    },
+    {
+      "type": "app",
+      "name": "supabase-imgproxy",
+      "source": {
+        "type": "image",
+        "image": "darthsim/imgproxy:v3.8.0"
+      },
+      "deploy": {
+        "restartPolicy": "always"
+      },
+      "networking": {
+        "containerPort": 5001,
+        "servicePort": 5001
+      },
+      "volumes": [
+        {
+          "name": "storage-data",
+          "mountPath": "/var/lib/storage"
+        }
+      ],
+      "env": [
+        "IMGPROXY_BIND=:5001",
+        "IMGPROXY_LOCAL_FILESYSTEM_ROOT=/",
+        "IMGPROXY_USE_ETAG=true",
+        "IMGPROXY_ENABLE_WEBP_DETECTION=true"
+      ]
+    },
+    {
+      "type": "app",
+      "name": "supabase-meta",
+      "source": {
+        "type": "image",
+        "image": "supabase/postgres-meta:v0.80.0"
+      },
+      "deploy": {
+        "restartPolicy": "always"
+      },
+      "networking": {
+        "containerPort": 8080,
+        "servicePort": 8080
+      },
+      "env": [
+        "PG_META_PORT=8080",
+        "PG_META_DB_HOST=supabase-db",
+        "PG_META_DB_PORT=5432",
+        "PG_META_DB_NAME=postgres",
+        "PG_META_DB_USER=postgres",
+        "PG_META_DB_PASSWORD"
+      ]
+    }
+  ],
+  "volumes": [
+    {
+      "name": "postgres-data",
+      "size": "10Gi"
+    },
+    {
+      "name": "storage-data",
+      "size": "5Gi"
+    },
+    {
+      "name": "init-scripts",
+      "type": "config",
+      "content": "-- Ver deploy/init/01-schema.sql"
+    },
+    {
+      "name": "kong-config",
+      "type": "config",
+      "content": "-- Ver volumes/api/kong.yml en repo de Supabase"
+    }
+  ]
+}

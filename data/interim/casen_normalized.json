@@ -1,0 +1,25 @@
+[
+  {
+    "territory_code": "RM",
+    "territory_name": "Metropolitana de Santiago",
+    "territory_level": "region",
+    "household_monetary_income": 1150000,
+    "household_autonomous_income": 1200000,
+    "per_capita_income": 287500,
+    "income_quintile": 3,
+    "income_quintile_label": "Quintil III",
+    "dwelling_type": "casa",
+    "household_size": 4,
+    "bedrooms": 3,
+    "persons_per_room": 1.3333333333333333,
+    "total_population": 8,
+    "male_population": 1,
+    "female_population": 1,
+    "poverty_rate": 100,
+    "extreme_poverty_rate": 0,
+    "poverty_status_distribution": {
+      "no_pobre": 0,
+      "pobre": 1
+    }
+  }
+]

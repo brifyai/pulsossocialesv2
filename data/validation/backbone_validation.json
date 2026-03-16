@@ -1,0 +1,13 @@
+{
+  "is_valid": true,
+  "total_records": 2,
+  "valid_records": 2,
+  "invalid_records": 0,
+  "issues": [],
+  "summary": {
+    "total_population": 8926010,
+    "avg_income": 143750,
+    "avg_poverty_rate": 50
+  },
+  "checked_at": "2026-03-15T14:36:06.202Z"
+}
