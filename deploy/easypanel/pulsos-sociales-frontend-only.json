@@ -1,0 +1,31 @@
+{
+  "name": "pulsos-sociales",
+  "description": "Pulsos Sociales - Simulación territorial y encuestas sintéticas para Chile",
+  "services": [
+    {
+      "type": "app",
+      "name": "pulsos-frontend",
+      "source": {
+        "type": "git",
+        "repo": "https://github.com/brifyai/pulsossocialesv2.git",
+        "branch": "main"
+      },
+      "build": {
+        "type": "dockerfile",
+        "dockerfile": "Dockerfile"
+      },
+      "deploy": {
+        "restartPolicy": "always"
+      },
+      "networking": {
+        "containerPort": 80,
+        "servicePort": 80
+      },
+      "env": [
+        "VITE_MAPTILER_KEY",
+        "VITE_SUPABASE_URL",
+        "VITE_SUPABASE_ANON_KEY"
+      ]
+    }
+  ]
+}

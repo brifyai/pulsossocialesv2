@@ -106,11 +106,26 @@ class AuthService {
    * Sign in with email and password
    */
   async signIn(email: string, password: string): Promise<AuthResult> {
-    if (!this.isAvailable() || !this.supabaseClient) {
-      return { success: false, error: 'Auth service not available' };
-    }
-
     try {
+      // If Supabase is not available, create a demo session
+      if (!this.isAvailable() || !this.supabaseClient) {
+        console.log('[Auth] Supabase not available, creating demo session');
+        const demoUser: AuthUser = {
+          id: 'demo-user-' + Date.now(),
+          email: email,
+          name: email.split('@')[0] || 'Demo User'
+        };
+
+        this.session = {
+          user: demoUser,
+          demo: true,
+          timestamp: Date.now()
+        };
+        this.saveSession();
+
+        return { success: true, user: demoUser };
+      }
+
       const { data, error } = await this.supabaseClient.auth.signInWithPassword({
         email,
         password
@@ -149,8 +164,23 @@ class AuthService {
    * Sign up with email and password
    */
   async signUp(email: string, password: string, metadata?: { name?: string }): Promise<AuthResult> {
+    // If Supabase is not available, create a demo user
     if (!this.isAvailable() || !this.supabaseClient) {
-      return { success: false, error: 'Auth service not available' };
+      console.log('[Auth] Supabase not available, creating demo user');
+      const demoUser: AuthUser = {
+        id: 'demo-user-' + Date.now(),
+        email: email,
+        name: metadata?.name || email.split('@')[0] || 'Demo User'
+      };
+
+      this.session = {
+        user: demoUser,
+        demo: true,
+        timestamp: Date.now()
+      };
+      this.saveSession();
+
+      return { success: true, user: demoUser };
     }
 
     try {
@@ -199,8 +229,10 @@ class AuthService {
    * Reset password
    */
   async resetPassword(email: string): Promise<AuthResult> {
+    // If Supabase is not available, simulate success
     if (!this.isAvailable() || !this.supabaseClient) {
-      return { success: false, error: 'Auth service not available' };
+      console.log('[Auth] Supabase not available, simulating password reset');
+      return { success: true };
     }
 
     try {
@@ -271,12 +303,12 @@ class AuthService {
    */
   isSessionValid(): boolean {
     if (!this.session) return false;
-    
+
     // For demo sessions, check if created within last 7 days
     if (this.session.expiresAt) {
       return Date.now() < this.session.expiresAt * 1000;
     }
-    
+
     // Demo sessions are valid for 7 days
     const sessionData = localStorage.getItem(SESSION_KEY);
     if (sessionData) {
@@ -290,8 +322,15 @@ class AuthService {
         // Invalid session data
       }
     }
-    
+
     return true;
+  }
+
+  /**
+   * Check if current session is a demo session
+   */
+  isDemoSession(): boolean {
+    return !!this.session?.demo;
   }
 
   /**

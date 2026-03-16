@@ -1,0 +1,151 @@
+# Kong Configuration for Pulsos Sociales
+# Simplified configuration without environment variable substitution
+
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: auth
+    url: http://auth:9999
+    routes:
+      - name: auth-route
+        strip_path: true
+        paths:
+          - /auth/v1
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - X-Request-ID
+            - apikey
+          exposed_headers:
+            - "*"
+          max_age: 3600
+
+  - name: rest
+    url: http://rest:3000
+    routes:
+      - name: rest-route
+        strip_path: true
+        paths:
+          - /rest/v1
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - X-Request-ID
+            - apikey
+          exposed_headers:
+            - "*"
+          max_age: 3600
+
+  - name: realtime
+    url: http://realtime:4000
+    routes:
+      - name: realtime-route
+        strip_path: true
+        paths:
+          - /realtime/v1
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - X-Request-ID
+            - apikey
+          exposed_headers:
+            - "*"
+          max_age: 3600
+
+  - name: storage
+    url: http://storage:5000
+    routes:
+      - name: storage-route
+        strip_path: true
+        paths:
+          - /storage/v1
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - X-Request-ID
+            - apikey
+          exposed_headers:
+            - "*"
+          max_age: 3600
+
+  - name: meta
+    url: http://meta:8080
+    routes:
+      - name: meta-route
+        strip_path: true
+        paths:
+          - /pg
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Authorization
+            - Content-Type
+            - X-Client-Info
+            - X-Request-ID
+            - apikey
+          exposed_headers:
+            - "*"
+          max_age: 3600

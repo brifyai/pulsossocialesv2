@@ -1,7 +1,7 @@
 # =============================================================================
 # Dockerfile - Pulsos Sociales Frontend
 # =============================================================================
-# 
+#
 # Este Dockerfile construye la aplicación frontend de Pulsos Sociales
 # usando Nginx como servidor web estático.
 #
@@ -51,12 +51,20 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Script de entrypoint para reemplazar variables de entorno
-RUN echo '#!/bin/sh\n\
-# Reemplazar variables de entorno en archivos JS\n\
-envsubst < /usr/share/nginx/html/assets/index-*.js > /tmp/replaced.js\n\
-mv /tmp/replaced.js /usr/share/nginx/html/assets/index-*.js\n\
-# Iniciar nginx\n\
-nginx -g "daemon off;"' > /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh
+RUN echo '#!/bin/sh' > /docker-entrypoint.sh && \
+    echo '' >> /docker-entrypoint.sh && \
+    echo '# Reemplazar variables de entorno en archivos JS' >> /docker-entrypoint.sh && \
+    echo 'for file in /usr/share/nginx/html/assets/index-*.js; do' >> /docker-entrypoint.sh && \
+    echo '  if [ -f "$file" ]; then' >> /docker-entrypoint.sh && \
+    echo '    echo "Processing: $file"' >> /docker-entrypoint.sh && \
+    echo '    envsubst < "$file" > /tmp/replaced.js' >> /docker-entrypoint.sh && \
+    echo '    mv /tmp/replaced.js "$file"' >> /docker-entrypoint.sh && \
+    echo '  fi' >> /docker-entrypoint.sh && \
+    echo 'done' >> /docker-entrypoint.sh && \
+    echo '' >> /docker-entrypoint.sh && \
+    echo '# Iniciar nginx' >> /docker-entrypoint.sh && \
+    echo 'nginx -g "daemon off;"' >> /docker-entrypoint.sh && \
+    chmod +x /docker-entrypoint.sh
 
 # Exponer puerto
 EXPOSE 80
