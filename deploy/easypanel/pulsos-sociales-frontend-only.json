@@ -22,9 +22,7 @@
         "servicePort": 80
       },
       "env": [
-        "VITE_MAPTILER_KEY",
-        "VITE_SUPABASE_URL",
-        "VITE_SUPABASE_ANON_KEY"
+        "VITE_MAPTILER_KEY=orWgcmF4NtAAER2Tgjp2"
       ]
     }
   ]
