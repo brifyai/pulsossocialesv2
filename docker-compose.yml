@@ -1,0 +1,117 @@
+# =============================================================================
+# Docker Compose - Pulsos Sociales
+# =============================================================================
+# Versión: 1.1.0
+# Descripción: Configuración completa para deploy local o producción
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # Frontend - Pulsos Sociales
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Variables requeridas
+        VITE_MAPTILER_KEY: ${VITE_MAPTILER_KEY}
+        # Variables opcionales (para persistencia)
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+        # Metadata del build
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
+    container_name: pulsos-frontend
+    ports:
+      - "${PORT:-80}:80"
+    restart: unless-stopped
+    environment:
+      # Nginx log level
+      - NGINX_ENTRYPOINT_QUIET_LOGS=1
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - pulsos-network
+    # Volumes para logs (opcional)
+    # volumes:
+    #   - ./logs/nginx:/var/log/nginx
+
+  # ---------------------------------------------------------------------------
+  # Supabase (Opcional - descomentar para usar persistencia)
+  # ---------------------------------------------------------------------------
+  # db:
+  #   image: supabase/postgres:15.1.0.147
+  #   container_name: pulsos-db
+  #   environment:
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+  #     POSTGRES_DB: postgres
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   networks:
+  #     - pulsos-network
+  #   healthcheck:
+  #     test: ["CMD", "pg_isready", "-U", "postgres"]
+  #     interval: 10s
+  #     timeout: 3s
+  #     retries: 5
+
+  # auth:
+  #   image: supabase/gotrue:v2.149.0
+  #   container_name: pulsos-auth
+  #   environment:
+  #     GOTRUE_API_HOST: 0.0.0.0
+  #     GOTRUE_API_PORT: 9999
+  #     GOTRUE_DB_DRIVER: postgres
+  #     GOTRUE_DB_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres?sslmode=disable
+  #     GOTRUE_JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token}
+  #     GOTRUE_JWT_EXP: 3600
+  #     GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+  #     GOTRUE_SITE_URL: http://localhost:3000
+  #     GOTRUE_URI_ALLOW_LIST: "*"
+  #     GOTRUE_DISABLE_SIGNUP: "false"
+  #     GOTRUE_MAILER_AUTOCONFIRM: "true"
+  #   ports:
+  #     - "9999:9999"
+  #   networks:
+  #     - pulsos-network
+  #   depends_on:
+  #     - db
+
+  # rest:
+  #   image: postgrest/postgrest:v11.2.0
+  #   container_name: pulsos-rest
+  #   environment:
+  #     PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
+  #     PGRST_DB_SCHEMAS: public
+  #     PGRST_DB_ANON_ROLE: anon
+  #     PGRST_JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token}
+  #     PGRST_DB_USE_LEGACY_GUCS: "false"
+  #   ports:
+  #     - "8000:3000"
+  #   networks:
+  #     - pulsos-network
+  #   depends_on:
+  #     - db
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  pulsos-network:
+    driver: bridge
+
+# ---------------------------------------------------------------------------
+# Volumes
+# ---------------------------------------------------------------------------
+volumes:
+  postgres-data:
+    driver: local
