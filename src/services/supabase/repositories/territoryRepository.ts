@@ -3,6 +3,10 @@
  * 
  * Acceso a datos de territorios desde Supabase.
  * Fallback a datos locales si Supabase no está disponible.
+ * 
+ * ACTUALIZADO: 2026-03-16 - Modelo Alineado v2.0
+ * - Soporta códigos cortos (RM, VA, etc.)
+ * - Usa campos: level, code, name, centroid
  */
 
 import { getSupabaseClient } from '../client';
@@ -13,11 +17,17 @@ import type {
 } from '../../../types/database';
 
 // Fallback data (importado estáticamente para offline)
-import { chileRegions, chileRegionsGeoJSON } from '../../../data/chileRegions';
+import { chileRegions } from '../../../data/chileRegions';
 
 // ===========================================
 // Types
 // ===========================================
+
+export interface Territory {
+  code: string;
+  name: string;
+  centroid: [number, number] | null;
+}
 
 export interface TerritoryListOptions {
   page?: number;
@@ -47,28 +57,30 @@ export async function getTerritories(
     page = 1,
     pageSize = 50,
     filters = {},
-    orderBy = 'comuna_name',
+    orderBy = 'name',
     orderDirection = 'asc',
   } = options;
 
   const client = await getSupabaseClient();
   
   if (!client) {
-    // Fallback a datos locales
+    console.log('[🔵 TerritoryRepository] Usando FALLBACK LOCAL para getTerritories');
     return getLocalFallbackTerritories(options);
   }
 
   try {
+    console.log('[🔵 TerritoryRepository] Leyendo de SUPABASE: getTerritories');
     let query = client
       .from('territories')
       .select('*', { count: 'exact' });
 
     // Apply filters
     if (filters.regionCode) {
-      query = query.eq('region_code', filters.regionCode);
+      // NUEVO: Filtrar por code (código corto) o region_code
+      query = query.or(`code.eq.${filters.regionCode},region_code.eq.${filters.regionCode}`);
     }
     if (filters.comunaCode) {
-      query = query.eq('comuna_code', filters.comunaCode);
+      query = query.eq('code', filters.comunaCode);
     }
     if (filters.urbanicity) {
       query = query.eq('urbanicity', filters.urbanicity);
@@ -84,6 +96,7 @@ export async function getTerritories(
 
     if (error) throw error;
 
+    console.log(`[🔵 TerritoryRepository] ✅ Datos de SUPABASE: ${data?.length || 0} territorios`);
     return {
       data: (data as DbTerritory[]) || [],
       total: count || 0,
@@ -92,7 +105,7 @@ export async function getTerritories(
       hasMore: (count || 0) > to + 1,
     };
   } catch (error) {
-    console.warn('[TerritoryRepository] Query failed, using fallback:', error);
+    console.warn('[🟡 TerritoryRepository] Error en DB, usando fallback:', error);
     return getLocalFallbackTerritories(options);
   }
 }
@@ -123,65 +136,79 @@ export async function getTerritoryById(id: string): Promise<DbTerritory | null> 
 }
 
 /**
- * Get territory by comuna code
+ * Get territory by code (código corto: RM, VA, 13101, etc.)
+ * NUEVO: Reemplaza getTerritoryByComunaCode
  */
-export async function getTerritoryByComunaCode(comunaCode: string): Promise<DbTerritory | null> {
+export async function getTerritoryByCode(code: string): Promise<DbTerritory | null> {
   const client = await getSupabaseClient();
   
   if (!client) {
-    return getLocalTerritoryByComunaCode(comunaCode);
+    return getLocalTerritoryByCode(code);
   }
 
   try {
     const { data, error } = await client
       .from('territories')
       .select('*')
-      .eq('comuna_code', comunaCode)
+      .eq('code', code)
       .single();
 
     if (error) throw error;
     return data as DbTerritory | null;
   } catch (error) {
     console.warn('[TerritoryRepository] Query failed, using fallback:', error);
-    return getLocalTerritoryByComunaCode(comunaCode);
+    return getLocalTerritoryByCode(code);
   }
 }
 
 /**
- * Get all regions (unique)
+ * @deprecated Use getTerritoryByCode instead
  */
-export async function getRegions(): Promise<Pick<DbTerritory, 'region_code' | 'region_name' | 'region_name_official'>[]> {
+export async function getTerritoryByComunaCode(comunaCode: string): Promise<DbTerritory | null> {
+  return getTerritoryByCode(comunaCode);
+}
+
+/**
+ * Get all regions
+ */
+export async function getRegions(): Promise<Territory[]> {
+  console.log('[🟢 TerritoryRepository] getRegions() - Intentando leer de Supabase...');
   const client = await getSupabaseClient();
   
   if (!client) {
-    return getLocalRegions();
+    console.log('[🟡 TerritoryRepository] Supabase no disponible, usando fallback local');
+    const local = getLocalRegions();
+    console.log(`[🟡 TerritoryRepository] Fallback local: ${local.length} regiones`);
+    return local;
   }
 
   try {
+    console.log('[🟢 TerritoryRepository] Ejecutando query a territories...');
     const { data, error } = await client
       .from('territories')
-      .select('region_code, region_name, region_name_official')
-      .order('region_code');
+      .select('*')
+      .eq('level', 'region')
+      .order('code');
 
-    if (error) throw error;
+    if (error) {
+      console.error('[🔴 TerritoryRepository] Error en query:', error);
+      throw error;
+    }
 
-    // Remove duplicates
-    const unique = new Map<string, Pick<DbTerritory, 'region_code' | 'region_name' | 'region_name_official'>>();
-    (data || []).forEach((t: Pick<DbTerritory, 'region_code' | 'region_name' | 'region_name_official'>) => {
-      if (!unique.has(t.region_code)) {
-        unique.set(t.region_code, t);
-      }
-    });
-
-    return Array.from(unique.values());
+    const regions = (data || []).map(dbToTerritory);
+    console.log(`[🟢 TerritoryRepository] ✅ Datos de SUPABASE: ${regions.length} regiones`);
+    return regions;
   } catch (error) {
-    console.warn('[TerritoryRepository] Query failed, using fallback:', error);
-    return getLocalRegions();
+    console.warn('[🟡 TerritoryRepository] Query failed, usando fallback:', error);
+    const local = getLocalRegions();
+    console.log(`[🟡 TerritoryRepository] Fallback local: ${local.length} regiones`);
+    return local;
   }
 }
 
 /**
- * Get comunas by region
+ * Get comunas by region code
+ * NUEVO: Usa region_code para filtrar comunas de una región
  */
 export async function getComunasByRegion(regionCode: string): Promise<DbTerritory[]> {
   const client = await getSupabaseClient();
@@ -194,8 +221,9 @@ export async function getComunasByRegion(regionCode: string): Promise<DbTerritor
     const { data, error } = await client
       .from('territories')
       .select('*')
+      .eq('level', 'comuna')
       .eq('region_code', regionCode)
-      .order('comuna_name');
+      .order('name');
 
     if (error) throw error;
     return (data as DbTerritory[]) || [];
@@ -216,22 +244,23 @@ export async function getTerritoryStats(): Promise<TerritoryStats> {
   }
 
   try {
-    const { count: totalComunas, error: countError } = await client
+    // Contar regiones
+    const { count: totalRegions, error: regionsError } = await client
       .from('territories')
-      .select('*', { count: 'exact', head: true });
-
-    if (countError) throw countError;
-
-    const { data: regions, error: regionsError } = await client
-      .from('territories')
-      .select('region_code')
-      .order('region_code');
+      .select('*', { count: 'exact', head: true })
+      .eq('level', 'region');
 
     if (regionsError) throw regionsError;
 
-    const uniqueRegions = new Set((regions || []).map((r: { region_code: string }) => r.region_code));
+    // Contar comunas
+    const { count: totalComunas, error: comunasError } = await client
+      .from('territories')
+      .select('*', { count: 'exact', head: true })
+      .eq('level', 'comuna');
 
-    // Sum population if available
+    if (comunasError) throw comunasError;
+
+    // Sumar población
     const { data: popData, error: popError } = await client
       .from('territories')
       .select('population_total');
@@ -243,7 +272,7 @@ export async function getTerritoryStats(): Promise<TerritoryStats> {
     ) || null;
 
     return {
-      totalRegions: uniqueRegions.size,
+      totalRegions: totalRegions || 0,
       totalComunas: totalComunas || 0,
       totalPopulation: totalPopulation || null,
     };
@@ -267,7 +296,7 @@ export async function searchTerritories(query: string): Promise<DbTerritory[]> {
     const { data, error } = await client
       .from('territories')
       .select('*')
-      .or(`comuna_name.ilike.%${query}%,region_name.ilike.%${query}%`)
+      .or(`name.ilike.%${query}%,region_name.ilike.%${query}%`)
       .limit(20);
 
     if (error) throw error;
@@ -283,51 +312,33 @@ export async function searchTerritories(query: string): Promise<DbTerritory[]> {
 // ===========================================
 
 function getLocalFallbackTerritories(options: TerritoryListOptions): PaginatedResult<DbTerritory> {
-  // Convert chileRegions to DbTerritory format using GeoJSON features
-  const allTerritories: DbTerritory[] = [];
-  
-  // Extract comunas from GeoJSON features
-  const features = chileRegionsGeoJSON.features;
-  
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  features.forEach((feature: any) => {
-    const props = feature.properties as { 
-      code: string; 
-      name: string; 
-      population?: number;
-      centroid?: [number, number];
-    } | undefined;
-    
-    if (props && feature.geometry) {
-      // Find region info
-      const region = chileRegions.find(r => r.code === props.code);
-      
-      allTerritories.push({
-        id: `local-${props.code}`,
-        country_code: 'CL',
-        region_code: props.code,
-        region_name: region?.name || props.name,
-        region_name_official: region?.name || props.name,
-        comuna_code: props.code,
-        comuna_name: props.name,
-        geometry: feature.geometry,
-        bbox: feature.bbox as [number, number, number, number] || [-70, -30, -70, -30],
-        population_total: props.population || null,
-        population_urban: null,
-        population_rural: null,
-        area_km2: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        data_version: 'local-v1',
-        source_files: ['chileRegions.ts'],
-      });
-    }
-  });
+  // Convert chileRegions to DbTerritory format usando el nuevo modelo
+  const allTerritories: DbTerritory[] = chileRegions.map(region => ({
+    id: `local-${region.code}`,
+    level: 'region',
+    code: region.code,
+    name: region.name,
+    region_code: null,
+    region_name: null,
+    centroid: region.centroid || null,
+    geometry: null,
+    bbox: null,
+    population_total: region.population || null,
+    population_urban: null,
+    population_rural: null,
+    source: 'local',
+    source_year: 2024,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }));
 
   // Apply filters
   let filtered = allTerritories;
   if (options.filters?.regionCode) {
-    filtered = filtered.filter(t => t.region_code === options.filters!.regionCode);
+    filtered = filtered.filter(t => 
+      t.code === options.filters!.regionCode || 
+      t.region_code === options.filters!.regionCode
+    );
   }
 
   // Apply pagination
@@ -351,39 +362,50 @@ function getLocalTerritoryById(id: string): DbTerritory | null {
   return all.data.find(t => t.id === id) || null;
 }
 
-function getLocalTerritoryByComunaCode(comunaCode: string): DbTerritory | null {
+function getLocalTerritoryByCode(code: string): DbTerritory | null {
   const all = getLocalFallbackTerritories({ page: 1, pageSize: 10000 });
-  return all.data.find(t => t.comuna_code === comunaCode) || null;
+  return all.data.find(t => t.code === code) || null;
 }
 
-function getLocalRegions(): Pick<DbTerritory, 'region_code' | 'region_name' | 'region_name_official'>[] {
+function getLocalRegions(): Pick<DbTerritory, 'code' | 'name' | 'centroid'>[] {
   return chileRegions.map(r => ({
-    region_code: r.code,
-    region_name: r.name,
-    region_name_official: r.name,
+    code: r.code,
+    name: r.name,
+    centroid: r.centroid || null,
   }));
 }
 
 function getLocalComunasByRegion(regionCode: string): DbTerritory[] {
-  const all = getLocalFallbackTerritories({ 
-    page: 1, 
-    pageSize: 10000,
-    filters: { regionCode }
-  });
-  return all.data;
+  // En datos locales, no tenemos comunas, solo regiones
+  // Retornar array vacío o la región misma si coincide
+  const region = chileRegions.find(r => r.code === regionCode);
+  if (!region) return [];
+  
+  return [{
+    id: `local-${region.code}`,
+    level: 'region',
+    code: region.code,
+    name: region.name,
+    region_code: null,
+    region_name: null,
+    centroid: region.centroid || null,
+    geometry: null,
+    bbox: null,
+    population_total: region.population || null,
+    population_urban: null,
+    population_rural: null,
+    source: 'local',
+    source_year: 2024,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }];
 }
 
 function getLocalTerritoryStats(): TerritoryStats {
-  // Count features in GeoJSON
-  const totalComunas = chileRegionsGeoJSON.features.length;
-  
-  // Sum population from regions
-  const totalPopulation = chileRegions.reduce((sum, r) => sum + (r.population || 0), 0);
-
   return {
     totalRegions: chileRegions.length,
-    totalComunas,
-    totalPopulation: totalPopulation || null,
+    totalComunas: 0, // No tenemos comunas en datos locales
+    totalPopulation: chileRegions.reduce((sum, r) => sum + (r.population || 0), 0) || null,
   };
 }
 
@@ -392,7 +414,22 @@ function searchLocalTerritories(query: string): DbTerritory[] {
   const lowerQuery = query.toLowerCase();
   
   return all.data.filter(t => 
-    t.comuna_name.toLowerCase().includes(lowerQuery) ||
-    t.region_name.toLowerCase().includes(lowerQuery)
+    t.name.toLowerCase().includes(lowerQuery) ||
+    (t.region_name?.toLowerCase().includes(lowerQuery) ?? false)
   ).slice(0, 20);
+}
+
+// ===========================================
+// Transformers
+// ===========================================
+
+/**
+ * Transform DbTerritory to Territory (simplified format)
+ */
+function dbToTerritory(dbTerritory: DbTerritory): Territory {
+  return {
+    code: dbTerritory.code,
+    name: dbTerritory.name,
+    centroid: dbTerritory.centroid,
+  };
 }
