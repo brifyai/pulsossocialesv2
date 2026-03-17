@@ -33,6 +33,65 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 let supabaseInstance: SupabaseClient | null = null;
 let initializationPromise: Promise<SupabaseStatus> | null = null;
+let lastKnownStatus: SupabaseStatus | null = null;
+
+// ===========================================
+// Debug / Status Helpers
+// ===========================================
+
+/**
+ * Log con prefijo identificable para modo DB vs Fallback
+ */
+function logDb(message: string, data?: unknown): void {
+  console.log(`[🔵 DB] ${message}`, data ?? '');
+}
+
+function logFallback(message: string, data?: unknown): void {
+  console.log(`[🟡 FALLBACK] ${message}`, data ?? '');
+}
+
+function logError(message: string, error?: unknown): void {
+  console.error(`[🔴 ERROR] ${message}`, error ?? '');
+}
+
+/**
+ * Obtener el estado actual de conexión para mostrar en UI
+ */
+export function getConnectionStatus(): { 
+  mode: 'db' | 'fallback' | 'unknown'; 
+  details: string;
+  isConfigured: boolean;
+} {
+  if (!isSupabaseConfigured()) {
+    return { 
+      mode: 'fallback', 
+      details: 'Supabase no configurado - usando datos locales',
+      isConfigured: false 
+    };
+  }
+  
+  if (!lastKnownStatus) {
+    return { 
+      mode: 'unknown', 
+      details: 'Verificando conexión...',
+      isConfigured: true 
+    };
+  }
+  
+  if (lastKnownStatus.isConnected) {
+    return { 
+      mode: 'db', 
+      details: 'Conectado a Supabase',
+      isConfigured: true 
+    };
+  }
+  
+  return { 
+    mode: 'fallback', 
+    details: `Error de conexión: ${lastKnownStatus.error || 'Desconocido'} - usando datos locales`,
+    isConfigured: true 
+  };
+}
 
 // ===========================================
 // Lazy Loading
@@ -75,24 +134,31 @@ export async function initSupabase(): Promise<SupabaseStatus> {
   initializationPromise = (async (): Promise<SupabaseStatus> => {
     // Check if configured
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      console.log('[Supabase] Not configured - using local data fallback');
-      return {
+      logFallback('Supabase no configurado - faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY');
+      const status: SupabaseStatus = {
         isAvailable: false,
         isConnected: false,
         error: 'Supabase not configured (VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY required)',
       };
+      lastKnownStatus = status;
+      return status;
     }
+
+    logDb(`Intentando conectar a: ${SUPABASE_URL}`);
 
     try {
       // Dynamically load supabase module
       const supabaseModule = await loadSupabaseModule();
       
       if (!supabaseModule) {
-        return {
+        logError('No se pudo cargar el módulo de Supabase');
+        const status: SupabaseStatus = {
           isAvailable: false,
           isConnected: false,
           error: 'Supabase module not available',
         };
+        lastKnownStatus = status;
+        return status;
       }
 
       // Create client
@@ -104,34 +170,66 @@ export async function initSupabase(): Promise<SupabaseStatus> {
         },
       });
 
-      // Test connection
-      const { error } = await client.from('territories').select('id', { count: 'exact', head: true });
+    // Test connection with detailed error diagnosis
+    logDb('Probando conexión a tabla territories...');
+    const { error, count } = await client.from('territories').select('id', { count: 'exact', head: true });
 
-      if (error) {
-        // Connection failed but don't throw - app can work offline
-        console.warn('[Supabase] Connection test failed:', error.message);
-        return {
-          isAvailable: true,
-          isConnected: false,
-          error: error.message,
-        };
+    if (error) {
+      // Diagnose the specific error
+      let errorType = 'unknown';
+      let errorDetails = error.message;
+      
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        errorType = 'network';
+        errorDetails = 'Error de red - verifica la URL de Supabase y tu conexión';
+      } else if (error.message.includes('JWT') || error.message.includes('token') || error.message.includes('Unauthorized')) {
+        errorType = 'auth';
+        errorDetails = 'Error de autenticación - el anon key puede ser inválido';
+      } else if (error.message.includes('permission') || error.message.includes('Policy') || error.code === '42501') {
+        errorType = 'rls';
+        errorDetails = 'Error de permisos (RLS) - se necesitan políticas de acceso para anon';
+      } else if (error.message.includes('does not exist') || error.code === '42P01') {
+        errorType = 'schema';
+        errorDetails = 'La tabla no existe - verifica el schema de la base de datos';
+      } else if (error.code === 'PGRST301') {
+        errorType = 'postgrest';
+        errorDetails = 'Error de PostgREST - verifica que la extensión esté habilitada';
       }
+      
+      logError(`Conexión fallida [${errorType}]: ${errorDetails}`);
+      logError('Código de error:', error.code);
+      logError('Mensaje original:', error.message);
+      
+      const status: SupabaseStatus = {
+        isAvailable: true,
+        isConnected: false,
+        error: `[${errorType}] ${errorDetails}`,
+      };
+      lastKnownStatus = status;
+      return status;
+    }
+
+    logDb(`✅ Conexión exitosa - tabla territories accesible (${count ?? '?'} registros)`);
 
       supabaseInstance = client;
-      console.log('[Supabase] Connected successfully');
+      logDb('✅ Conectado exitosamente a Supabase');
 
-      return {
+      const status: SupabaseStatus = {
         isAvailable: true,
         isConnected: true,
       };
+      lastKnownStatus = status;
+      return status;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.warn('[Supabase] Initialization failed:', message);
-      return {
+      logError(`Inicialización fallida: ${message}`);
+      const status: SupabaseStatus = {
         isAvailable: false,
         isConnected: false,
         error: message,
       };
+      lastKnownStatus = status;
+      return status;
     }
   })();
 

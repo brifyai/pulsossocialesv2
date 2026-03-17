@@ -22,11 +22,12 @@ export type {
   SupabaseStatus 
 } from './client';
 
-// Repositories
+// Territory Repository
 export {
   getTerritories,
   getTerritoryById,
-  getTerritoryByComunaCode,
+  getTerritoryByCode,        // NUEVO: Modelo Alineado v2.0
+  getTerritoryByComunaCode,  // @deprecated: Use getTerritoryByCode
   getRegions,
   getComunasByRegion,
   getTerritoryStats,
@@ -37,3 +38,33 @@ export type {
   TerritoryListOptions,
   TerritoryStats,
 } from './repositories/territoryRepository';
+
+// Agent Repository - Sprint 10B
+export {
+  getAgents,
+  getAgentById,
+  getUniqueRegions as getAgentRegions,
+  getUniqueCommunes as getAgentCommunes,
+  getAgentStats,
+  isSupabaseAvailable as isAgentSupabaseAvailable,
+} from './repositories/agentRepository';
+
+export type {
+  AgentListOptions,
+  AgentStats,
+} from './repositories/agentRepository';
+
+// Survey Repository - Sprint 11
+export {
+  createSurvey,
+  getAllSurveys,
+  getSurvey,
+  deleteSurvey,
+  createSurveyRun,
+  completeSurveyRun,
+  saveSurveyResponses,
+  getSurveyRuns,
+  getSurveyResults,
+  getSurveyStats,
+  isSurveyPersistenceAvailable,
+} from './repositories/surveyRepository';

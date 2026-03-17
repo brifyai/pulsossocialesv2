@@ -1,7 +1,8 @@
 /**
- * Benchmarks Page - Sprint 7A
+ * Benchmarks Page - Sprint 7 + 12B
  * 
  * Vista para comparar resultados sintéticos con benchmarks de referencia.
+ * Sprint 12B: Mejoras de robustez - estados loading/error mejorados
  */
 
 import type { Benchmark, SurveyBenchmarkComparison, IndicatorComparison } from '../types/benchmark';
@@ -33,7 +34,16 @@ export async function createBenchmarksPage(): Promise<HTMLElement> {
   page.className = 'page benchmarks-page';
   page.id = 'benchmarks-page';
   
-  page.innerHTML = `
+  page.innerHTML = renderPage();
+
+  // Initialize
+  await initializePage(page);
+  
+  return page;
+}
+
+function renderPage(): string {
+  return `
     <div class="benchmarks-container">
       <header class="benchmarks-header">
         <h1 class="benchmarks-title">
@@ -77,58 +87,100 @@ export async function createBenchmarksPage(): Promise<HTMLElement> {
         <section class="benchmarks-list-section">
           <h2 class="section-title">Benchmarks Disponibles</h2>
           <div id="benchmarks-list" class="benchmarks-list">
-            <!-- Benchmarks will be rendered here -->
+            ${renderLoadingState()}
           </div>
         </section>
       </div>
     </div>
   `;
+}
 
-  // Initialize
-  await initializePage(page);
-  
-  return page;
+function renderLoadingState(): string {
+  return `
+    <div class="benchmarks-loading-state">
+      <div class="loading-spinner"></div>
+      <p>Cargando benchmarks...</p>
+    </div>
+  `;
+}
+
+function renderErrorState(message: string): string {
+  return `
+    <div class="benchmarks-error-state">
+      <span class="error-icon">⚠️</span>
+      <h3>Error al cargar benchmarks</h3>
+      <p>${message}</p>
+      <button class="btn btn-secondary" id="retry-benchmarks-btn">Reintentar</button>
+    </div>
+  `;
 }
 
 async function initializePage(page: HTMLElement): Promise<void> {
-  // Populate survey select
-  const surveySelect = page.querySelector('#survey-select') as HTMLSelectElement;
-  const surveys = getAllSurveys();
-  
-  surveys.forEach(survey => {
-    const option = document.createElement('option');
-    option.value = survey.id;
-    option.textContent = survey.name;
-    surveySelect.appendChild(option);
-  });
+  try {
+    // Populate survey select
+    const surveySelect = page.querySelector('#survey-select') as HTMLSelectElement;
+    const surveys = await getAllSurveys();
+    
+    if (surveys.length === 0) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No hay encuestas disponibles';
+      option.disabled = true;
+      surveySelect.appendChild(option);
+    } else {
+      surveys.forEach(survey => {
+        const option = document.createElement('option');
+        option.value = survey.id;
+        option.textContent = survey.name;
+        surveySelect.appendChild(option);
+      });
+    }
 
-  // Populate benchmark select
-  const benchmarkSelect = page.querySelector('#benchmark-select') as HTMLSelectElement;
-  const benchmarks = getAllBenchmarks();
-  
-  benchmarks.forEach(benchmark => {
-    const option = document.createElement('option');
-    option.value = benchmark.id;
-    option.textContent = `${benchmark.source.name} (${benchmark.source.year})`;
-    benchmarkSelect.appendChild(option);
-  });
+    // Populate benchmark select
+    const benchmarkSelect = page.querySelector('#benchmark-select') as HTMLSelectElement;
+    const benchmarks = getAllBenchmarks();
+    
+    benchmarks.forEach(benchmark => {
+      const option = document.createElement('option');
+      option.value = benchmark.id;
+      option.textContent = `${benchmark.source.name} (${benchmark.source.year})`;
+      benchmarkSelect.appendChild(option);
+    });
 
-  // Render benchmarks list
-  renderBenchmarksList(page);
+    // Render benchmarks list
+    renderBenchmarksList(page);
 
-  // Event listeners
-  surveySelect.addEventListener('change', (e) => {
-    selectedSurveyId = (e.target as HTMLSelectElement).value;
-    updateCompareButton(page);
-  });
+    // Event listeners
+    surveySelect.addEventListener('change', (e) => {
+      selectedSurveyId = (e.target as HTMLSelectElement).value;
+      updateCompareButton(page);
+    });
 
-  benchmarkSelect.addEventListener('change', (e) => {
-    selectedBenchmarkId = (e.target as HTMLSelectElement).value;
-    updateCompareButton(page);
-  });
+    benchmarkSelect.addEventListener('change', (e) => {
+      selectedBenchmarkId = (e.target as HTMLSelectElement).value;
+      updateCompareButton(page);
+    });
 
-  const compareBtn = page.querySelector('#compare-btn') as HTMLButtonElement;
-  compareBtn.addEventListener('click', () => runComparison(page));
+    const compareBtn = page.querySelector('#compare-btn') as HTMLButtonElement;
+    compareBtn.addEventListener('click', () => runComparison(page));
+    
+  } catch (error) {
+    console.error('[BenchmarksPage] Error initializing:', error);
+    const listContainer = page.querySelector('#benchmarks-list') as HTMLElement;
+    if (listContainer) {
+      listContainer.innerHTML = renderErrorState(
+        error instanceof Error ? error.message : 'Error desconocido al cargar datos'
+      );
+      
+      // Attach retry listener
+      setTimeout(() => {
+        const retryBtn = listContainer.querySelector('#retry-benchmarks-btn');
+        retryBtn?.addEventListener('click', () => {
+          location.reload();
+        });
+      }, 0);
+    }
+  }
 }
 
 function updateCompareButton(page: HTMLElement): void {
@@ -140,36 +192,59 @@ async function runComparison(page: HTMLElement): Promise<void> {
   if (!selectedSurveyId || !selectedBenchmarkId) return;
 
   const resultsContainer = page.querySelector('#comparison-results') as HTMLElement;
-  resultsContainer.innerHTML = '<div class="loading">Comparando...</div>';
+  resultsContainer.innerHTML = `
+    <div class="comparison-loading">
+      <div class="loading-spinner"></div>
+      <p>Analizando resultados...</p>
+    </div>
+  `;
   resultsContainer.style.display = 'block';
 
-  // Get survey results
-  const surveyResults = getSurveyResults(selectedSurveyId);
-  if (!surveyResults) {
-    resultsContainer.innerHTML = `
-      <div class="error-message">
-        <span class="icon">⚠️</span>
-        No hay resultados para esta encuesta. Ejecuta la encuesta primero.
-      </div>
-    `;
-    return;
-  }
+  try {
+    // Get survey results (async - Sprint 11C)
+    const surveyResults = await getSurveyResults(selectedSurveyId);
+    if (!surveyResults) {
+      resultsContainer.innerHTML = renderComparisonError(
+        'No hay resultados para esta encuesta',
+        'Ejecuta la encuesta primero para poder comparar con benchmarks.'
+      );
+      return;
+    }
 
-  // Run comparison
-  const comparison = compareSurveyWithBenchmark(surveyResults, selectedBenchmarkId);
-  
-  if (!comparison) {
-    resultsContainer.innerHTML = `
-      <div class="error-message">
-        <span class="icon">⚠️</span>
-        Error al realizar la comparación.
-      </div>
-    `;
-    return;
-  }
+    // Run comparison
+    const comparison = compareSurveyWithBenchmark(surveyResults, selectedBenchmarkId);
+    
+    if (!comparison) {
+      resultsContainer.innerHTML = renderComparisonError(
+        'No se pudo realizar la comparación',
+        'El benchmark seleccionado no tiene indicadores compatibles con esta encuesta.'
+      );
+      return;
+    }
 
-  comparisonHistory.push(comparison);
-  renderComparisonResults(resultsContainer, comparison);
+    comparisonHistory.push(comparison);
+    renderComparisonResults(resultsContainer, comparison);
+    
+  } catch (error) {
+    console.error('[BenchmarksPage] Error in comparison:', error);
+    resultsContainer.innerHTML = renderComparisonError(
+      'Error al comparar',
+      error instanceof Error ? error.message : 'Ocurrió un error inesperado.'
+    );
+  }
+}
+
+function renderComparisonError(title: string, message: string): string {
+  return `
+    <div class="comparison-error">
+      <span class="error-icon">⚠️</span>
+      <h3>${title}</h3>
+      <p>${message}</p>
+      <button class="btn btn-secondary" onclick="this.closest('.comparison-results').style.display='none'">
+        Cerrar
+      </button>
+    </div>
+  `;
 }
 
 function renderComparisonResults(container: HTMLElement, comparison: SurveyBenchmarkComparison): void {
@@ -266,37 +341,50 @@ function renderIndicatorComparison(comp: IndicatorComparison): string {
   `;
 }
 
+function renderEmptyState(): string {
+  return `
+    <div class="benchmarks-empty-state">
+      <span class="empty-icon">?</span>
+      <h3>No hay benchmarks disponibles</h3>
+      <p>Los benchmarks de referencia se cargan desde archivos de configuración.</p>
+    </div>
+  `;
+}
+
 function renderBenchmarksList(page: HTMLElement): void {
   const listContainer = page.querySelector('#benchmarks-list') as HTMLElement;
-  const benchmarks = getAllBenchmarks();
-  const categories = getCategories();
   
-  if (benchmarks.length === 0) {
-    listContainer.innerHTML = `
-      <div class="empty-state">
-        <span class="icon">📊</span>
-        <p>No hay benchmarks disponibles</p>
-      </div>
-    `;
-    return;
-  }
+  try {
+    const benchmarks = getAllBenchmarks();
+    const categories = getCategories();
+    
+    if (benchmarks.length === 0) {
+      listContainer.innerHTML = renderEmptyState();
+      return;
+    }
 
-  listContainer.innerHTML = categories.map(category => {
-    const categoryBenchmarks = benchmarks.filter(b => 
-      b.indicators.some(i => i.category === category)
-    );
-    
-    if (categoryBenchmarks.length === 0) return '';
-    
-    return `
-      <div class="benchmark-category">
-        <h3 class="category-title">${category}</h3>
-        <div class="category-benchmarks">
-          ${categoryBenchmarks.map(b => renderBenchmarkCard(b)).join('')}
+    listContainer.innerHTML = categories.map(category => {
+      const categoryBenchmarks = benchmarks.filter(b => 
+        b.indicators.some(i => i.category === category)
+      );
+      
+      if (categoryBenchmarks.length === 0) return '';
+      
+      return `
+        <div class="benchmark-category">
+          <h3 class="category-title">${category}</h3>
+          <div class="category-benchmarks">
+            ${categoryBenchmarks.map(b => renderBenchmarkCard(b)).join('')}
+          </div>
         </div>
-      </div>
-    `;
-  }).join('');
+      `;
+    }).join('');
+  } catch (error) {
+    console.error('[BenchmarksPage] Error rendering benchmarks list:', error);
+    listContainer.innerHTML = renderErrorState(
+      error instanceof Error ? error.message : 'Error al cargar benchmarks'
+    );
+  }
 }
 
 function renderBenchmarkCard(benchmark: Benchmark): string {

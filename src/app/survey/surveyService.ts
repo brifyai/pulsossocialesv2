@@ -2,6 +2,7 @@
  * Survey Service
  * 
  * Servicio para ejecutar encuestas y generar resultados agregados.
+ * Sprint 11A - Persistencia de definiciones en Supabase con fallback local
  */
 
 import type { SyntheticAgent } from '../../types/agent';
@@ -17,14 +18,68 @@ import type {
 } from '../../types/survey';
 import { filterAgents } from '../../data/syntheticAgents';
 import { generateSurveyResponses, calculateConfidenceStats } from './syntheticResponseEngine';
+import {
+  createSurveyDefinition,
+  getSurveyDefinitions,
+  getSurveyDefinitionById,
+  deleteSurveyDefinition,
+  isSurveyPersistenceAvailable,
+  // Sprint 11B - Survey Runs
+  createSurveyRunDb,
+  getSurveyRunsBySurveyId,
+  getSurveyRunById,
+  isSurveyRunPersistenceAvailable,
+  // Sprint 11C - Survey Results
+  saveSurveyResultsDb,
+  getSurveyResultsBySurveyId,
+  getSurveyResultsByRunId,
+  isSurveyResultPersistenceAvailable,
+} from '../../services/supabase/repositories/surveyRepository';
 
 // ===========================================
-// Survey Storage (in-memory for v1)
+// Survey Storage (in-memory fallback)
 // ===========================================
 
 const surveys: Map<string, SurveyDefinition> = new Map();
 const surveyRuns: Map<string, SurveyRun> = new Map();
 const surveyResults: Map<string, SurveyResult> = new Map();
+
+// Flag para saber si ya cargamos desde DB
+let hasLoadedFromDb = false;
+
+// ===========================================
+// Helper: Sync local cache with DB
+// ===========================================
+
+/**
+ * Carga encuestas desde Supabase al cache local
+ * Solo se ejecuta una vez al inicio
+ */
+async function syncFromDatabase(): Promise<void> {
+  if (hasLoadedFromDb) return;
+  
+  const isAvailable = await isSurveyPersistenceAvailable();
+  if (!isAvailable) {
+    console.log('📋 [SurveyService] DB not available, using local storage');
+    hasLoadedFromDb = true;
+    return;
+  }
+  
+  try {
+    const dbSurveys = await getSurveyDefinitions();
+    // Limpiar cache local y cargar desde DB
+    surveys.clear();
+    for (const survey of dbSurveys) {
+      surveys.set(survey.id, survey);
+    }
+    console.log(`📋 [SurveyService] Loaded ${dbSurveys.length} surveys from DB`);
+    hasLoadedFromDb = true;
+  } catch (error) {
+    console.error('[SurveyService] Error loading from DB:', error);
+    // Continuar con cache local vacío
+    hasLoadedFromDb = true;
+  }
+}
 
 // ===========================================
 // Survey CRUD Operations
@@ -32,8 +87,29 @@ const surveyResults: Map<string, SurveyResult> = new Map();
 
 /**
  * Crea una nueva encuesta
+ * Intenta guardar en Supabase primero, fallback a local
  */
-export function createSurvey(definition: Omit<SurveyDefinition, 'id' | 'createdAt'>): SurveyDefinition {
+export async function createSurvey(definition: Omit<SurveyDefinition, 'id' | 'createdAt'>): Promise<SurveyDefinition> {
+  // Asegurar que tenemos datos sincronizados
+  await syncFromDatabase();
+  
+  // Intentar guardar en DB primero
+  const isAvailable = await isSurveyPersistenceAvailable();
+  if (isAvailable) {
+    try {
+      const dbSurvey = await createSurveyDefinition(definition);
+      if (dbSurvey) {
+        // Guardar en cache local también
+        surveys.set(dbSurvey.id, dbSurvey);
+        console.log(`📋 Survey created in DB: ${dbSurvey.name} (${dbSurvey.id})`);
+        return dbSurvey;
+      }
+    } catch (error) {
+      console.warn('[SurveyService] DB save failed, falling back to local:', error);
+    }
+  }
+  
+  // Fallback: crear localmente
   const survey: SurveyDefinition = {
     ...definition,
     id: `survey_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -41,21 +117,60 @@ export function createSurvey(definition: Omit<SurveyDefinition, 'id' | 'createdA
   };
   
   surveys.set(survey.id, survey);
-  console.log(`📋 Survey created: ${survey.name} (${survey.id})`);
+  console.log(`📋 Survey created locally: ${survey.name} (${survey.id})`);
   return survey;
 }
 
 /**
  * Obtiene una encuesta por ID
+ * Busca primero en cache, luego en DB si no está
  */
-export function getSurvey(id: string): SurveyDefinition | undefined {
-  return surveys.get(id);
+export async function getSurvey(id: string): Promise<SurveyDefinition | undefined> {
+  await syncFromDatabase();
+  
+  // Primero buscar en cache
+  const cached = surveys.get(id);
+  if (cached) return cached;
+  
+  // Si no está en cache y DB está disponible, buscar en DB
+  const isAvailable = await isSurveyPersistenceAvailable();
+  if (isAvailable) {
+    try {
+      const dbSurvey = await getSurveyDefinitionById(id);
+      if (dbSurvey) {
+        surveys.set(dbSurvey.id, dbSurvey); // Cachear
+        return dbSurvey;
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Error fetching from DB:', error);
+    }
+  }
+  
+  return undefined;
 }
 
 /**
  * Obtiene todas las encuestas
+ * Sincroniza desde DB si es necesario
  */
-export function getAllSurveys(): SurveyDefinition[] {
+export async function getAllSurveys(): Promise<SurveyDefinition[]> {
+  await syncFromDatabase();
+  
+  // Si DB está disponible, recargar para tener datos frescos
+  const isAvailable = await isSurveyPersistenceAvailable();
+  if (isAvailable) {
+    try {
+      const dbSurveys = await getSurveyDefinitions();
+      // Actualizar cache
+      surveys.clear();
+      for (const survey of dbSurveys) {
+        surveys.set(survey.id, survey);
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Error reloading from DB:', error);
+    }
+  }
+  
   return Array.from(surveys.values()).sort((a, b) => 
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
@@ -63,8 +178,22 @@ export function getAllSurveys(): SurveyDefinition[] {
 
 /**
  * Elimina una encuesta
+ * Elimina de DB si está disponible, y siempre de cache local
  */
-export function deleteSurvey(id: string): boolean {
+export async function deleteSurvey(id: string): Promise<boolean> {
+  await syncFromDatabase();
+  
+  // Intentar eliminar de DB primero
+  const isAvailable = await isSurveyPersistenceAvailable();
+  if (isAvailable) {
+    try {
+      await deleteSurveyDefinition(id);
+    } catch (error) {
+      console.warn('[SurveyService] Error deleting from DB:', error);
+    }
+  }
+  
+  // Siempre eliminar de cache local
   const deleted = surveys.delete(id);
   if (deleted) {
     console.log(`🗑️ Survey deleted: ${id}`);
@@ -78,9 +207,10 @@ export function deleteSurvey(id: string): boolean {
 
 /**
  * Ejecuta una encuesta sobre agentes que coinciden con el segmento
+ * Sprint 11B - Persiste la corrida en Supabase (sin respuestas)
  */
 export async function runSurvey(surveyId: string): Promise<SurveyRun> {
-  const survey = getSurvey(surveyId);
+  const survey = await getSurvey(surveyId);
   if (!survey) {
     throw new Error(`Survey not found: ${surveyId}`);
   }
@@ -118,8 +248,8 @@ export async function runSurvey(surveyId: string): Promise<SurveyRun> {
   console.log(`  🤖 Generating synthetic responses...`);
   const responses = generateSurveyResponses(selectedAgents, survey.questions);
   
-  // 4. Crear registro de ejecución
-  const run: SurveyRun = {
+  // 4. Crear registro de ejecución local
+  const localRun: SurveyRun = {
     id: `run_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     surveyId: survey.id,
     startedAt,
@@ -133,27 +263,97 @@ export async function runSurvey(surveyId: string): Promise<SurveyRun> {
     }
   };
   
-  surveyRuns.set(run.id, run);
-  console.log(`  ✅ Survey run completed: ${run.id}`);
+  // 5. Intentar persistir en DB (Sprint 11B)
+  const isDbAvailable = await isSurveyRunPersistenceAvailable();
+  if (isDbAvailable) {
+    try {
+      const dbRun = await createSurveyRunDb(localRun);
+      if (dbRun) {
+        // Usar el ID de la DB pero mantener las respuestas en local
+        localRun.id = dbRun.id;
+        console.log(`  💾 Survey run persisted to DB: ${dbRun.id}`);
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Failed to persist run to DB:', error);
+    }
+  }
   
-  // 5. Generar resultados agregados
-  const results = generateSurveyResults(survey, run);
+  // 6. Guardar en cache local (siempre)
+  surveyRuns.set(localRun.id, localRun);
+  console.log(`  ✅ Survey run completed: ${localRun.id}`);
+  
+  // 7. Generar resultados agregados
+  const results = generateSurveyResults(survey, localRun);
   surveyResults.set(results.surveyId, results);
   
-  return run;
+  // 8. Intentar persistir resultados en DB (Sprint 11C)
+  const isResultsDbAvailable = await isSurveyResultPersistenceAvailable();
+  if (isResultsDbAvailable) {
+    try {
+      const saved = await saveSurveyResultsDb(results);
+      if (saved) {
+        console.log(`  📊 Survey results persisted to DB for run: ${localRun.id}`);
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Failed to persist results to DB:', error);
+    }
+  }
+  
+  return localRun;
 }
 
 /**
  * Obtiene una ejecución por ID
+ * Sprint 11B - Intenta DB primero, fallback a local
  */
-export function getSurveyRun(runId: string): SurveyRun | undefined {
-  return surveyRuns.get(runId);
+export async function getSurveyRun(runId: string): Promise<SurveyRun | undefined> {
+  // Primero buscar en cache local
+  const localRun = surveyRuns.get(runId);
+  if (localRun) return localRun;
+  
+  // Si no está en cache y DB está disponible, buscar en DB
+  const isDbAvailable = await isSurveyRunPersistenceAvailable();
+  if (isDbAvailable) {
+    try {
+      const dbRun = await getSurveyRunById(runId);
+      if (dbRun) {
+        // Cachear localmente (sin respuestas, solo metadata)
+        surveyRuns.set(dbRun.id, dbRun);
+        return dbRun;
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Error fetching run from DB:', error);
+    }
+  }
+  
+  return undefined;
 }
 
 /**
  * Obtiene todas las ejecuciones de una encuesta
+ * Sprint 11B - Sincroniza desde DB si está disponible
  */
-export function getSurveyRuns(surveyId: string): SurveyRun[] {
+export async function getSurveyRuns(surveyId: string): Promise<SurveyRun[]> {
+  // Si DB está disponible, cargar runs persistidos
+  const isDbAvailable = await isSurveyRunPersistenceAvailable();
+  if (isDbAvailable) {
+    try {
+      const dbRuns = await getSurveyRunsBySurveyId(surveyId);
+      // Merge: DB runs tienen prioridad, pero mantener respuestas locales si existen
+      for (const dbRun of dbRuns) {
+        const localRun = surveyRuns.get(dbRun.id);
+        if (localRun) {
+          // Mantener respuestas locales, usar metadata de DB
+          surveyRuns.set(dbRun.id, { ...dbRun, responses: localRun.responses });
+        } else {
+          surveyRuns.set(dbRun.id, dbRun);
+        }
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Error loading runs from DB:', error);
+    }
+  }
+  
   return Array.from(surveyRuns.values())
     .filter(run => run.surveyId === surveyId)
     .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
@@ -339,8 +539,62 @@ function generateTextResult(
 
 /**
  * Obtiene resultados de una encuesta
+ * Sprint 11C - Intenta DB primero, fallback a local
  */
-export function getSurveyResults(surveyId: string): SurveyResult | undefined {
+export async function getSurveyResults(surveyId: string): Promise<SurveyResult | undefined> {
+  // Primero buscar en cache local
+  const localResult = surveyResults.get(surveyId);
+  if (localResult) return localResult;
+  
+  // Si no está en cache y DB está disponible, buscar en DB
+  const isDbAvailable = await isSurveyResultPersistenceAvailable();
+  if (isDbAvailable) {
+    try {
+      const dbResult = await getSurveyResultsBySurveyId(surveyId);
+      if (dbResult) {
+        // Cachear localmente
+        surveyResults.set(surveyId, dbResult);
+        return dbResult;
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Error fetching results from DB:', error);
+    }
+  }
+  
+  return undefined;
+}
+
+/**
+ * Obtiene resultados de una corrida específica
+ * Sprint 11C - Intenta DB primero, fallback a local
+ */
+export async function getSurveyResultsByRun(runId: string): Promise<SurveyResult | undefined> {
+  // Buscar en cache local por runId
+  const localResult = Array.from(surveyResults.values()).find(r => r.runId === runId);
+  if (localResult) return localResult;
+  
+  // Si no está en cache y DB está disponible, buscar en DB
+  const isDbAvailable = await isSurveyResultPersistenceAvailable();
+  if (isDbAvailable) {
+    try {
+      const dbResult = await getSurveyResultsByRunId(runId);
+      if (dbResult) {
+        // Cachear localmente
+        surveyResults.set(dbResult.surveyId, dbResult);
+        return dbResult;
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Error fetching results by run from DB:', error);
+    }
+  }
+  
+  return undefined;
+}
+
+/**
+ * @deprecated Usar getSurveyResults(surveyId) o getSurveyResultsByRun(runId)
+ */
+export function getSurveyResultsSync(surveyId: string): SurveyResult | undefined {
   return surveyResults.get(surveyId);
 }
 
@@ -359,17 +613,319 @@ export function getRunConfidenceStats(runId: string): {
 }
 
 // ===========================================
+// Export Functions - Sprint 13 - Enhanced Reporting
+// ===========================================
+
+export interface ExportOptions {
+  includeMetadata?: boolean;
+  includeRawResponses?: boolean;
+  dateFormat?: 'iso' | 'locale';
+  filename?: string;
+}
+
+/**
+ * Genera un nombre de archivo consistente para exportaciones
+ */
+export function generateExportFilename(
+  survey: SurveyDefinition, 
+  runId: string, 
+  format: 'json' | 'csv'
+): string {
+  const date = new Date().toISOString().split('T')[0];
+  const sanitizedName = survey.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '-')
+    .replace(/-+/g, '-')
+    .substring(0, 30);
+  return `pulso-social-${sanitizedName}-${date}-${runId.substring(0, 8)}.${format}`;
+}
+
+/**
+ * Exporta resultados de una encuesta a JSON (mejorado)
+ * Incluye metadatos completos y estructura jerárquica clara
+ */
+export function exportResultsToJson(
+  survey: SurveyDefinition, 
+  results: SurveyResult,
+  run?: SurveyRun,
+  options: ExportOptions = {}
+): string {
+  const { includeMetadata = true, includeRawResponses = false, dateFormat = 'iso' } = options;
+  
+  const formatDate = (dateStr: string) => {
+    if (dateFormat === 'locale') {
+      return new Date(dateStr).toLocaleString('es-CL');
+    }
+    return dateStr;
+  };
+  
+  const exportData: any = {
+    exportInfo: {
+      version: '2.0',
+      exportedAt: formatDate(new Date().toISOString()),
+      format: 'json',
+      tool: 'Pulsos Sociales - Encuestas Sintéticas'
+    },
+    survey: {
+      id: survey.id,
+      name: survey.name,
+      description: survey.description,
+      createdAt: formatDate(survey.createdAt),
+      sampleSize: survey.sampleSize,
+      segment: survey.segment,
+      questions: survey.questions.map(q => ({
+        id: q.id,
+        type: q.type,
+        text: q.text,
+        required: q.required,
+        ...(q.type === 'single_choice' && { options: (q as any).options }),
+        ...(q.type === 'likert_scale' && { 
+          min: (q as any).min, 
+          max: (q as any).max,
+          minLabel: (q as any).minLabel,
+          maxLabel: (q as any).maxLabel
+        })
+      }))
+    },
+    execution: {
+      runId: results.runId,
+      executedAt: formatDate(results.generatedAt),
+      summary: {
+        totalQuestions: results.summary.totalQuestions,
+        totalResponses: results.summary.totalResponses,
+        uniqueAgents: results.summary.uniqueAgents,
+        responseRate: Math.round((results.summary.totalResponses / results.summary.uniqueAgents) * 1000) / 10
+      }
+    },
+    results: results.results.map(result => {
+      const base = {
+        questionId: result.questionId,
+        questionType: result.questionType,
+        questionText: result.questionText,
+        totalResponses: result.totalResponses
+      };
+      
+      if (result.questionType === 'single_choice') {
+        const sc = result as SingleChoiceResult;
+        return {
+          ...base,
+          distribution: Object.entries(sc.distribution).map(([key, data]) => ({
+            option: key,
+            label: data.label,
+            count: data.count,
+            percentage: data.percentage
+          })).sort((a, b) => b.count - a.count)
+        };
+      } else if (result.questionType === 'likert_scale') {
+        const likert = result as LikertResult;
+        return {
+          ...base,
+          statistics: {
+            average: likert.average,
+            median: likert.median,
+            minLabel: likert.minLabel,
+            maxLabel: likert.maxLabel
+          },
+          distribution: Object.entries(likert.distribution).map(([key, data]) => ({
+            value: parseInt(key),
+            count: data.count,
+            percentage: data.percentage
+          }))
+        };
+      }
+      return base;
+    })
+  };
+  
+  // Incluir metadatos adicionales si se solicita
+  if (includeMetadata && run) {
+    exportData.execution.metadata = {
+      segmentMatched: run.metadata.segmentMatched,
+      sampleSizeRequested: run.metadata.sampleSizeRequested,
+      sampleSizeActual: run.metadata.sampleSizeActual,
+      executionTime: new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()
+    };
+  }
+  
+  // Incluir respuestas raw si se solicita
+  if (includeRawResponses && run) {
+    exportData.rawResponses = run.responses.map(r => ({
+      agentId: r.agentId,
+      questionId: r.questionId,
+      value: r.value,
+      confidence: r.confidence,
+      reasoning: r.reasoning
+    }));
+  }
+  
+  return JSON.stringify(exportData, null, 2);
+}
+
+/**
+ * Exporta resultados de una encuesta a CSV (mejorado)
+ * Genera formato tabular limpio y analizable
+ */
+export function exportResultsToCsv(
+  survey: SurveyDefinition,
+  results: SurveyResult,
+  run?: SurveyRun,
+  _options: ExportOptions = {}
+): string {
+  const lines: string[] = [];
+
+  // Header informativo
+  lines.push('# Pulsos Sociales - Exportación de Resultados');
+  lines.push('# Formato: CSV v2.0');
+  lines.push('#');
+  lines.push('# INFORMACIÓN DE ENCUESTA');
+  lines.push('Survey ID,' + escapeCsv(survey.id));
+  lines.push('Survey Name,' + escapeCsv(survey.name));
+  lines.push('Description,' + escapeCsv(survey.description || ''));
+  lines.push('Created At,' + escapeCsv(survey.createdAt));
+  lines.push('');
+  lines.push('# INFORMACIÓN DE EJECUCIÓN');
+  lines.push('Run ID,' + escapeCsv(results.runId));
+  lines.push('Generated At,' + escapeCsv(results.generatedAt));
+  if (run) {
+    lines.push('Total Agents,' + run.totalAgents);
+    lines.push('Segment Matched,' + run.metadata.segmentMatched);
+  }
+  lines.push('');
+  
+  // Resumen ejecutivo
+  lines.push('# RESUMEN EJECUTIVO');
+  lines.push('Metric,Value');
+  lines.push('Total Questions,' + results.summary.totalQuestions);
+  lines.push('Total Responses,' + results.summary.totalResponses);
+  lines.push('Unique Agents,' + results.summary.uniqueAgents);
+  lines.push('Response Rate,' + Math.round((results.summary.totalResponses / results.summary.uniqueAgents) * 1000) / 10 + '%');
+  lines.push('');
+  
+  // Resultados detallados - formato tabular
+  lines.push('# RESULTADOS DETALLADOS');
+  
+  results.results.forEach((result, index) => {
+    lines.push('');
+    lines.push('## Question ' + (index + 1) + ': ' + escapeCsv(result.questionText.substring(0, 50)));
+    lines.push('Question ID,' + escapeCsv(result.questionId));
+    lines.push('Type,' + escapeCsv(result.questionType));
+    lines.push('Total Responses,' + result.totalResponses);
+    
+    if (result.questionType === 'single_choice') {
+      const scResult = result as SingleChoiceResult;
+      lines.push('');
+      lines.push('Option,Count,Percentage');
+      Object.entries(scResult.distribution)
+        .sort(([, a], [, b]) => b.count - a.count)
+        .forEach(([, data]) => {
+          lines.push(escapeCsv(data.label) + ',' + data.count + ',' + data.percentage + '%');
+        });
+    } else if (result.questionType === 'likert_scale') {
+      const likertResult = result as LikertResult;
+      lines.push('Average,' + likertResult.average);
+      lines.push('Median,' + likertResult.median);
+      lines.push('');
+      lines.push('Scale (' + likertResult.minLabel + ' - ' + likertResult.maxLabel + '),Count,Percentage');
+      Object.entries(likertResult.distribution)
+        .sort(([a], [b]) => parseInt(a) - parseInt(b))
+        .forEach(([key, data]) => {
+          lines.push(key + ',' + data.count + ',' + data.percentage + '%');
+        });
+    }
+  });
+  
+  return lines.join('\n');
+}
+
+/**
+ * Exporta múltiples runs de una encuesta para análisis comparativo
+ */
+export function exportRunsComparison(
+  survey: SurveyDefinition,
+  runs: SurveyRun[],
+  results: SurveyResult[]
+): string {
+  const lines: string[] = [];
+  
+  lines.push('# Pulsos Sociales - Comparación de Ejecuciones');
+  lines.push('# Survey: ' + escapeCsv(survey.name));
+  lines.push('# Generated: ' + new Date().toISOString());
+  lines.push('');
+  
+  // Tabla de runs
+  lines.push('# HISTORIAL DE EJECUCIONES');
+  lines.push('Run #,Run ID,Date,Agents,Responses,Status');
+  runs.forEach((run, index) => {
+    lines.push([
+      runs.length - index,
+      run.id.substring(0, 8),
+      new Date(run.completedAt).toLocaleDateString('es-CL'),
+      run.totalAgents,
+      run.responses.length,
+      'Completed'
+    ].join(','));
+  });
+  lines.push('');
+  
+  // Comparación de métricas clave por run
+  lines.push('# COMPARACIÓN DE MÉTRICAS');
+  lines.push('Question,Metric,' + runs.map((_, i) => 'Run ' + (runs.length - i)).join(','));
+  
+  if (results.length > 0 && results[0]) {
+    results[0].results.forEach((question, qIndex) => {
+      if (question.questionType === 'likert_scale') {
+        const metric = 'Average';
+        const values = results.map(r => {
+          const q = r.results[qIndex] as LikertResult;
+          return q ? q.average.toFixed(2) : 'N/A';
+        });
+        lines.push(escapeCsv(question.questionText.substring(0, 40)) + ',' + metric + ',' + values.join(','));
+      }
+    });
+  }
+  
+  return lines.join('\n');
+}
+
+/**
+ * Escapa un valor para CSV
+ */
+function escapeCsv(value: string | number): string {
+  const str = String(value);
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+/**
+ * Descarga un archivo con el contenido proporcionado
+ */
+export function downloadFile(content: string, filename: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// ===========================================
 // Sample Surveys
 // ===========================================
 
 /**
  * Crea encuestas de ejemplo para demostración
  */
-export function createSampleSurveys(): void {
-  if (surveys.size > 0) return; // Ya existen encuestas
+export async function createSampleSurveys(): Promise<void> {
+  const existingSurveys = await getAllSurveys();
+  if (existingSurveys.length > 0) return; // Ya existen encuestas
   
   // Encuesta 1: Satisfacción con servicios digitales
-  createSurvey({
+  await createSurvey({
     name: 'Satisfacción con Servicios Digitales',
     description: 'Medir la satisfacción de los ciudadanos con los servicios digitales públicos',
     sampleSize: 100,
@@ -415,7 +971,7 @@ export function createSampleSurveys(): void {
   });
   
   // Encuesta 2: Preocupaciones económicas
-  createSurvey({
+  await createSurvey({
     name: 'Preocupaciones Económicas',
     description: 'Entender las preocupaciones económicas de diferentes segmentos',
     sampleSize: 150,

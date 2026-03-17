@@ -41,31 +41,38 @@ export type DbBenchmarkCategory = 'demographics' | 'connectivity' | 'socioeconom
  * Descripción: Territorios administrativos de Chile
  * Pipeline: Generado por scripts/integrate/build_territories_master.ts
  * Supabase: Sí - tabla maestra de referencia
+ * 
+ * ACTUALIZADO: 2026-03-16 - Modelo Alineado v2.0
+ * - Soporta códigos cortos (RM, VA, etc.)
+ * - Estructura flexible para regiones y comunas
  */
 export interface DbTerritory {
   id: string;                    // UUID primary key
-  country_code: string;          // 'CL'
-  region_code: string;           // 'CL-13'
-  region_name: string;           // 'Metropolitana'
-  region_name_official: string;  // 'Región Metropolitana de Santiago'
-  comuna_code: string;           // '13101'
-  comuna_name: string;           // 'Santiago'
+  
+  // Identificación jerárquica
+  level: 'region' | 'comuna' | 'provincia';  // Nivel administrativo
+  code: string;                  // Código primario: RM, VA, 13101, etc.
+  region_code: string | null;    // Código de región padre (para comunas)
+  
+  // Nombres
+  name: string;                  // Nombre del territorio
+  region_name: string | null;    // Nombre de la región (para comunas)
   
   // Geometría (GeoJSON)
-  geometry: GeoJSON.Geometry;
-  bbox: [number, number, number, number]; // [minLng, minLat, maxLng, maxLat]
+  centroid: [number, number] | null;  // [lng, lat] centroide
+  geometry: GeoJSON.Geometry | null;
+  bbox: [number, number, number, number] | null; // [minLng, minLat, maxLng, maxLat]
   
   // Estadísticas (del pipeline)
   population_total: number | null;
   population_urban: number | null;
   population_rural: number | null;
-  area_km2: number | null;
   
   // Metadata
+  source: string | null;         // 'ine', 'casen', etc.
+  source_year: number | null;    // 2017, 2022, etc.
   created_at: string;            // ISO timestamp
   updated_at: string;            // ISO timestamp
-  data_version: string;          // 'v1.0.0'
-  source_files: string[];        // ['censo_2017.json', 'subtel_2023.json']
 }
 
 /**
@@ -301,6 +308,7 @@ export interface DbSurveyRun {
  * Supabase: Sí - puede ser grande
  * 
  * NOTA: Considerar particionamiento por survey_id
+ * NOTA: Sprint 11C - NO persistido aún, solo local
  */
 export interface DbSurveyResponse {
   id: string;                    // UUID primary key
@@ -325,6 +333,86 @@ export interface DbSurveyResponse {
   
   // Timestamp
   created_at: string;
+}
+
+/**
+ * Table: survey_results
+ * Descripción: Resultados agregados de encuestas
+ * Pipeline: Generado al completar un survey run
+ * Supabase: Sí - Sprint 11C
+ * 
+ * Almacena los resultados calculados por pregunta, no las respuestas individuales.
+ * Esto permite consultar resultados sin cargar miles de respuestas.
+ */
+export interface DbSurveyResult {
+  id: string;                    // UUID primary key
+  
+  // Referencias
+  survey_id: string;             // FK -> survey_definitions.id
+  run_id: string;                // FK -> survey_runs.id
+  
+  // Resumen
+  summary: {
+    totalQuestions: number;
+    totalResponses: number;
+    uniqueAgents: number;
+  };
+  
+  // Resultados por pregunta (JSONB)
+  // Cada resultado tiene: questionId, questionType, questionText, totalResponses, distribution, etc.
+  results: DbQuestionResult[];
+  
+  // Metadata
+  generated_at: string;          // Cuándo se generaron los resultados
+  
+  // Timestamps
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Resultado de una pregunta individual (para survey_results)
+ */
+export type DbQuestionResult =
+  | DbSingleChoiceResult
+  | DbLikertResult
+  | DbMultipleChoiceResult
+  | DbTextResult;
+
+export interface DbSingleChoiceResult {
+  questionId: string;
+  questionType: 'single_choice';
+  questionText: string;
+  totalResponses: number;
+  distribution: Record<string, { count: number; percentage: number; label: string }>;
+}
+
+export interface DbLikertResult {
+  questionId: string;
+  questionType: 'likert_scale';
+  questionText: string;
+  totalResponses: number;
+  average: number;
+  median: number;
+  distribution: Record<number, { count: number; percentage: number }>;
+  minLabel: string;
+  maxLabel: string;
+}
+
+export interface DbMultipleChoiceResult {
+  questionId: string;
+  questionType: 'multiple_choice';
+  questionText: string;
+  totalResponses: number;
+  distribution: Record<string, { count: number; percentage: number; label: string }>;
+}
+
+export interface DbTextResult {
+  questionId: string;
+  questionType: 'text';
+  questionText: string;
+  totalResponses: number;
+  sampleResponses: string[];
 }
 
 // ===========================================
@@ -567,6 +655,11 @@ export interface Database {
         Row: DbSurveyResponse;
         Insert: Omit<DbSurveyResponse, 'id' | 'created_at'> & { id?: string; created_at?: string };
         Update: Partial<Omit<DbSurveyResponse, 'id' | 'created_at'>>;
+      };
+      survey_results: {
+        Row: DbSurveyResult;
+        Insert: Omit<DbSurveyResult, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string };
+        Update: Partial<Omit<DbSurveyResult, 'id' | 'created_at'>>;
       };
       benchmarks: {
         Row: DbBenchmark;

@@ -1,19 +1,24 @@
 /**
  * ChileMapPage - Vista territorial de Chile por regiones
  * Mapa analítico más ligero que la escena local inmersiva
+ * Sprint 12B - Mejoras de robustez: estados loading/error
+ * ACTUALIZADO: Ahora lee regiones desde Supabase con fallback local
  */
 
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { chileRegionsGeoJSON, getRegionByCode } from '../data/chileRegions';
+import { getRegions } from '../services/supabase/repositories/territoryRepository';
+import { chileRegionsGeoJSON, getRegionByCode as getLocalRegionByCode } from '../data/chileRegions';
 
 // Map instance
 let map: maplibregl.Map | null = null;
+let regionsFromDb: Array<{ code: string; name: string; centroid: [number, number] | null }> = [];
+let usingDbData = false;
 
 /**
  * Create the Chile territorial map page
  */
-export function createChileMapPage(): HTMLElement {
+export async function createChileMapPage(): Promise<HTMLElement> {
   const page = document.createElement('div');
   page.className = 'page chile-map-page';
   page.id = 'chile-map-page';
@@ -28,32 +33,94 @@ export function createChileMapPage(): HTMLElement {
   const infoPanel = document.createElement('div');
   infoPanel.className = 'region-info-panel';
   infoPanel.id = 'region-info-panel';
-  infoPanel.innerHTML = `
-    <div class="region-info-header">
-      <h2 class="region-info-title">Territorio Chile</h2>
-      <p class="region-info-subtitle">16 regiones</p>
-    </div>
-    <div class="region-info-content">
-      <p class="region-info-hint">Selecciona una región para ver detalles</p>
-    </div>
-  `;
   page.appendChild(infoPanel);
+
+  // Check API key first
+  const apiKey = import.meta.env.VITE_MAPTILER_KEY;
+  if (!apiKey) {
+    renderErrorState(infoPanel, 'API Key no configurada', 
+      'Agrega VITE_MAPTILER_KEY al archivo .env para ver el mapa.');
+    return page;
+  }
+
+  // Render initial state
+  renderInitialState(infoPanel);
+
+  // Load regions from Supabase first
+  console.log('[ChileMapPage] Cargando regiones desde Supabase...');
+  try {
+    regionsFromDb = await getRegions();
+    if (regionsFromDb.length > 0) {
+      usingDbData = true;
+      console.log(`[ChileMapPage] ✅ Regiones cargadas desde DB: ${regionsFromDb.length} regiones`);
+    } else {
+      console.log('[ChileMapPage] ⚠️ DB devolvió 0 regiones, usando fallback local');
+      usingDbData = false;
+    }
+  } catch (error) {
+    console.warn('[ChileMapPage] Error cargando regiones desde DB:', error);
+    usingDbData = false;
+  }
 
   // Initialize map after page is added to DOM
   setTimeout(() => {
-    initChileMap(mapContainer.id);
+    initChileMap(mapContainer.id, infoPanel);
   }, 0);
 
   return page;
 }
 
 /**
+ * Render initial state in info panel
+ */
+function renderInitialState(panel: HTMLElement): void {
+  panel.innerHTML = `
+    <div class="region-info-header">
+      <h2 class="region-info-title">Territorio Chile</h2>
+      <p class="region-info-subtitle">16 regiones</p>
+    </div>
+    <div class="region-info-content">
+      <div class="map-loading-state">
+        <div class="loading-spinner"></div>
+        <p>Cargando mapa...</p>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Render error state in info panel
+ */
+function renderErrorState(panel: HTMLElement, title: string, message: string): void {
+  panel.innerHTML = `
+    <div class="region-info-header">
+      <h2 class="region-info-title">⚠️ ${title}</h2>
+    </div>
+    <div class="region-info-content">
+      <div class="map-error-state">
+        <p class="error-message">${message}</p>
+        <button class="btn btn-secondary" id="retry-map-btn">Reintentar</button>
+      </div>
+    </div>
+  `;
+
+  // Attach retry listener
+  setTimeout(() => {
+    const retryBtn = panel.querySelector('#retry-map-btn');
+    retryBtn?.addEventListener('click', () => {
+      location.reload();
+    });
+  }, 0);
+}
+
+/**
  * Initialize the Chile territorial map
  */
-function initChileMap(containerId: string): void {
+function initChileMap(containerId: string, infoPanel: HTMLElement): void {
   const container = document.getElementById(containerId);
   if (!container) {
     console.error('❌ Chile map container not found');
+    renderErrorState(infoPanel, 'Error de carga', 'No se pudo inicializar el contenedor del mapa.');
     return;
   }
 
@@ -61,6 +128,8 @@ function initChileMap(containerId: string): void {
   const apiKey = import.meta.env.VITE_MAPTILER_KEY;
   if (!apiKey) {
     console.error('❌ MapTiler API key not found. Add VITE_MAPTILER_KEY to .env');
+    renderErrorState(infoPanel, 'API Key no configurada', 
+      'Agrega VITE_MAPTILER_KEY al archivo .env para ver el mapa.');
     return;
   }
 
@@ -78,6 +147,9 @@ function initChileMap(containerId: string): void {
     if (!map) return;
 
     console.log('🗺️ Chile territorial map loaded');
+    
+    // Update info panel to ready state
+    renderReadyState(infoPanel);
 
     // Add regions source
     map.addSource('chile-regions', {
@@ -180,18 +252,74 @@ function initChileMap(containerId: string): void {
     });
   });
 
+  // Handle map errors
+  map.on('error', (e) => {
+    console.error('❌ Map error:', e);
+    renderErrorState(infoPanel, 'Error del mapa', 
+      'Ocurrió un error al cargar el mapa. Verifica tu conexión a internet.');
+  });
+
   // Add navigation controls
   map.addControl(new maplibregl.NavigationControl(), 'top-right');
 }
 
 /**
+ * Render ready state in info panel
+ */
+function renderReadyState(panel: HTMLElement): void {
+  panel.innerHTML = `
+    <div class="region-info-header">
+      <h2 class="region-info-title">Territorio Chile</h2>
+      <p class="region-info-subtitle">16 regiones</p>
+    </div>
+    <div class="region-info-content">
+      <p class="region-info-hint">Selecciona una región para ver detalles</p>
+    </div>
+  `;
+}
+
+/**
+ * Get region by code - tries DB first, then fallback
+ */
+async function getRegionByCode(code: string): Promise<{ 
+  code: string; 
+  name: string; 
+  capital?: string;
+  population?: number;
+  area?: number;
+} | null> {
+  // First try DB if we have data
+  if (usingDbData && regionsFromDb.length > 0) {
+    const dbRegion = regionsFromDb.find(r => r.code === code);
+    if (dbRegion) {
+      console.log(`[ChileMapPage] Región encontrada en DB: ${dbRegion.name}`);
+      return {
+        code: dbRegion.code,
+        name: dbRegion.name,
+        // DB doesn't have capital/area/population, use local data for those
+        ...getLocalRegionByCode(code)
+      };
+    }
+  }
+  
+  // Fallback to local data
+  const localRegion = getLocalRegionByCode(code);
+  if (localRegion) {
+    console.log(`[ChileMapPage] Región encontrada en fallback local: ${localRegion.name}`);
+    return localRegion;
+  }
+  
+  return null;
+}
+
+/**
  * Select a region and show info
  */
-function selectRegion(code: string): void {
-  const region = getRegionByCode(code);
+async function selectRegion(code: string): Promise<void> {
+  const region = await getRegionByCode(code);
   if (!region) return;
 
-  console.log(`📍 Selected region: ${region.name}`);
+  console.log(`📍 Selected region: ${region.name} (fuente: ${usingDbData ? 'DB' : 'local'})`);
 
   // Update info panel
   const panel = document.getElementById('region-info-panel');
@@ -200,11 +328,12 @@ function selectRegion(code: string): void {
       <div class="region-info-header">
         <h2 class="region-info-title">${region.name}</h2>
         <p class="region-info-subtitle">Código: ${region.code}</p>
+        ${usingDbData ? '<span class="db-badge">📊 DB</span>' : '<span class="local-badge">💾 Local</span>'}
       </div>
       <div class="region-info-content">
         <div class="region-stat">
           <span class="region-stat-label">Capital</span>
-          <span class="region-stat-value">${region.capital}</span>
+          <span class="region-stat-value">${region.capital || 'N/A'}</span>
         </div>
         <div class="region-stat">
           <span class="region-stat-label">Población</span>

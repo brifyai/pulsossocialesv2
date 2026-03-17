@@ -106,13 +106,21 @@ class AuthService {
    * Sign in with email and password
    */
   async signIn(email: string, password: string): Promise<AuthResult> {
+    // Validate inputs
+    if (!email || !email.trim()) {
+      return { success: false, error: 'El email es requerido' };
+    }
+    if (!password) {
+      return { success: false, error: 'La contraseña es requerida' };
+    }
+
     try {
       // If Supabase is not available, create a demo session
       if (!this.isAvailable() || !this.supabaseClient) {
         console.log('[Auth] Supabase not available, creating demo session');
         const demoUser: AuthUser = {
           id: 'demo-user-' + Date.now(),
-          email: email,
+          email: email.trim(),
           name: email.split('@')[0] || 'Demo User'
         };
 
@@ -127,12 +135,21 @@ class AuthService {
       }
 
       const { data, error } = await this.supabaseClient.auth.signInWithPassword({
-        email,
+        email: email.trim(),
         password
       });
 
       if (error) {
-        return { success: false, error: error.message };
+        // Map common Supabase errors to user-friendly messages
+        let errorMessage = error.message;
+        if (error.message.includes('Invalid login credentials')) {
+          errorMessage = 'Email o contraseña incorrectos';
+        } else if (error.message.includes('Email not confirmed')) {
+          errorMessage = 'Por favor confirma tu email antes de iniciar sesión';
+        } else if (error.message.includes('rate limit')) {
+          errorMessage = 'Demasiados intentos. Por favor espera un momento.';
+        }
+        return { success: false, error: errorMessage };
       }
 
       if (data.user) {
@@ -154,9 +171,10 @@ class AuthService {
         return { success: true, user };
       }
 
-      return { success: false, error: 'No user data returned' };
+      return { success: false, error: 'No se recibieron datos del usuario' };
     } catch (error) {
-      return { success: false, error: 'An error occurred during sign in' };
+      console.error('[Auth] Sign in error:', error);
+      return { success: false, error: 'Error al iniciar sesión. Intenta nuevamente.' };
     }
   }
 
@@ -164,13 +182,24 @@ class AuthService {
    * Sign up with email and password
    */
   async signUp(email: string, password: string, metadata?: { name?: string }): Promise<AuthResult> {
+    // Validate inputs
+    if (!email || !email.trim()) {
+      return { success: false, error: 'El email es requerido' };
+    }
+    if (!password || password.length < 8) {
+      return { success: false, error: 'La contraseña debe tener al menos 8 caracteres' };
+    }
+
+    const trimmedEmail = email.trim();
+    const trimmedName = metadata?.name?.trim();
+
     // If Supabase is not available, create a demo user
     if (!this.isAvailable() || !this.supabaseClient) {
       console.log('[Auth] Supabase not available, creating demo user');
       const demoUser: AuthUser = {
         id: 'demo-user-' + Date.now(),
-        email: email,
-        name: metadata?.name || email.split('@')[0] || 'Demo User'
+        email: trimmedEmail,
+        name: trimmedName || trimmedEmail.split('@')[0] || 'Demo User'
       };
 
       this.session = {
@@ -185,22 +214,31 @@ class AuthService {
 
     try {
       const { data, error } = await this.supabaseClient.auth.signUp({
-        email,
+        email: trimmedEmail,
         password,
         options: {
-          data: metadata
+          data: { name: trimmedName }
         }
       });
 
       if (error) {
-        return { success: false, error: error.message };
+        // Map common Supabase errors to user-friendly messages
+        let errorMessage = error.message;
+        if (error.message.includes('User already registered')) {
+          errorMessage = 'Este email ya está registrado. Intenta iniciar sesión.';
+        } else if (error.message.includes('rate limit')) {
+          errorMessage = 'Demasiados intentos. Por favor espera un momento.';
+        } else if (error.message.includes('password')) {
+          errorMessage = 'La contraseña no cumple con los requisitos de seguridad.';
+        }
+        return { success: false, error: errorMessage };
       }
 
       if (data.user) {
         const user: AuthUser = {
           id: data.user.id,
           email: data.user.email || '',
-          name: metadata?.name || data.user.email?.split('@')[0],
+          name: trimmedName || data.user.email?.split('@')[0],
           avatar: data.user.user_metadata?.avatar_url
         };
 
@@ -208,9 +246,10 @@ class AuthService {
         return { success: true, user };
       }
 
-      return { success: false, error: 'No user data returned' };
+      return { success: false, error: 'No se recibieron datos del usuario' };
     } catch (error) {
-      return { success: false, error: 'An error occurred during sign up' };
+      console.error('[Auth] Sign up error:', error);
+      return { success: false, error: 'Error al crear la cuenta. Intenta nuevamente.' };
     }
   }
 

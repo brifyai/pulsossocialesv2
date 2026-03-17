@@ -1,17 +1,24 @@
 /**
- * Surveys Page - Encuestas Sintéticas v1
+ * Surveys Page - Encuestas Sintéticas v2
  * 
  * Vista completa para crear, ejecutar y ver resultados de encuestas.
+ * Sprint 13 - Layout corregido: estructura plana y continua
  */
 
-import type { SurveyDefinition, SurveyResult, QuestionResult, SurveyViewMode } from '../types/survey';
+import type { SurveyDefinition, SurveyResult, QuestionResult, SurveyViewMode, SurveyRun } from '../types/survey';
 import { 
   createSurvey, 
   getAllSurveys, 
   deleteSurvey, 
   runSurvey, 
-  getSurveyResults,
-  createSampleSurveys 
+  getSurveyResultsByRun,
+  getSurveyRuns,
+  createSampleSurveys,
+  exportResultsToJson,
+  exportResultsToCsv,
+  generateExportFilename,
+  downloadFile,
+  getSurveyRun
 } from '../app/survey/surveyService';
 import { getUniqueRegions, getUniqueCommunes } from '../data/syntheticAgents';
 
@@ -19,6 +26,8 @@ import { getUniqueRegions, getUniqueCommunes } from '../data/syntheticAgents';
 let currentView: SurveyViewMode = 'list';
 let currentSurvey: SurveyDefinition | null = null;
 let currentResults: SurveyResult | null = null;
+let currentRunId: string | null = null;
+let surveyRuns: SurveyRun[] = [];
 let regions: Array<{ code: string; name: string }> = [];
 let communes: Array<{ code: string; name: string }> = [];
 
@@ -35,7 +44,7 @@ export async function createSurveysPage(): Promise<HTMLElement> {
   regions = await getUniqueRegions();
   
   // Crear encuestas de ejemplo si no hay ninguna
-  createSampleSurveys();
+  await createSampleSurveys();
   
   // Renderizar según vista actual
   renderContent(page);
@@ -45,16 +54,17 @@ export async function createSurveysPage(): Promise<HTMLElement> {
 
 /**
  * Renderiza el contenido según la vista actual
+ * Estructura plana: header + tabs + content (sin wrappers anidados)
  */
 function renderContent(container: HTMLElement): void {
   container.innerHTML = '';
   
-  // Header
+  // Header compacto
   const header = document.createElement('div');
   header.className = 'surveys-header';
   header.innerHTML = `
     <h1 class="page-title">📊 Encuestas Sintéticas</h1>
-    <p class="page-subtitle">Diseña y ejecuta encuestas sobre agentes sintéticos</p>
+    <p class="page-subtitle">Diseña, ejecuta y analiza encuestas sobre agentes sintéticos</p>
   `;
   container.appendChild(header);
   
@@ -62,13 +72,19 @@ function renderContent(container: HTMLElement): void {
   const tabs = document.createElement('div');
   tabs.className = 'surveys-tabs';
   tabs.innerHTML = `
-    <button class="tab-btn ${currentView === 'list' ? 'active' : ''}" data-view="list">Mis Encuestas</button>
-    <button class="tab-btn ${currentView === 'create' ? 'active' : ''}" data-view="create">Crear Nueva</button>
-    ${currentResults ? `<button class="tab-btn ${currentView === 'results' ? 'active' : ''}" data-view="results">Resultados</button>` : ''}
+    <button class="tab-btn ${currentView === 'list' ? 'active' : ''}" data-view="list">
+      <span class="tab-icon">📋</span> Mis Encuestas
+    </button>
+    <button class="tab-btn ${currentView === 'create' ? 'active' : ''}" data-view="create">
+      <span class="tab-icon">➕</span> Crear Nueva
+    </button>
+    ${currentResults ? `<button class="tab-btn ${currentView === 'results' ? 'active' : ''}" data-view="results">
+      <span class="tab-icon">📈</span> Resultados
+    </button>` : ''}
   `;
   container.appendChild(tabs);
   
-  // Content area
+  // Content area - sin estructura anidada innecesaria
   const content = document.createElement('div');
   content.className = 'surveys-content';
   content.id = 'surveys-content';
@@ -91,57 +107,133 @@ function renderContent(container: HTMLElement): void {
   attachTabListeners(tabs);
 }
 
-/**
- * Renderiza la lista de encuestas
- */
-function renderSurveyList(container: HTMLElement): void {
-  const surveys = getAllSurveys();
+// ===========================================
+// Survey List View - Layout corregido
+// ===========================================
+
+async function renderSurveyList(container: HTMLElement): Promise<void> {
+  // Loading inline, no reemplaza todo el content
+  const loadingEl = createLoadingElement('Cargando encuestas...');
+  container.appendChild(loadingEl);
   
-  if (surveys.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">📋</div>
-        <h3>No hay encuestas</h3>
-        <p>Crea tu primera encuesta para comenzar</p>
-        <button class="btn btn-primary" id="btn-create-first">Crear Encuesta</button>
+  try {
+    const surveys = await getAllSurveys();
+    
+    // Remover loading
+    container.innerHTML = '';
+    
+    if (surveys.length === 0) {
+      container.appendChild(createEmptyStateElement(
+        '📋',
+        'No hay encuestas',
+        'Crea tu primera encuesta para comenzar a analizar datos sintéticos',
+        'Crear Encuesta',
+        () => {
+          currentView = 'create';
+          refreshPage();
+        }
+      ));
+      return;
+    }
+    
+    // Stats summary - directo en container
+    const statsSection = document.createElement('div');
+    statsSection.className = 'survey-stats-section';
+    statsSection.innerHTML = `
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-value">${surveys.length}</span>
+          <span class="stat-label">Encuestas</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value">${surveys.reduce((acc, s) => acc + s.questions.length, 0)}</span>
+          <span class="stat-label">Preguntas totales</span>
+        </div>
       </div>
     `;
-    document.getElementById('btn-create-first')?.addEventListener('click', () => {
-      currentView = 'create';
-      refreshPage();
-    });
-    return;
+    container.appendChild(statsSection);
+    
+    // Survey list - directo en container, sin wrapper extra
+    const list = document.createElement('div');
+    list.className = 'survey-list';
+    
+    for (const survey of surveys) {
+      // Get runs for this survey
+      const runs = await getSurveyRuns(survey.id);
+      const hasRuns = runs.length > 0;
+      const lastRun = hasRuns ? runs[0] : null;
+      
+      const card = document.createElement('div');
+      card.className = 'survey-card';
+      card.innerHTML = `
+        <div class="survey-card-header">
+          <div class="survey-title-section">
+            <h3 class="survey-name">${escapeHtml(survey.name)}</h3>
+            <span class="survey-date">${formatDate(survey.createdAt)}</span>
+          </div>
+          <div class="survey-badges">
+            ${hasRuns ? `<span class="badge badge-success">✓ Ejecutada</span>` : '<span class="badge badge-pending">⏳ Pendiente</span>'}
+          </div>
+        </div>
+        <p class="survey-description">${escapeHtml(survey.description || 'Sin descripción')}</p>
+        
+        <div class="survey-meta">
+          <span class="meta-item" title="Preguntas">📋 ${survey.questions.length} preguntas</span>
+          <span class="meta-item" title="Tamaño de muestra">👥 Muestra: ${survey.sampleSize}</span>
+          <span class="meta-item" title="Segmento">🎯 ${formatSegment(survey.segment)}</span>
+          ${hasRuns ? `<span class="meta-item" title="Ejecuciones">🔄 ${runs.length} ejecución${runs.length > 1 ? 'es' : ''}</span>` : ''}
+        </div>
+        
+        ${hasRuns && lastRun ? `
+          <div class="survey-last-run">
+            <span class="last-run-label">Última ejecución:</span>
+            <span class="last-run-date">${formatDate(lastRun.completedAt)}</span>
+            <span class="last-run-stats">${lastRun.totalAgents} agentes, ${lastRun.responses.length} respuestas</span>
+          </div>
+        ` : ''}
+        
+        <div class="survey-actions">
+          <button class="btn btn-primary btn-run" data-id="${survey.id}">
+            <span class="btn-icon">▶</span> Ejecutar
+          </button>
+          ${hasRuns ? `
+            <button class="btn btn-secondary btn-view-results" data-id="${survey.id}">
+              <span class="btn-icon">📈</span> Ver Resultados
+            </button>
+            <button class="btn btn-secondary btn-view-runs" data-id="${survey.id}">
+              <span class="btn-icon">🔄</span> Historial
+            </button>
+          ` : `
+            <button class="btn btn-secondary btn-view" data-id="${survey.id}">
+              <span class="btn-icon">👁</span> Ver
+            </button>
+          `}
+          <button class="btn btn-danger btn-delete" data-id="${survey.id}">
+            <span class="btn-icon">🗑</span> Eliminar
+          </button>
+        </div>
+      `;
+      list.appendChild(card);
+    }
+    
+    container.appendChild(list);
+    
+    // Attach listeners
+    attachSurveyListListeners(list);
+    
+  } catch (error) {
+    container.innerHTML = '';
+    container.appendChild(createErrorStateElement(
+      '❌',
+      'Error al cargar encuestas',
+      'No se pudieron cargar las encuestas. Intenta recargar la página.',
+      () => refreshPage()
+    ));
   }
-  
-  const list = document.createElement('div');
-  list.className = 'survey-list';
-  
-  surveys.forEach(survey => {
-    const card = document.createElement('div');
-    card.className = 'survey-card';
-    card.innerHTML = `
-      <div class="survey-card-header">
-        <h3 class="survey-name">${escapeHtml(survey.name)}</h3>
-        <span class="survey-date">${formatDate(survey.createdAt)}</span>
-      </div>
-      <p class="survey-description">${escapeHtml(survey.description || 'Sin descripción')}</p>
-      <div class="survey-meta">
-        <span class="meta-item">📋 ${survey.questions.length} preguntas</span>
-        <span class="meta-item">👥 Muestra: ${survey.sampleSize}</span>
-        <span class="meta-item">🎯 ${formatSegment(survey.segment)}</span>
-      </div>
-      <div class="survey-actions">
-        <button class="btn btn-primary btn-run" data-id="${survey.id}">▶ Ejecutar</button>
-        <button class="btn btn-secondary btn-view" data-id="${survey.id}">👁 Ver</button>
-        <button class="btn btn-danger btn-delete" data-id="${survey.id}">🗑 Eliminar</button>
-      </div>
-    `;
-    list.appendChild(card);
-  });
-  
-  container.appendChild(list);
-  
-  // Attach listeners
+}
+
+function attachSurveyListListeners(list: HTMLElement): void {
+  // Run survey
   list.querySelectorAll('.btn-run').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       const id = (e.currentTarget as HTMLElement).dataset.id;
@@ -149,27 +241,73 @@ function renderSurveyList(container: HTMLElement): void {
     });
   });
   
-  list.querySelectorAll('.btn-view').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+  // View results (latest)
+  list.querySelectorAll('.btn-view-results').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
       const id = (e.currentTarget as HTMLElement).dataset.id;
-      if (id) viewSurveyResults(id);
+      if (id) await viewSurveyResults(id);
     });
   });
   
-  list.querySelectorAll('.btn-delete').forEach(btn => {
+  // View runs history
+  list.querySelectorAll('.btn-view-runs').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = (e.currentTarget as HTMLElement).dataset.id;
+      if (id) await viewSurveyRunsHistory(id);
+    });
+  });
+  
+  // View survey details
+  list.querySelectorAll('.btn-view').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const id = (e.currentTarget as HTMLElement).dataset.id;
-      if (id && confirm('¿Eliminar esta encuesta?')) {
-        deleteSurvey(id);
-        refreshPage();
+      if (id) viewSurveyDetails(id);
+    });
+  });
+  
+  // Delete survey
+  list.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = (e.currentTarget as HTMLElement).dataset.id;
+      if (id && confirm('¿Eliminar esta encuesta? Esta acción no se puede deshacer.')) {
+        try {
+          await deleteSurvey(id);
+          refreshPage();
+        } catch (error) {
+          alert('❌ Error al eliminar la encuesta');
+        }
       }
     });
   });
 }
 
-/**
- * Renderiza el formulario de creación
- */
+// ===========================================
+// Survey Runs History View
+// ===========================================
+
+async function viewSurveyRunsHistory(surveyId: string): Promise<void> {
+  const surveys = await getAllSurveys();
+  const survey = surveys.find(s => s.id === surveyId);
+  
+  if (!survey) {
+    alert('Encuesta no encontrada');
+    return;
+  }
+  
+  currentSurvey = survey;
+  currentView = 'results';
+  currentRunId = null; // Show run selector
+  
+  // Load runs
+  surveyRuns = await getSurveyRuns(surveyId);
+  
+  refreshPage();
+}
+
+// ===========================================
+// Create Form View
+// ===========================================
+
 function renderCreateForm(container: HTMLElement): void {
   const form = document.createElement('form');
   form.className = 'survey-form';
@@ -189,6 +327,7 @@ function renderCreateForm(container: HTMLElement): void {
       <div class="form-group">
         <label for="sample-size">Tamaño de muestra *</label>
         <input type="number" id="sample-size" required min="10" max="1000" value="100">
+        <span class="form-hint">Número de agentes sintéticos a encuestar</span>
       </div>
     </div>
     
@@ -278,54 +417,202 @@ function renderCreateForm(container: HTMLElement): void {
   addQuestionField();
 }
 
-/**
- * Renderiza los resultados de una encuesta
- */
-function renderResults(container: HTMLElement): void {
-  if (!currentResults) {
-    container.innerHTML = '<p>No hay resultados para mostrar</p>';
+// ===========================================
+// Results View with Run Selector - Layout corregido
+// ===========================================
+
+async function renderResults(container: HTMLElement): Promise<void> {
+  if (!currentSurvey) {
+    container.appendChild(createErrorStateElement(
+      '⚠️',
+      'No hay encuesta seleccionada',
+      'Selecciona una encuesta para ver sus resultados',
+      () => {
+        currentView = 'list';
+        refreshPage();
+      }
+    ));
     return;
   }
   
-  const results = currentResults;
+  // Loading inline
+  const loadingEl = createLoadingElement('Cargando resultados...');
+  container.appendChild(loadingEl);
   
-  const header = document.createElement('div');
-  header.className = 'results-header';
-  header.innerHTML = `
-    <h2>Resultados: ${escapeHtml(currentSurvey?.name || 'Encuesta')}</h2>
-    <div class="results-summary">
-      <div class="summary-card">
-        <span class="summary-value">${results.summary.totalQuestions}</span>
-        <span class="summary-label">Preguntas</span>
+  try {
+    // Load runs if not already loaded
+    if (surveyRuns.length === 0 || surveyRuns[0]?.surveyId !== currentSurvey.id) {
+      surveyRuns = await getSurveyRuns(currentSurvey.id);
+    }
+    
+    // Clear loading
+    container.innerHTML = '';
+    
+    if (surveyRuns.length === 0) {
+      container.appendChild(createEmptyStateElement(
+        '📊',
+        'Sin ejecuciones',
+        `La encuesta "${escapeHtml(currentSurvey.name)}" no tiene ejecuciones registradas. Ejecuta la encuesta para ver resultados.`,
+        'Ejecutar Encuesta',
+        async () => {
+          await executeSurvey(currentSurvey!.id);
+        }
+      ));
+      return;
+    }
+    
+    // Determine which run to show
+    let selectedRun: SurveyRun | undefined;
+    let selectedResults: SurveyResult | undefined;
+    
+    if (currentRunId) {
+      selectedRun = surveyRuns.find(r => r.id === currentRunId);
+    } else {
+      selectedRun = surveyRuns[0]; // Latest run
+    }
+    
+    if (selectedRun) {
+      currentRunId = selectedRun.id;
+      selectedResults = await getSurveyResultsByRun(selectedRun.id);
+      if (selectedResults) {
+        currentResults = selectedResults;
+      }
+    }
+    
+    if (!selectedResults) {
+      container.appendChild(createErrorStateElement(
+        '⚠️',
+        'Resultados no disponibles',
+        'No se encontraron resultados para esta ejecución',
+        () => refreshPage()
+      ));
+      return;
+    }
+    
+    // Results header - directo en container
+    const header = document.createElement('div');
+    header.className = 'results-header';
+    header.innerHTML = `
+      <div class="results-header-top">
+        <div class="results-title-section">
+          <h2 class="results-title">📈 Resultados: ${escapeHtml(currentSurvey.name)}</h2>
+          <p class="results-subtitle">${escapeHtml(currentSurvey.description || '')}</p>
+        </div>
+        <div class="results-actions">
+          <button class="btn btn-secondary btn-export-json" title="Exportar JSON">
+            <span class="btn-icon">📄</span> JSON
+          </button>
+          <button class="btn btn-secondary btn-export-csv" title="Exportar CSV">
+            <span class="btn-icon">📊</span> CSV
+          </button>
+        </div>
       </div>
-      <div class="summary-card">
-        <span class="summary-value">${results.summary.uniqueAgents}</span>
-        <span class="summary-label">Agentes encuestados</span>
+      
+      ${surveyRuns.length > 1 ? `
+        <div class="run-selector">
+          <label for="run-select">Ejecución:</label>
+          <select id="run-select" class="run-select">
+            ${surveyRuns.map((run, index) => `
+              <option value="${run.id}" ${run.id === currentRunId ? 'selected' : ''}>
+                Ejecución #${surveyRuns.length - index} - ${formatDate(run.completedAt)} 
+                (${run.totalAgents} agentes)
+              </option>
+            `).join('')}
+          </select>
+          <span class="run-count">${surveyRuns.length} ejecuciones totales</span>
+        </div>
+      ` : selectedRun ? `
+        <div class="run-info">
+          <span class="run-badge">Ejecución única</span>
+          <span class="run-date">${formatDate(selectedRun.completedAt)}</span>
+        </div>
+      ` : ''}
+      
+      <div class="results-summary">
+        <div class="summary-card">
+          <span class="summary-value">${selectedResults.summary.totalQuestions}</span>
+          <span class="summary-label">Preguntas</span>
+        </div>
+        <div class="summary-card">
+          <span class="summary-value">${selectedResults.summary.uniqueAgents}</span>
+          <span class="summary-label">Agentes encuestados</span>
+        </div>
+        <div class="summary-card">
+          <span class="summary-value">${selectedResults.summary.totalResponses}</span>
+          <span class="summary-label">Respuestas totales</span>
+        </div>
+        <div class="summary-card">
+          <span class="summary-value">${Math.round((selectedResults.summary.totalResponses / selectedResults.summary.uniqueAgents) * 100)}%</span>
+          <span class="summary-label">Tasa de respuesta</span>
+        </div>
       </div>
-      <div class="summary-card">
-        <span class="summary-value">${results.summary.totalResponses}</span>
-        <span class="summary-label">Respuestas totales</span>
-      </div>
-    </div>
-  `;
-  container.appendChild(header);
-  
-  const resultsList = document.createElement('div');
-  resultsList.className = 'results-list';
-  
-  results.results.forEach((result, index) => {
-    const resultCard = document.createElement('div');
-    resultCard.className = 'result-card';
-    resultCard.innerHTML = renderQuestionResult(result, index + 1);
-    resultsList.appendChild(resultCard);
-  });
-  
-  container.appendChild(resultsList);
+    `;
+    container.appendChild(header);
+    
+    // Results list - directo en container
+    const resultsList = document.createElement('div');
+    resultsList.className = 'results-list';
+    
+    selectedResults.results.forEach((result, index) => {
+      const resultCard = document.createElement('div');
+      resultCard.className = 'result-card';
+      resultCard.innerHTML = renderQuestionResult(result, index + 1);
+      resultsList.appendChild(resultCard);
+    });
+    
+    container.appendChild(resultsList);
+    
+    // Attach listeners
+    attachResultsListeners(header);
+    
+  } catch (error) {
+    container.innerHTML = '';
+    container.appendChild(createErrorStateElement(
+      '❌',
+      'Error al cargar resultados',
+      'No se pudieron cargar los resultados. Intenta nuevamente.',
+      () => refreshPage()
+    ));
+  }
 }
 
-/**
- * Renderiza el resultado de una pregunta individual
- */
+function attachResultsListeners(header: HTMLElement): void {
+  // Run selector change
+  const runSelect = header.querySelector('#run-select') as HTMLSelectElement;
+  runSelect?.addEventListener('change', async (e) => {
+    const runId = (e.target as HTMLSelectElement).value;
+    if (runId && runId !== currentRunId) {
+      currentRunId = runId;
+      refreshPage();
+    }
+  });
+  
+  // Export JSON con nombre consistente
+  header.querySelector('.btn-export-json')?.addEventListener('click', async () => {
+    if (currentSurvey && currentResults && currentRunId) {
+      const run = await getSurveyRun(currentRunId);
+      const json = exportResultsToJson(currentSurvey, currentResults, run, { 
+        includeMetadata: true,
+        dateFormat: 'locale'
+      });
+      const filename = generateExportFilename(currentSurvey, currentRunId, 'json');
+      downloadFile(json, filename, 'application/json');
+    }
+  });
+  
+  // Export CSV con nombre consistente
+  header.querySelector('.btn-export-csv')?.addEventListener('click', async () => {
+    if (currentSurvey && currentResults && currentRunId) {
+      const run = await getSurveyRun(currentRunId);
+      const csv = exportResultsToCsv(currentSurvey, currentResults, run, {
+        includeMetadata: true
+      });
+      const filename = generateExportFilename(currentSurvey, currentRunId, 'csv');
+      downloadFile(csv, filename, 'text/csv');
+    }
+  });
+}
+
 function renderQuestionResult(result: QuestionResult, number: number): string {
   let content = '';
   
@@ -333,6 +620,7 @@ function renderQuestionResult(result: QuestionResult, number: number): string {
     const scResult = result as any;
     const entries = Object.entries(scResult.distribution);
     const maxCount = Math.max(...entries.map(([, v]: [string, any]) => v.count));
+    const total = entries.reduce((sum, [, v]: [string, any]) => sum + v.count, 0);
     
     content = `
       <div class="distribution-bars">
@@ -346,6 +634,7 @@ function renderQuestionResult(result: QuestionResult, number: number): string {
           </div>
         `).join('')}
       </div>
+      <div class="result-total">Total respuestas: ${total}</div>
     `;
   } else if (result.questionType === 'likert_scale') {
     const likertResult = result as any;
@@ -354,11 +643,11 @@ function renderQuestionResult(result: QuestionResult, number: number): string {
     
     content = `
       <div class="likert-stats">
-        <div class="likert-average">
+        <div class="likert-stat">
           <span class="stat-value">${likertResult.average}</span>
           <span class="stat-label">Promedio</span>
         </div>
-        <div class="likert-median">
+        <div class="likert-stat">
           <span class="stat-value">${likertResult.median}</span>
           <span class="stat-label">Mediana</span>
         </div>
@@ -387,6 +676,63 @@ function renderQuestionResult(result: QuestionResult, number: number): string {
       ${content}
     </div>
   `;
+}
+
+// ===========================================
+// State Components - Elementos DOM reales (no strings)
+// ===========================================
+
+function createLoadingElement(message: string): HTMLElement {
+  const div = document.createElement('div');
+  div.className = 'state-container state-loading';
+  div.innerHTML = `
+    <div class="state-spinner"></div>
+    <p class="state-message">${escapeHtml(message)}</p>
+  `;
+  return div;
+}
+
+function createEmptyStateElement(
+  icon: string, 
+  title: string, 
+  message: string, 
+  buttonText: string,
+  onAction: () => void
+): HTMLElement {
+  const div = document.createElement('div');
+  div.className = 'state-container state-empty';
+  div.innerHTML = `
+    <div class="state-icon">${icon}</div>
+    <h3 class="state-title">${escapeHtml(title)}</h3>
+    <p class="state-message">${escapeHtml(message)}</p>
+    <button class="btn btn-primary state-action">${escapeHtml(buttonText)}</button>
+  `;
+  
+  const btn = div.querySelector('.state-action');
+  btn?.addEventListener('click', onAction);
+  
+  return div;
+}
+
+function createErrorStateElement(
+  icon: string, 
+  title: string, 
+  message: string,
+  onRetry: () => void
+): HTMLElement {
+  const div = document.createElement('div');
+  div.className = 'state-container state-error';
+  div.innerHTML = `
+    <div class="state-icon">${icon}</div>
+    <h3 class="state-title">${escapeHtml(title)}</h3>
+    <p class="state-message">${escapeHtml(message)}</p>
+    <button class="btn btn-primary state-action">Reintentar</button>
+  `;
+  
+  const btn = div.querySelector('.state-action');
+  btn?.addEventListener('click', onRetry);
+  
+  return div;
 }
 
 // ===========================================
@@ -544,116 +890,158 @@ function updateQuestionNumbers(): void {
   });
 }
 
-function handleFormSubmit(e: Event): void {
+async function handleFormSubmit(e: Event): Promise<void> {
   e.preventDefault();
   
-  // Collect form data
-  const name = (document.getElementById('survey-name') as HTMLInputElement).value;
-  const description = (document.getElementById('survey-description') as HTMLTextAreaElement).value;
-  const sampleSize = parseInt((document.getElementById('sample-size') as HTMLInputElement).value);
-  
-  // Segment
-  const segment = {
-    regionCode: (document.getElementById('segment-region') as HTMLSelectElement).value || undefined,
-    comunaCode: (document.getElementById('segment-comuna') as HTMLSelectElement).value || undefined,
-    sex: (document.getElementById('segment-sex') as HTMLSelectElement).value || undefined,
-    ageGroup: (document.getElementById('segment-age') as HTMLSelectElement).value || undefined,
-    educationLevel: (document.getElementById('segment-education') as HTMLSelectElement).value || undefined,
-    connectivityLevel: (document.getElementById('segment-connectivity') as HTMLSelectElement).value || undefined
-  };
-  
-  // Questions
-  const questions: any[] = [];
-  document.querySelectorAll('.question-field').forEach((el, index) => {
-    const type = (el.querySelector('.question-type') as HTMLSelectElement).value;
-    const text = (el.querySelector('.question-text-input') as HTMLInputElement).value;
-    const required = (el.querySelector('.question-required-check') as HTMLInputElement).checked;
-    
-    if (type === 'single_choice') {
-      const options: any[] = [];
-      el.querySelectorAll('.option-row').forEach((optRow, optIndex) => {
-        const label = (optRow.querySelector('.option-label') as HTMLInputElement).value;
-        const value = (optRow.querySelector('.option-value') as HTMLInputElement).value;
-        options.push({ id: `opt_${index}_${optIndex}`, label, value });
-      });
-      
-      questions.push({
-        id: `q_${index}`,
-        type: 'single_choice',
-        text,
-        required,
-        options
-      });
-    } else if (type === 'likert_scale') {
-      const minLabel = (el.querySelector('.likert-min-label') as HTMLInputElement).value;
-      const maxLabel = (el.querySelector('.likert-max-label') as HTMLInputElement).value;
-      
-      questions.push({
-        id: `q_${index}`,
-        type: 'likert_scale',
-        text,
-        required,
-        min: 1,
-        max: 5,
-        minLabel,
-        maxLabel
-      });
-    }
-  });
-  
-  if (questions.length === 0) {
-    alert('Agrega al menos una pregunta');
-    return;
+  const submitBtn = (e.target as HTMLFormElement).querySelector('button[type="submit"]') as HTMLButtonElement;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creando...';
   }
   
-  // Create survey
-  createSurvey({
-    name,
-    description,
-    sampleSize,
-    segment,
-    questions
-  });
-  
-  // Go back to list
-  currentView = 'list';
-  refreshPage();
+  try {
+    // Collect form data
+    const name = (document.getElementById('survey-name') as HTMLInputElement).value;
+    const description = (document.getElementById('survey-description') as HTMLTextAreaElement).value;
+    const sampleSize = parseInt((document.getElementById('sample-size') as HTMLInputElement).value);
+    
+    // Segment
+    const segment = {
+      regionCode: (document.getElementById('segment-region') as HTMLSelectElement).value || undefined,
+      comunaCode: (document.getElementById('segment-comuna') as HTMLSelectElement).value || undefined,
+      sex: (document.getElementById('segment-sex') as HTMLSelectElement).value || undefined,
+      ageGroup: (document.getElementById('segment-age') as HTMLSelectElement).value || undefined,
+      educationLevel: (document.getElementById('segment-education') as HTMLSelectElement).value || undefined,
+      connectivityLevel: (document.getElementById('segment-connectivity') as HTMLSelectElement).value || undefined
+    };
+    
+    // Questions
+    const questions: any[] = [];
+    document.querySelectorAll('.question-field').forEach((el, index) => {
+      const type = (el.querySelector('.question-type') as HTMLSelectElement).value;
+      const text = (el.querySelector('.question-text-input') as HTMLInputElement).value;
+      const required = (el.querySelector('.question-required-check') as HTMLInputElement).checked;
+      
+      if (type === 'single_choice') {
+        const options: any[] = [];
+        el.querySelectorAll('.option-row').forEach((optRow, optIndex) => {
+          const label = (optRow.querySelector('.option-label') as HTMLInputElement).value;
+          const value = (optRow.querySelector('.option-value') as HTMLInputElement).value;
+          options.push({ id: `opt_${index}_${optIndex}`, label, value });
+        });
+        
+        questions.push({
+          id: `q_${index}`,
+          type: 'single_choice',
+          text,
+          required,
+          options
+        });
+      } else if (type === 'likert_scale') {
+        const minLabel = (el.querySelector('.likert-min-label') as HTMLInputElement).value;
+        const maxLabel = (el.querySelector('.likert-max-label') as HTMLInputElement).value;
+        
+        questions.push({
+          id: `q_${index}`,
+          type: 'likert_scale',
+          text,
+          required,
+          min: 1,
+          max: 5,
+          minLabel,
+          maxLabel
+        });
+      }
+    });
+    
+    if (questions.length === 0) {
+      alert('Agrega al menos una pregunta');
+      return;
+    }
+    
+    // Create survey
+    await createSurvey({
+      name,
+      description,
+      sampleSize,
+      segment,
+      questions
+    });
+    
+    // Go back to list
+    currentView = 'list';
+    refreshPage();
+    
+  } catch (err) {
+    console.error('Error creating survey:', err);
+    alert('❌ Error al crear la encuesta');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Crear Encuesta';
+    }
+  }
 }
 
 async function executeSurvey(surveyId: string): Promise<void> {
   const btn = document.querySelector(`[data-id="${surveyId}"].btn-run`);
   if (btn) {
-    btn.textContent = '⏳ Ejecutando...';
+    btn.innerHTML = '<span class="btn-icon">⏳</span> Ejecutando...';
     (btn as HTMLButtonElement).disabled = true;
   }
   
   try {
     const run = await runSurvey(surveyId);
-    alert(`✅ Encuesta ejecutada exitosamente\n\nAgentes encuestados: ${run.totalAgents}\nRespuestas generadas: ${run.responses.length}`);
-    viewSurveyResults(surveyId);
+    
+    // Show success and navigate to results
+    currentRunId = run.id;
+    await viewSurveyResults(surveyId);
+    
   } catch (error) {
     console.error('Error ejecutando encuesta:', error);
     alert('❌ Error al ejecutar la encuesta');
     if (btn) {
-      btn.textContent = '▶ Ejecutar';
+      btn.innerHTML = '<span class="btn-icon">▶</span> Ejecutar';
       (btn as HTMLButtonElement).disabled = false;
     }
   }
 }
 
-function viewSurveyResults(surveyId: string): void {
-  const survey = getAllSurveys().find(s => s.id === surveyId);
-  const results = getSurveyResults(surveyId);
+async function viewSurveyResults(surveyId: string): Promise<void> {
+  const surveys = await getAllSurveys();
+  const survey = surveys.find(s => s.id === surveyId);
   
-  if (!survey || !results) {
-    alert('No hay resultados disponibles. Ejecuta la encuesta primero.');
+  if (!survey) {
+    alert('Encuesta no encontrada');
     return;
   }
   
   currentSurvey = survey;
-  currentResults = results;
   currentView = 'results';
+  
+  // Load runs to determine which to show
+  surveyRuns = await getSurveyRuns(surveyId);
+  
+  if (surveyRuns.length === 0) {
+    alert('No hay ejecuciones para esta encuesta');
+    currentView = 'list';
+    return;
+  }
+  
+  // Show latest run by default
+  currentRunId = surveyRuns[0].id;
+  
   refreshPage();
+}
+
+async function viewSurveyDetails(surveyId: string): Promise<void> {
+  // For now, just show results if available, or alert
+  const runs = await getSurveyRuns(surveyId);
+  if (runs.length > 0) {
+    await viewSurveyResults(surveyId);
+  } else {
+    alert('Esta encuesta no tiene ejecuciones. Ejecútala para ver detalles.');
+  }
 }
 
 function refreshPage(): void {
@@ -697,5 +1085,9 @@ function formatSegment(segment: any): string {
  * Cleanup function (required by main.ts)
  */
 export function cleanupSurveysPage(): void {
-  // No cleanup needed for this page
+  currentSurvey = null;
+  currentResults = null;
+  currentRunId = null;
+  surveyRuns = [];
+  console.log('🧹 Surveys page cleaned up');
 }
