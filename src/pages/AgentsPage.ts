@@ -1,17 +1,19 @@
 /**
  * Agents Page - Synthetic Agents Explorer
+ * Sprint 10B: Integración con Supabase
  * 
- * Vista para explorar la población sintética con filtros y ficha de detalle
+ * Vista para explorar la población sintética con filtros y ficha de detalle.
+ * Ahora lee desde Supabase con fallback a datos locales.
  */
 
 import type { SyntheticAgent } from '../types/agent';
 import { 
-  loadSyntheticAgents, 
-  filterAgents, 
+  getAgents, 
+  getAgentById, 
   getUniqueRegions, 
-  getUniqueCommunes,
-  getAgentById 
-} from '../data/syntheticAgents';
+  getUniqueCommunes 
+} from '../services/supabase/repositories/agentRepository';
+import type { AgentFilters } from '../types/database';
 
 // State
 let agents: SyntheticAgent[] = [];
@@ -39,17 +41,41 @@ const currentFilters = {
 
 /**
  * Create the Agents page
+ * Sprint 10B: Ahora usa agentRepository con fallback a datos locales
+ * Sprint 12B: Mejoras de robustez - estados loading/error mejorados
  */
 export async function createAgentsPage(): Promise<HTMLElement> {
   const page = document.createElement('div');
   page.className = 'page agents-page';
+  page.id = 'agents-page';
   
+  // Render initial loading state
+  page.innerHTML = renderLoadingState();
+  
+  // Load data
+  await loadAgentsData(page);
+  
+  return page;
+}
+
+/**
+ * Load agents data with error handling
+ */
+async function loadAgentsData(page: HTMLElement): Promise<void> {
   try {
-    // Load data
     isLoading = true;
-    const data = await loadSyntheticAgents();
-    agents = data.agents;
+    
+    // Cargar agents desde Supabase con paginación inicial
+    const result = await getAgents({ 
+      page: 1, 
+      pageSize: 1000, // Cargar más para tener datos iniciales
+      filters: {} 
+    });
+    
+    agents = result.data;
     filteredAgents = [...agents];
+    
+    // Cargar regiones
     regions = await getUniqueRegions();
     
     // Get communes for initial region
@@ -59,15 +85,39 @@ export async function createAgentsPage(): Promise<HTMLElement> {
     
     isLoading = false;
     
+    // Check if empty
+    if (agents.length === 0) {
+      page.innerHTML = renderEmptyState();
+      attachRetryListener(page);
+      return;
+    }
+    
     // Render page
     page.innerHTML = renderPage();
     attachEventListeners(page);
     
+    // Log para debugging
+    console.log(`[AgentsPage] Cargados ${agents.length} agentes desde ${result.total > 0 ? 'Supabase' : 'fallback local'}`);
+    
   } catch (error) {
-    page.innerHTML = renderError(error);
+    console.error('[AgentsPage] Error cargando agentes:', error);
+    isLoading = false;
+    page.innerHTML = renderErrorState(error);
+    attachRetryListener(page);
   }
-  
-  return page;
+}
+
+/**
+ * Attach retry button listener
+ */
+function attachRetryListener(page: HTMLElement): void {
+  const retryBtn = page.querySelector('#retry-agents-btn');
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => {
+      page.innerHTML = renderLoadingState();
+      loadAgentsData(page);
+    });
+  }
 }
 
 /**
@@ -90,6 +140,7 @@ function renderPage(): string {
     </div>
     
     <div class="agents-layout">
+      <!-- Sidebar: Filtros -->
       <aside class="agents-filters">
         <div class="filters-header">
           <h2>Filtros</h2>
@@ -179,42 +230,51 @@ function renderPage(): string {
         </div>
         
         <div class="filters-results">
-          <span id="results-count">${filteredAgents.length} agentes</span>
+          <span id="results-count">${filteredAgents.length.toLocaleString()} agentes</span>
         </div>
       </aside>
       
+      <!-- Main: Tabla + Paginación -->
       <main class="agents-content">
-        <div class="agents-table-container">
-          <table class="agents-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Región</th>
-                <th>Comuna</th>
-                <th>Sexo</th>
-                <th>Edad</th>
-                <th>Grupo</th>
-                <th>Tipo</th>
-                <th>Conectividad</th>
-              </tr>
-            </thead>
-            <tbody id="agents-table-body">
-              ${renderTableRows()}
-            </tbody>
-          </table>
-        </div>
-        
-        ${filteredAgents.length === 0 ? `
-          <div class="no-results">
-            <p>No se encontraron agentes con los filtros seleccionados</p>
+        <div class="agents-table-wrapper">
+          <div class="agents-table-container">
+            <table class="agents-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Región</th>
+                  <th>Comuna</th>
+                  <th>Sexo</th>
+                  <th>Edad</th>
+                  <th>Grupo</th>
+                  <th>Tipo</th>
+                  <th>Conectividad</th>
+                </tr>
+              </thead>
+              <tbody id="agents-table-body">
+                ${renderTableRows()}
+              </tbody>
+            </table>
+            
+            ${filteredAgents.length === 0 ? `
+              <div class="no-results">
+                <p>No se encontraron agentes con los filtros seleccionados</p>
+              </div>
+            ` : ''}
+            
+            ${filteredAgents.length > 0 ? renderPagination() : ''}
           </div>
-        ` : renderPagination()}
+        </div>
       </main>
-      
-      <aside class="agent-detail-panel ${selectedAgent ? 'active' : ''}" id="agent-detail-panel">
-        ${selectedAgent ? renderAgentDetail(selectedAgent) : '<div class="detail-placeholder">Selecciona un agente para ver su ficha</div>'}
-      </aside>
     </div>
+    
+    <!-- Overlay para cerrar panel al hacer click fuera -->
+    <div class="agent-detail-overlay ${selectedAgent ? 'active' : ''}" id="agent-detail-overlay"></div>
+    
+    <!-- Panel de detalle: Overlay que aparece solo con selección -->
+    <aside class="agent-detail-panel ${selectedAgent ? 'active' : ''}" id="agent-detail-panel">
+      ${selectedAgent ? renderAgentDetail(selectedAgent) : ''}
+    </aside>
   `;
 }
 
@@ -369,14 +429,43 @@ function renderAgentDetail(agent: SyntheticAgent): string {
 }
 
 /**
+ * Render loading state
+ */
+function renderLoadingState(): string {
+  return `
+    <div class="state-container state-loading">
+      <div class="state-spinner"></div>
+      <p class="state-message">Cargando agentes sintéticos...</p>
+    </div>
+  `;
+}
+
+/**
  * Render error state
  */
-function renderError(error: unknown): string {
+function renderErrorState(error: unknown): string {
   return `
-    <div class="agents-error">
-      <h2>Error al cargar agentes</h2>
-      <p>${error instanceof Error ? error.message : 'Error desconocido'}</p>
-      <p class="error-hint">Asegúrate de haber ejecutado el pipeline: npm run pipeline</p>
+    <div class="state-container state-error">
+      <div class="state-icon">⚠️</div>
+      <h3 class="state-title">Error al cargar agentes</h3>
+      <p class="state-message">${error instanceof Error ? error.message : 'Error desconocido'}</p>
+      <p class="state-hint">Asegúrate de haber ejecutado el pipeline: npm run pipeline</p>
+      <button class="btn btn-primary state-action" id="retry-agents-btn">Reintentar</button>
+    </div>
+  `;
+}
+
+/**
+ * Render empty state
+ */
+function renderEmptyState(): string {
+  return `
+    <div class="state-container state-empty">
+      <div class="state-icon">👤</div>
+      <h3 class="state-title">No hay agentes disponibles</h3>
+      <p class="state-message">No se encontraron agentes sintéticos en el sistema.</p>
+      <p class="state-hint">Ejecuta el pipeline para generar la población sintética.</p>
+      <button class="btn btn-primary state-action" id="retry-agents-btn">Reintentar</button>
     </div>
   `;
 }
@@ -490,24 +579,41 @@ function attachEventListeners(page: HTMLElement): void {
       updateDetailPanel(page);
     });
   }
+  
+  // Overlay click to close
+  const overlay = page.querySelector('#agent-detail-overlay');
+  if (overlay) {
+    overlay.addEventListener('click', () => {
+      selectedAgent = null;
+      updateDetailPanel(page);
+    });
+  }
 }
 
 /**
  * Apply filters and update table
+ * Sprint 10B: Ahora usa agentRepository con filtros en Supabase
  */
 async function applyFilters(page: HTMLElement): Promise<void> {
-  const filters: Record<string, string | number | undefined> = {};
+  const filters: AgentFilters = {};
   
   if (currentFilters.regionCode) filters.regionCode = currentFilters.regionCode;
   if (currentFilters.comunaCode) filters.comunaCode = currentFilters.comunaCode;
-  if (currentFilters.sex) filters.sex = currentFilters.sex;
-  if (currentFilters.ageGroup) filters.ageGroup = currentFilters.ageGroup;
+  if (currentFilters.sex) filters.sex = currentFilters.sex as any;
+  if (currentFilters.ageGroup) filters.ageGroup = currentFilters.ageGroup as any;
   if (currentFilters.incomeDecile) filters.incomeDecile = parseInt(currentFilters.incomeDecile);
-  if (currentFilters.educationLevel) filters.educationLevel = currentFilters.educationLevel;
-  if (currentFilters.connectivityLevel) filters.connectivityLevel = currentFilters.connectivityLevel;
-  if (currentFilters.agentType) filters.agentType = currentFilters.agentType;
+  if (currentFilters.educationLevel) filters.educationLevel = currentFilters.educationLevel as any;
+  if (currentFilters.connectivityLevel) filters.connectivityLevel = currentFilters.connectivityLevel as any;
+  if (currentFilters.agentType) filters.agentType = currentFilters.agentType as any;
   
-  filteredAgents = await filterAgents(filters as any);
+  // Cargar agents filtrados desde Supabase (con fallback local)
+  const result = await getAgents({ 
+    page: 1, 
+    pageSize: 1000, // Cargar suficientes para paginación local
+    filters 
+  });
+  
+  filteredAgents = result.data;
   
   // Reset to page 1 when filters change
   currentPage = 1;
@@ -515,11 +621,14 @@ async function applyFilters(page: HTMLElement): Promise<void> {
   // Update results count
   const resultsCount = page.querySelector('#results-count');
   if (resultsCount) {
-    resultsCount.textContent = `${filteredAgents.length} agentes`;
+    resultsCount.textContent = `${result.total} agentes`;
   }
   
   // Update table and pagination
   updateTableAndPagination(page);
+  
+  // Log para debugging
+  console.log(`[AgentsPage] Filtros aplicados: ${filteredAgents.length} agentes`);
 }
 
 /**
@@ -600,13 +709,15 @@ function attachPaginationListeners(page: HTMLElement): void {
 }
 
 /**
- * Update detail panel
+ * Update detail panel and overlay
  */
 function updateDetailPanel(page: HTMLElement): void {
   const panel = page.querySelector('#agent-detail-panel');
+  const overlay = page.querySelector('#agent-detail-overlay');
+  
   if (panel) {
     panel.className = `agent-detail-panel ${selectedAgent ? 'active' : ''}`;
-    panel.innerHTML = selectedAgent ? renderAgentDetail(selectedAgent) : '<div class="detail-placeholder">Selecciona un agente para ver su ficha</div>';
+    panel.innerHTML = selectedAgent ? renderAgentDetail(selectedAgent) : '';
     
     // Re-attach close button listener
     const closeBtn = panel.querySelector('#close-detail');
@@ -616,6 +727,11 @@ function updateDetailPanel(page: HTMLElement): void {
         updateDetailPanel(page);
       });
     }
+  }
+  
+  // Update overlay
+  if (overlay) {
+    overlay.className = `agent-detail-overlay ${selectedAgent ? 'active' : ''}`;
   }
 }
 
