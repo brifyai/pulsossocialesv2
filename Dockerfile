@@ -40,11 +40,11 @@ RUN apk add --no-cache git ca-certificates
 
 WORKDIR /app
 
-# Copiar dependencias desde stage deps
-COPY --from=deps /app/node_modules ./node_modules
-
-# Copiar archivos de configuración
+# Copiar archivos de configuración primero
 COPY package*.json tsconfig.json vitest.config.ts ./
+
+# Instalar TODAS las dependencias (incluyendo devDependencies) necesarias para build
+RUN npm ci && npm cache clean --force
 
 # Copiar código fuente
 COPY src ./src
