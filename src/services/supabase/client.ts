@@ -27,6 +27,12 @@ export interface SupabaseStatus {
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
+// Debug: Verificar variables de entorno en build-time
+console.log('[ENV CHECK]', {
+  supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+  hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY,
+});
+
 // ===========================================
 // State
 // ===========================================

@@ -399,32 +399,14 @@ async function handleLogin(container: HTMLElement): Promise<void> {
   setLoading(container, true);
 
   try {
-    // Try to use auth service if available
-    if (authService.isAvailable()) {
-      const result = await authService.signIn(email, password);
-      if (result.success) {
-        showMessage(container, '¡Bienvenido! Redirigiendo...', 'success');
-        setTimeout(() => {
-          navigateTo('home');
-        }, 1000);
-      } else {
-        showMessage(container, result.error || 'Error al iniciar sesión', 'error');
-      }
-    } else {
-      // Demo mode - simulate successful login
-      console.log('🔓 Demo login:', { email, remember });
-      
-      // Store session in localStorage for demo
-      localStorage.setItem('pulsos_session', JSON.stringify({
-        user: { email, name: email.split('@')[0] },
-        demo: true,
-        timestamp: Date.now()
-      }));
-      
+    const result = await authService.signIn(email, password);
+    if (result.success) {
       showMessage(container, '¡Bienvenido! Redirigiendo...', 'success');
       setTimeout(() => {
         navigateTo('home');
       }, 1000);
+    } else {
+      showMessage(container, result.error || 'Error al iniciar sesión', 'error');
     }
   } catch (error) {
     showMessage(container, 'Error al iniciar sesión. Intenta nuevamente.', 'error');
@@ -465,32 +447,14 @@ async function handleRegister(container: HTMLElement): Promise<void> {
   setLoading(container, true);
 
   try {
-    // Try to use auth service if available
-    if (authService.isAvailable()) {
-      const result = await authService.signUp(email, password, { name });
-      if (result.success) {
-        showMessage(container, '¡Cuenta creada! Redirigiendo...', 'success');
-        setTimeout(() => {
-          navigateTo('home');
-        }, 1000);
-      } else {
-        showMessage(container, result.error || 'Error al crear cuenta', 'error');
-      }
-    } else {
-      // Demo mode - simulate successful registration
-      console.log('🔓 Demo register:', { name, email });
-      
-      // Store session in localStorage for demo
-      localStorage.setItem('pulsos_session', JSON.stringify({
-        user: { email, name },
-        demo: true,
-        timestamp: Date.now()
-      }));
-      
+    const result = await authService.signUp(email, password, { name });
+    if (result.success) {
       showMessage(container, '¡Cuenta creada! Redirigiendo...', 'success');
       setTimeout(() => {
         navigateTo('home');
       }, 1000);
+    } else {
+      showMessage(container, result.error || 'Error al crear cuenta', 'error');
     }
   } catch (error) {
     showMessage(container, 'Error al crear cuenta. Intenta nuevamente.', 'error');
@@ -514,24 +478,14 @@ async function handleForgot(container: HTMLElement): Promise<void> {
   setLoading(container, true);
 
   try {
-    // Try to use auth service if available
-    if (authService.isAvailable()) {
-      const result = await authService.resetPassword(email);
-      if (result.success) {
-        showMessage(container, 'Revisa tu email para restablecer la contraseña', 'success');
-        setTimeout(() => {
-          switchMode('login', container);
-        }, 2000);
-      } else {
-        showMessage(container, result.error || 'Error al enviar el enlace', 'error');
-      }
-    } else {
-      // Demo mode
-      console.log('🔓 Demo forgot password:', { email });
-      showMessage(container, 'Revisa tu email para restablecer la contraseña (Demo)', 'success');
+    const result = await authService.resetPassword(email);
+    if (result.success) {
+      showMessage(container, 'Revisa tu email para restablecer la contraseña', 'success');
       setTimeout(() => {
         switchMode('login', container);
       }, 2000);
+    } else {
+      showMessage(container, result.error || 'Error al enviar el enlace', 'error');
     }
   } catch (error) {
     showMessage(container, 'Error al enviar el enlace. Intenta nuevamente.', 'error');

@@ -1,24 +1,31 @@
 /**
  * Auth Service - Pulsos Sociales
- * Servicio de autenticación con soporte para Supabase y modo demo
+ * Servicio de autenticación usando Supabase Auth estándar
+ *
+ * NOTA: Este servicio usa la API nativa de Supabase Auth.
+ * Las sesiones se manejan automáticamente por el cliente de Supabase.
  */
 
 import { getSupabaseClient, type SupabaseClient } from '../supabase/client';
+import type { User, Session, AuthError } from '@supabase/supabase-js';
+
+// ===========================================
+// Types
+// ===========================================
 
 export interface AuthUser {
   id: string;
   email: string;
   name?: string;
   avatar?: string;
+  role: 'user' | 'admin' | 'moderator';
 }
 
 export interface AuthSession {
   user: AuthUser;
-  accessToken?: string;
-  refreshToken?: string;
-  expiresAt?: number;
-  demo?: boolean;
-  timestamp?: number;
+  accessToken: string;
+  expiresAt: number;
+  timestamp: number;
 }
 
 export interface AuthResult {
@@ -27,78 +34,146 @@ export interface AuthResult {
   error?: string;
 }
 
-// Session storage key
-const SESSION_KEY = 'pulsos_session';
+// ===========================================
+// Helpers
+// ===========================================
 
 /**
- * Auth Service
- * Maneja la autenticación de usuarios
+ * Mapea un User de Supabase a AuthUser
+ * Extrae metadata del usuario (name, avatar, role) desde user_metadata
  */
+function mapSupabaseUser(supabaseUser: User): AuthUser {
+  const metadata = supabaseUser.user_metadata || {};
+
+  return {
+    id: supabaseUser.id,
+    email: supabaseUser.email || '',
+    name: metadata.name || metadata.full_name || undefined,
+    avatar: metadata.avatar_url || metadata.avatar || undefined,
+    role: metadata.role || 'user',
+  };
+}
+
+/**
+ * Mapea una Session de Supabase a AuthSession
+ */
+function mapSupabaseSession(supabaseSession: Session): AuthSession {
+  return {
+    user: mapSupabaseUser(supabaseSession.user),
+    accessToken: supabaseSession.access_token,
+    expiresAt: new Date(supabaseSession.expires_at || Date.now() + 3600 * 1000).getTime(),
+    timestamp: Date.now(),
+  };
+}
+
+/**
+ * Extrae mensaje de error legible de AuthError de Supabase
+ */
+function getErrorMessage(error: AuthError | Error | unknown): string {
+  if (error && typeof error === 'object') {
+    // AuthError de Supabase
+    if ('message' in error && typeof error.message === 'string') {
+      // Mapear errores comunes a mensajes amigables
+      const message = error.message.toLowerCase();
+      if (message.includes('invalid login credentials')) {
+        return 'Email o contraseña incorrectos';
+      }
+      if (message.includes('user already registered') || message.includes('already exists')) {
+        return 'Este email ya está registrado. Intenta iniciar sesión.';
+      }
+      if (message.includes('email not confirmed')) {
+        return 'Por favor confirma tu email antes de iniciar sesión';
+      }
+      if (message.includes('weak password')) {
+        return 'La contraseña es demasiado débil. Usa al menos 8 caracteres.';
+      }
+      if (message.includes('rate limit')) {
+        return 'Demasiados intentos. Por favor espera un momento.';
+      }
+      return error.message;
+    }
+  }
+  return 'Error inesperado. Intenta nuevamente.';
+}
+
+// ===========================================
+// Auth Service
+// ===========================================
+
 class AuthService {
   private session: AuthSession | null = null;
   private initialized = false;
-  private supabaseClient: SupabaseClient | null = null;
+  private unsubscribeAuthState: (() => void) | null = null;
 
   constructor() {
-    this.loadSession();
+    // No cargamos sesión aquí - se hace en initialize()
   }
 
   /**
-   * Check if Supabase auth is available
+   * Obtiene el cliente de Supabase
+   * @private
    */
-  isAvailable(): boolean {
-    return !!this.supabaseClient?.auth;
+  private async getClient(): Promise<SupabaseClient | null> {
+    return getSupabaseClient();
+  }
+
+  /**
+   * Check if auth service is available (Supabase Auth está configurado)
+   */
+  async isAvailable(): Promise<boolean> {
+    const client = await this.getClient();
+    if (!client) return false;
+
+    try {
+      // Verificar que auth está disponible haciendo una llamada simple
+      const { error } = await client.auth.getSession();
+      return !error;
+    } catch {
+      return false;
+    }
   }
 
   /**
    * Initialize auth service
+   * Suscribe a cambios de auth y carga sesión actual
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    // Try to get Supabase client
-    this.supabaseClient = await getSupabaseClient();
-
-    if (this.isAvailable() && this.supabaseClient) {
-      // Listen for auth state changes
-      this.supabaseClient.auth.onAuthStateChange((event: string, session: { user: { id: string; email?: string; user_metadata?: { name?: string; avatar_url?: string } }; access_token?: string; refresh_token?: string; expires_at?: number } | null) => {
-        if (event === 'SIGNED_IN' && session) {
-          this.session = {
-            user: {
-              id: session.user.id,
-              email: session.user.email || '',
-              name: session.user.user_metadata?.name || session.user.email?.split('@')[0],
-              avatar: session.user.user_metadata?.avatar_url
-            },
-            accessToken: session.access_token,
-            refreshToken: session.refresh_token,
-            expiresAt: session.expires_at
-          };
-          this.saveSession();
-        } else if (event === 'SIGNED_OUT') {
-          this.session = null;
-          this.clearSession();
-        }
-      });
-
-      // Check for existing session
-      const { data: { session } } = await this.supabaseClient.auth.getSession();
-      if (session) {
-        this.session = {
-          user: {
-            id: session.user.id,
-            email: session.user.email || '',
-            name: session.user.user_metadata?.name || session.user.email?.split('@')[0],
-            avatar: session.user.user_metadata?.avatar_url
-          },
-          accessToken: session.access_token,
-          refreshToken: session.refresh_token,
-          expiresAt: session.expires_at
-        };
-        this.saveSession();
-      }
+    const client = await this.getClient();
+    if (!client) {
+      console.log('[Auth] Supabase no disponible - modo demo/fallback');
+      this.initialized = true;
+      return;
     }
 
+    // Cargar sesión actual
+    const { data: { session }, error } = await client.auth.getSession();
+    if (session) {
+      this.session = mapSupabaseSession(session);
+      console.log('🔐 [Auth] Sesión restaurada:', this.session.user.email);
+    }
+
+    if (error) {
+      console.warn('[Auth] Error cargando sesión:', error.message);
+    }
+
+    // Suscribirse a cambios de auth
+    const { data: { subscription } } = client.auth.onAuthStateChange(
+      (event, session) => {
+        console.log(`🔐 [Auth] Evento: ${event}`);
+
+        if (session) {
+          this.session = mapSupabaseSession(session);
+          console.log('🔐 [Auth] Usuario:', this.session.user.email);
+        } else {
+          this.session = null;
+          console.log('🔐 [Auth] Sin sesión');
+        }
+      }
+    );
+
+    this.unsubscribeAuthState = subscription.unsubscribe;
     this.initialized = true;
   }
 
@@ -114,64 +189,31 @@ class AuthService {
       return { success: false, error: 'La contraseña es requerida' };
     }
 
+    const client = await this.getClient();
+    if (!client) {
+      return { success: false, error: 'Servicio de autenticación no disponible' };
+    }
+
     try {
-      // If Supabase is not available, create a demo session
-      if (!this.isAvailable() || !this.supabaseClient) {
-        console.log('[Auth] Supabase not available, creating demo session');
-        const demoUser: AuthUser = {
-          id: 'demo-user-' + Date.now(),
-          email: email.trim(),
-          name: email.split('@')[0] || 'Demo User'
-        };
-
-        this.session = {
-          user: demoUser,
-          demo: true,
-          timestamp: Date.now()
-        };
-        this.saveSession();
-
-        return { success: true, user: demoUser };
-      }
-
-      const { data, error } = await this.supabaseClient.auth.signInWithPassword({
-        email: email.trim(),
-        password
+      const { data, error } = await client.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
       });
 
       if (error) {
-        // Map common Supabase errors to user-friendly messages
-        let errorMessage = error.message;
-        if (error.message.includes('Invalid login credentials')) {
-          errorMessage = 'Email o contraseña incorrectos';
-        } else if (error.message.includes('Email not confirmed')) {
-          errorMessage = 'Por favor confirma tu email antes de iniciar sesión';
-        } else if (error.message.includes('rate limit')) {
-          errorMessage = 'Demasiados intentos. Por favor espera un momento.';
-        }
-        return { success: false, error: errorMessage };
+        console.error('[Auth] Sign in error:', error);
+        return { success: false, error: getErrorMessage(error) };
       }
 
-      if (data.user) {
-        const user: AuthUser = {
-          id: data.user.id,
-          email: data.user.email || '',
-          name: data.user.user_metadata?.name || data.user.email?.split('@')[0],
-          avatar: data.user.user_metadata?.avatar_url
-        };
-
-        this.session = {
-          user,
-          accessToken: data.session?.access_token,
-          refreshToken: data.session?.refresh_token,
-          expiresAt: data.session?.expires_at
-        };
-        this.saveSession();
-
-        return { success: true, user };
+      if (!data.user || !data.session) {
+        return { success: false, error: 'Error al iniciar sesión' };
       }
 
-      return { success: false, error: 'No se recibieron datos del usuario' };
+      // Actualizar sesión local
+      this.session = mapSupabaseSession(data.session);
+
+      console.log('🔐 [Auth] User signed in:', this.session.user.email);
+      return { success: true, user: this.session.user };
     } catch (error) {
       console.error('[Auth] Sign in error:', error);
       return { success: false, error: 'Error al iniciar sesión. Intenta nuevamente.' };
@@ -181,7 +223,11 @@ class AuthService {
   /**
    * Sign up with email and password
    */
-  async signUp(email: string, password: string, metadata?: { name?: string }): Promise<AuthResult> {
+  async signUp(
+    email: string,
+    password: string,
+    metadata?: { name?: string }
+  ): Promise<AuthResult> {
     // Validate inputs
     if (!email || !email.trim()) {
       return { success: false, error: 'El email es requerido' };
@@ -190,63 +236,41 @@ class AuthService {
       return { success: false, error: 'La contraseña debe tener al menos 8 caracteres' };
     }
 
-    const trimmedEmail = email.trim();
-    const trimmedName = metadata?.name?.trim();
-
-    // If Supabase is not available, create a demo user
-    if (!this.isAvailable() || !this.supabaseClient) {
-      console.log('[Auth] Supabase not available, creating demo user');
-      const demoUser: AuthUser = {
-        id: 'demo-user-' + Date.now(),
-        email: trimmedEmail,
-        name: trimmedName || trimmedEmail.split('@')[0] || 'Demo User'
-      };
-
-      this.session = {
-        user: demoUser,
-        demo: true,
-        timestamp: Date.now()
-      };
-      this.saveSession();
-
-      return { success: true, user: demoUser };
+    const client = await this.getClient();
+    if (!client) {
+      return { success: false, error: 'Servicio de autenticación no disponible' };
     }
 
     try {
-      const { data, error } = await this.supabaseClient.auth.signUp({
-        email: trimmedEmail,
+      const { data, error } = await client.auth.signUp({
+        email: email.trim().toLowerCase(),
         password,
         options: {
-          data: { name: trimmedName }
-        }
+          data: {
+            name: metadata?.name?.trim(),
+            role: 'user',
+          },
+        },
       });
 
       if (error) {
-        // Map common Supabase errors to user-friendly messages
-        let errorMessage = error.message;
-        if (error.message.includes('User already registered')) {
-          errorMessage = 'Este email ya está registrado. Intenta iniciar sesión.';
-        } else if (error.message.includes('rate limit')) {
-          errorMessage = 'Demasiados intentos. Por favor espera un momento.';
-        } else if (error.message.includes('password')) {
-          errorMessage = 'La contraseña no cumple con los requisitos de seguridad.';
-        }
-        return { success: false, error: errorMessage };
+        console.error('[Auth] Sign up error:', error);
+        return { success: false, error: getErrorMessage(error) };
       }
 
-      if (data.user) {
-        const user: AuthUser = {
-          id: data.user.id,
-          email: data.user.email || '',
-          name: trimmedName || data.user.email?.split('@')[0],
-          avatar: data.user.user_metadata?.avatar_url
-        };
-
-        // Note: User needs to confirm email before session is created
-        return { success: true, user };
+      if (!data.user) {
+        return { success: false, error: 'Error al crear la cuenta' };
       }
 
-      return { success: false, error: 'No se recibieron datos del usuario' };
+      // Si hay sesión (auto-confirm), actualizarla
+      if (data.session) {
+        this.session = mapSupabaseSession(data.session);
+      }
+
+      const user = mapSupabaseUser(data.user);
+      console.log('👤 [Auth] User registered:', user.email);
+
+      return { success: true, user };
     } catch (error) {
       console.error('[Auth] Sign up error:', error);
       return { success: false, error: 'Error al crear la cuenta. Intenta nuevamente.' };
@@ -257,58 +281,110 @@ class AuthService {
    * Sign out
    */
   async signOut(): Promise<void> {
-    if (this.isAvailable() && this.supabaseClient) {
-      await this.supabaseClient.auth.signOut();
+    const client = await this.getClient();
+    if (!client) {
+      this.session = null;
+      return;
     }
-    this.session = null;
-    this.clearSession();
+
+    try {
+      const { error } = await client.auth.signOut();
+      if (error) {
+        console.error('[Auth] Sign out error:', error);
+      }
+    } catch (error) {
+      console.error('[Auth] Sign out error:', error);
+    } finally {
+      this.session = null;
+      console.log('🔐 [Auth] User signed out');
+    }
   }
 
   /**
-   * Reset password
+   * Reset password (envía email con enlace)
    */
   async resetPassword(email: string): Promise<AuthResult> {
-    // If Supabase is not available, simulate success
-    if (!this.isAvailable() || !this.supabaseClient) {
-      console.log('[Auth] Supabase not available, simulating password reset');
-      return { success: true };
+    if (!email || !email.trim()) {
+      return { success: false, error: 'El email es requerido' };
+    }
+
+    const client = await this.getClient();
+    if (!client) {
+      return { success: false, error: 'Servicio de autenticación no disponible' };
     }
 
     try {
-      const { error } = await this.supabaseClient.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`
+      const { error } = await client.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+        redirectTo: `${window.location.origin}/auth/reset-password`,
       });
 
       if (error) {
-        return { success: false, error: error.message };
+        console.error('[Auth] Reset password error:', error);
+        return { success: false, error: getErrorMessage(error) };
       }
 
+      console.log('📧 [Auth] Password reset requested for:', email);
       return { success: true };
     } catch (error) {
-      return { success: false, error: 'An error occurred' };
+      console.error('[Auth] Reset password error:', error);
+      return { success: false, error: 'Error al solicitar reset de contraseña' };
     }
   }
 
   /**
-   * Update password
+   * Update password (requiere sesión activa)
    */
-  async updatePassword(password: string): Promise<AuthResult> {
-    if (!this.isAvailable() || !this.supabaseClient) {
-      return { success: false, error: 'Auth service not available' };
+  async updatePassword(newPassword: string, currentPassword?: string): Promise<AuthResult> {
+    if (!newPassword || newPassword.length < 8) {
+      return { success: false, error: 'La contraseña debe tener al menos 8 caracteres' };
+    }
+
+    const client = await this.getClient();
+    if (!client) {
+      return { success: false, error: 'Servicio de autenticación no disponible' };
+    }
+
+    // Verificar sesión activa
+    const { data: { session } } = await client.auth.getSession();
+    if (!session) {
+      return { success: false, error: 'No hay sesión activa' };
+    }
+
+    // Si se proporciona currentPassword, verificar re-autenticando
+    if (currentPassword) {
+      const { error: reauthError } = await client.auth.signInWithPassword({
+        email: session.user.email || '',
+        password: currentPassword,
+      });
+
+      if (reauthError) {
+        return { success: false, error: 'Contraseña actual incorrecta' };
+      }
     }
 
     try {
-      const { error } = await this.supabaseClient.auth.updateUser({
-        password
+      const { data, error } = await client.auth.updateUser({
+        password: newPassword,
       });
 
       if (error) {
-        return { success: false, error: error.message };
+        console.error('[Auth] Update password error:', error);
+        return { success: false, error: getErrorMessage(error) };
       }
 
+      if (data.user) {
+        // Actualizar sesión local si cambió
+        const { data: { session: newSession } } = await client.auth.getSession();
+        if (newSession) {
+          this.session = mapSupabaseSession(newSession);
+        }
+      }
+
+      console.log('🔐 [Auth] Password updated for user:', session.user.email);
       return { success: true };
     } catch (error) {
-      return { success: false, error: 'An error occurred' };
+      console.error('[Auth] Update password error:', error);
+      return { success: false, error: 'Error al actualizar la contraseña' };
     }
   }
 
@@ -330,76 +406,34 @@ class AuthService {
    * Check if user is authenticated
    */
   isAuthenticated(): boolean {
-    // Check localStorage session (for demo mode)
-    if (!this.session) {
-      this.loadSession();
-    }
     return !!this.session;
   }
 
   /**
    * Check if session is valid (not expired)
+   * Nota: Supabase maneja refresh automático, esto es solo para verificación local
    */
   isSessionValid(): boolean {
     if (!this.session) return false;
-
-    // For demo sessions, check if created within last 7 days
-    if (this.session.expiresAt) {
-      return Date.now() < this.session.expiresAt * 1000;
-    }
-
-    // Demo sessions are valid for 7 days
-    const sessionData = localStorage.getItem(SESSION_KEY);
-    if (sessionData) {
-      try {
-        const parsed = JSON.parse(sessionData);
-        if (parsed.demo && parsed.timestamp) {
-          const sevenDays = 7 * 24 * 60 * 60 * 1000;
-          return Date.now() - parsed.timestamp < sevenDays;
-        }
-      } catch {
-        // Invalid session data
-      }
-    }
-
-    return true;
+    return Date.now() < this.session.expiresAt;
   }
 
   /**
-   * Check if current session is a demo session
+   * Check if current user is admin
    */
-  isDemoSession(): boolean {
-    return !!this.session?.demo;
+  isAdmin(): boolean {
+    return this.session?.user?.role === 'admin';
   }
 
   /**
-   * Load session from storage
+   * Cleanup - desuscribirse de cambios de auth
+   * Llamar esto al destruir la aplicación
    */
-  private loadSession(): void {
-    try {
-      const sessionData = localStorage.getItem(SESSION_KEY);
-      if (sessionData) {
-        this.session = JSON.parse(sessionData);
-      }
-    } catch {
-      this.session = null;
+  cleanup(): void {
+    if (this.unsubscribeAuthState) {
+      this.unsubscribeAuthState();
+      this.unsubscribeAuthState = null;
     }
-  }
-
-  /**
-   * Save session to storage
-   */
-  private saveSession(): void {
-    if (this.session) {
-      localStorage.setItem(SESSION_KEY, JSON.stringify(this.session));
-    }
-  }
-
-  /**
-   * Clear session from storage
-   */
-  private clearSession(): void {
-    localStorage.removeItem(SESSION_KEY);
   }
 }
 

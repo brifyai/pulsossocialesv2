@@ -33,6 +33,31 @@ export type DbBenchmarkSource = 'casen' | 'subtel' | 'cep' | 'ine' | 'other';
 export type DbBenchmarkCategory = 'demographics' | 'connectivity' | 'socioeconomic' | 'digital' | 'other';
 
 // ===========================================
+// Users Table
+// ===========================================
+
+export type DbUserRole = 'user' | 'admin' | 'moderator';
+
+/**
+ * Table: users
+ * Descripción: Usuarios de la aplicación (autenticación personalizada)
+ * NOTA: No usa Supabase Auth, es una tabla propia
+ */
+export interface DbUser {
+  id: string;                    // UUID primary key
+  email: string;                 // Email único
+  password_hash: string;         // Hash de contraseña (bcrypt)
+  name: string | null;           // Nombre del usuario
+  avatar: string | null;         // URL del avatar
+  role: DbUserRole;              // Rol del usuario
+  is_active: boolean;            // Usuario activo/inactivo
+  email_verified: boolean;       // Email verificado
+  last_login_at: string | null;  // Último login
+  created_at: string;            // ISO timestamp
+  updated_at: string;            // ISO timestamp
+}
+
+// ===========================================
 // Core Tables
 // ===========================================
 
@@ -605,6 +630,7 @@ export interface SurveyFilters {
  * - benchmark_comparisons: survey_id, benchmark_id
  */
 export interface DatabaseSchema {
+  users: DbUser;
   territories: DbTerritory;
   synthetic_agents: DbSyntheticAgent;
   synthetic_agent_batches: DbSyntheticAgentBatch;
@@ -626,6 +652,11 @@ export interface DatabaseSchema {
 export interface Database {
   public: {
     Tables: {
+      users: {
+        Row: DbUser;
+        Insert: Omit<DbUser, 'id' | 'created_at' | 'updated_at' | 'last_login_at'> & { id?: string; created_at?: string; updated_at?: string; last_login_at?: string };
+        Update: Partial<Omit<DbUser, 'id' | 'created_at'>>;
+      };
       territories: {
         Row: DbTerritory;
         Insert: Omit<DbTerritory, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string };
