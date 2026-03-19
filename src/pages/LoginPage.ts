@@ -385,11 +385,11 @@ function switchMode(mode: AuthMode, container: HTMLElement): void {
 async function handleLogin(container: HTMLElement): Promise<void> {
   const emailInput = container.querySelector('#login-email') as HTMLInputElement;
   const passwordInput = container.querySelector('#login-password') as HTMLInputElement;
-  const rememberInput = container.querySelector('#remember-me') as HTMLInputElement;
+  // const rememberInput = container.querySelector('#remember-me') as HTMLInputElement; // TODO: Implementar "recordarme"
 
   const email = emailInput.value.trim();
   const password = passwordInput.value;
-  const remember = rememberInput.checked;
+  // const remember = rememberInput.checked; // TODO: Implementar "recordarme"
 
   if (!email || !password) {
     showMessage(container, 'Por favor completa todos los campos', 'error');

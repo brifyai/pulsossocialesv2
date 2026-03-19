@@ -6,11 +6,26 @@
  */
 
 import { getSupabaseClient, safeQuery } from '../client';
-import type { DbUser, DbUserRole } from '../../../types/database';
 
 // ===========================================
-// Types
+// Types (definidos localmente para evitar dependencia de tipos generados)
 // ===========================================
+
+export type DbUserRole = 'user' | 'admin' | 'moderator';
+
+export interface DbUser {
+  id: string;
+  email: string;
+  password_hash: string;
+  name: string | null;
+  avatar: string | null;
+  role: DbUserRole;
+  is_active: boolean;
+  email_verified: boolean;
+  last_login_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface User {
   id: string;
@@ -152,9 +167,10 @@ export async function createUser(input: CreateUserInput): Promise<User | null> {
   return safeQuery(async (client) => {
     const dbInput = toDbUserInput(input);
 
-    const { data, error } = await client
-      .from('users')
-      .insert(dbInput as Record<string, unknown>)
+    // Usar any para evitar problemas de tipos con Supabase
+    const { data, error } = await (client
+      .from('users') as any)
+      .insert(dbInput)
       .select('id, email, name, avatar, role, is_active, email_verified, last_login_at, created_at, updated_at')
       .single();
 
@@ -173,9 +189,10 @@ export async function createUser(input: CreateUserInput): Promise<User | null> {
  */
 export async function updateLastLogin(userId: string): Promise<boolean> {
   return safeQuery(async (client) => {
-    const { error } = await client
-      .from('users')
-      .update({ last_login_at: new Date().toISOString() } as Record<string, unknown>)
+    // Usar any para evitar problemas de tipos con Supabase
+    const { error } = await (client
+      .from('users') as any)
+      .update({ last_login_at: new Date().toISOString() })
       .eq('id', userId);
 
     if (error) {
@@ -192,7 +209,7 @@ export async function updateLastLogin(userId: string): Promise<boolean> {
  */
 export async function updateUser(userId: string, input: UpdateUserInput): Promise<User | null> {
   return safeQuery(async (client) => {
-    const updateData: Partial<DbUser> = {};
+    const updateData: Record<string, any> = {};
 
     if (input.name !== undefined) updateData.name = input.name;
     if (input.avatar !== undefined) updateData.avatar = input.avatar;
@@ -200,9 +217,10 @@ export async function updateUser(userId: string, input: UpdateUserInput): Promis
     if (input.isActive !== undefined) updateData.is_active = input.isActive;
     if (input.emailVerified !== undefined) updateData.email_verified = input.emailVerified;
 
-    const { data, error } = await client
-      .from('users')
-      .update(updateData as Record<string, unknown>)
+    // Usar any para evitar problemas de tipos con Supabase
+    const { data, error } = await (client
+      .from('users') as any)
+      .update(updateData)
       .eq('id', userId)
       .select('id, email, name, avatar, role, is_active, email_verified, last_login_at, created_at, updated_at')
       .single();
@@ -222,9 +240,10 @@ export async function updateUser(userId: string, input: UpdateUserInput): Promis
  */
 export async function updatePassword(userId: string, passwordHash: string): Promise<boolean> {
   return safeQuery(async (client) => {
-    const { error } = await client
-      .from('users')
-      .update({ password_hash: passwordHash } as Record<string, unknown>)
+    // Usar any para evitar problemas de tipos con Supabase
+    const { error } = await (client
+      .from('users') as any)
+      .update({ password_hash: passwordHash })
       .eq('id', userId);
 
     if (error) {
@@ -242,9 +261,10 @@ export async function updatePassword(userId: string, passwordHash: string): Prom
  */
 export async function deactivateUser(userId: string): Promise<boolean> {
   return safeQuery(async (client) => {
-    const { error } = await client
-      .from('users')
-      .update({ is_active: false } as Record<string, unknown>)
+    // Usar any para evitar problemas de tipos con Supabase
+    const { error } = await (client
+      .from('users') as any)
+      .update({ is_active: false })
       .eq('id', userId);
 
     if (error) {
