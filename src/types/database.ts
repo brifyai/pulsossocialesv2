@@ -654,8 +654,8 @@ export interface Database {
     Tables: {
       users: {
         Row: DbUser;
-        Insert: Omit<DbUser, 'id' | 'created_at' | 'updated_at' | 'last_login_at'> & { id?: string; created_at?: string; updated_at?: string; last_login_at?: string };
-        Update: Partial<Omit<DbUser, 'id' | 'created_at'>>;
+        Insert: Record<string, unknown>;
+        Update: Record<string, unknown>;
       };
       territories: {
         Row: DbTerritory;

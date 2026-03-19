@@ -7,7 +7,6 @@
 
 import { getSupabaseClient, safeQuery } from '../client';
 import type { DbUser, DbUserRole } from '../../../types/database';
-import type { SupabaseClient } from '../client';
 
 // ===========================================
 // Types
@@ -155,7 +154,7 @@ export async function createUser(input: CreateUserInput): Promise<User | null> {
 
     const { data, error } = await client
       .from('users')
-      .insert(dbInput)
+      .insert(dbInput as Record<string, unknown>)
       .select('id, email, name, avatar, role, is_active, email_verified, last_login_at, created_at, updated_at')
       .single();
 
@@ -176,7 +175,7 @@ export async function updateLastLogin(userId: string): Promise<boolean> {
   return safeQuery(async (client) => {
     const { error } = await client
       .from('users')
-      .update({ last_login_at: new Date().toISOString() })
+      .update({ last_login_at: new Date().toISOString() } as Record<string, unknown>)
       .eq('id', userId);
 
     if (error) {
@@ -203,7 +202,7 @@ export async function updateUser(userId: string, input: UpdateUserInput): Promis
 
     const { data, error } = await client
       .from('users')
-      .update(updateData)
+      .update(updateData as Record<string, unknown>)
       .eq('id', userId)
       .select('id, email, name, avatar, role, is_active, email_verified, last_login_at, created_at, updated_at')
       .single();
@@ -225,7 +224,7 @@ export async function updatePassword(userId: string, passwordHash: string): Prom
   return safeQuery(async (client) => {
     const { error } = await client
       .from('users')
-      .update({ password_hash: passwordHash })
+      .update({ password_hash: passwordHash } as Record<string, unknown>)
       .eq('id', userId);
 
     if (error) {
@@ -245,7 +244,7 @@ export async function deactivateUser(userId: string): Promise<boolean> {
   return safeQuery(async (client) => {
     const { error } = await client
       .from('users')
-      .update({ is_active: false })
+      .update({ is_active: false } as Record<string, unknown>)
       .eq('id', userId);
 
     if (error) {
