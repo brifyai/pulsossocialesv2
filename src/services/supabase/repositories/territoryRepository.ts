@@ -433,8 +433,9 @@ function searchLocalTerritories(query: string): DbTerritory[] {
 
 /**
  * Transform DbTerritory to Territory (simplified format)
+ * NOTE: Currently unused but kept for future use
  */
-function dbToTerritory(dbTerritory: DbTerritory): Territory {
+export function dbToTerritory(dbTerritory: DbTerritory): Territory {
   return {
     code: dbTerritory.code,
     name: dbTerritory.name,
