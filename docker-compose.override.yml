@@ -13,15 +13,22 @@
 version: "3.8"
 
 # Deshabilitar servicios de analytics y vector para EasyPanel
+# Usando entrypoint que no hace nada para evitar que los contenedores inicien
 services:
   analytics:
-    deploy:
-      replicas: 0
-    profiles:
-      - disabled
+    entrypoint: ["echo", "Analytics service disabled"]
+    command: []
+    healthcheck:
+      test: ["CMD", "echo", "ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   vector:
-    deploy:
-      replicas: 0
-    profiles:
-      - disabled
+    entrypoint: ["echo", "Vector service disabled"]
+    command: []
+    healthcheck:
+      test: ["CMD", "echo", "ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
