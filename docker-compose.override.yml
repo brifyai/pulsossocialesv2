@@ -16,6 +16,8 @@ services:
     image: alpine:latest
     container_name: pulsos-analytics
     entrypoint: ["sh", "-c", "echo 'Analytics service disabled for EasyPanel' && while true; do sleep 3600; done"]
+    # No expone puertos para evitar conflictos de puerto 4000
+    ports: []
     healthcheck:
       test: ["CMD", "sh", "-c", "echo 'Health check passed' && exit 0"]
       interval: 30s
@@ -30,6 +32,8 @@ services:
     image: alpine:latest
     container_name: pulsos-vector
     entrypoint: ["sh", "-c", "echo 'Vector service disabled for EasyPanel' && while true; do sleep 3600; done"]
+    # No expone puertos para evitar conflictos
+    ports: []
     healthcheck:
       test: ["CMD", "sh", "-c", "echo 'Health check passed' && exit 0"]
       interval: 30s
