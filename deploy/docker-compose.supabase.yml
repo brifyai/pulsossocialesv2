@@ -312,52 +312,8 @@ services:
       SUPABASE_ANON_KEY: ${ANON_KEY:-}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY:-}
       SUPABASE_DB_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}@db:5432/${POSTGRES_DB:-postgres}
-      # Add other configuration as needed
     volumes:
       - functions_data:/home/deno/functions
-    networks:
-      - pulsos-network
-
-  # ===========================================================================
-  # Analytics - Logs y métricas (opcional)
-  # ===========================================================================
-  analytics:
-    container_name: pulsos-supabase-analytics
-    image: supabase/logflare:1.4.0
-    healthcheck:
-      test: ["CMD", "echo", "ok"]
-      timeout: 5s
-      interval: 30s
-      retries: 1
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      LOGFLARE_NODE_HOST: 127.0.0.1
-      LOGFLARE_API_KEY: ${LOGFLARE_PUBLIC_ACCESS_TOKEN:-}
-      LOGFLARE_MIN_CLUSTER_SIZE: ${LOGFLARE_MIN_CLUSTER_SIZE:-1}
-      POSTGRES_BACKEND_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}@db:5432/${POSTGRES_DB:-postgres}
-      POSTGRES_BACKEND_SCHEMA: _analytics
-      LOGFLARE_FEATURE_FLAG_OVERRIDE: multibackend
-    networks:
-      - pulsos-network
-
-  # ===========================================================================
-  # Vector - Agente de logs (opcional)
-  # ===========================================================================
-  vector:
-    container_name: pulsos-supabase-vector
-    image: timberio/vector:0.28.1-alpine
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "echo", "ok"]
-      interval: 30s
-      timeout: 5s
-      retries: 1
-    volumes:
-      - ./volumes/logs/vector.yml:/etc/vector/vector.yml:ro
-    command: ["--config", "/etc/vector/vector.yml"]
     networks:
       - pulsos-network
 
