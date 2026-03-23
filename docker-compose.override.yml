@@ -1,0 +1,27 @@
+# =============================================================================
+# Docker Compose Override - EasyPanel
+# Pulsos Sociales - Deshabilitar servicios problemáticos
+# =============================================================================
+#
+# Este archivo deshabilita servicios de analytics y vector que causan
+# problemas en el despliegue de EasyPanel.
+#
+# Se carga automáticamente con: docker compose up
+#
+# =============================================================================
+
+version: "3.8"
+
+# Deshabilitar servicios de analytics y vector para EasyPanel
+services:
+  analytics:
+    deploy:
+      replicas: 0
+    profiles:
+      - disabled
+
+  vector:
+    deploy:
+      replicas: 0
+    profiles:
+      - disabled
