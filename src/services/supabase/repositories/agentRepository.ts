@@ -180,6 +180,7 @@ export async function getAgentById(agentId: string): Promise<SyntheticAgent | nu
 /**
  * Get unique regions from agents
  * Sprint 10B: Usa territories desde Supabase o fallback local
+ * NOTA: Usa region_code y region_name que son las columnas existentes en DB
  */
 export async function getUniqueRegions(): Promise<Array<{ code: string; name: string }>> {
   const client = await getSupabaseClient();
@@ -191,16 +192,20 @@ export async function getUniqueRegions(): Promise<Array<{ code: string; name: st
 
   try {
     // Obtener regiones únicas desde la tabla de territories
+    // Usar region_code y region_name que son las columnas que existen en la DB
     const { data: territories, error } = await client
       .from('territories')
-      .select('code, name')
+      .select('region_code, region_name')
       .eq('level', 'region')
-      .order('code');
+      .order('region_code');
 
     if (error) throw error;
 
     if (territories && territories.length > 0) {
-      return (territories as any[]).map((t: any) => ({ code: t.code, name: t.name }));
+      return (territories as any[]).map((t: any) => ({ 
+        code: t.region_code, 
+        name: t.region_name 
+      }));
     }
 
     // Si no hay territories, fallback a datos locales
@@ -214,6 +219,7 @@ export async function getUniqueRegions(): Promise<Array<{ code: string; name: st
 /**
  * Get unique communes from agents (optionally filtered by region)
  * Sprint 10B: Usa territories desde Supabase o fallback local
+ * NOTA: Usa comuna_code y comuna_name que son las columnas existentes en DB
  */
 export async function getUniqueCommunes(regionCode?: string): Promise<Array<{ code: string; name: string }>> {
   const client = await getSupabaseClient();
@@ -225,21 +231,25 @@ export async function getUniqueCommunes(regionCode?: string): Promise<Array<{ co
 
   try {
     // Obtener comunas desde territories
+    // Usar comuna_code y comuna_name que son las columnas que existen en la DB
     let query = client
       .from('territories')
-      .select('code, name')
+      .select('comuna_code, comuna_name')
       .eq('level', 'comuna');
 
     if (regionCode) {
       query = query.eq('region_code', regionCode);
     }
 
-    const { data: territories, error } = await query.order('name');
+    const { data: territories, error } = await query.order('comuna_name');
 
     if (error) throw error;
 
     if (territories && territories.length > 0) {
-      return (territories as any[]).map((t: any) => ({ code: t.code, name: t.name }));
+      return (territories as any[]).map((t: any) => ({ 
+        code: t.comuna_code, 
+        name: t.comuna_name 
+      }));
     }
 
     // Si no hay territories, fallback a datos locales

@@ -170,6 +170,7 @@ export async function getTerritoryByComunaCode(comunaCode: string): Promise<DbTe
 
 /**
  * Get all regions
+ * NOTA: Usa region_code y region_name que son las columnas existentes en DB
  */
 export async function getRegions(): Promise<Territory[]> {
   console.log('[🟢 TerritoryRepository] getRegions() - Intentando leer de Supabase...');
@@ -186,16 +187,21 @@ export async function getRegions(): Promise<Territory[]> {
     console.log('[🟢 TerritoryRepository] Ejecutando query a territories...');
     const { data, error } = await client
       .from('territories')
-      .select('*')
+      .select('region_code, region_name, centroid')
       .eq('level', 'region')
-      .order('code');
+      .order('region_code');
 
     if (error) {
       console.error('[🔴 TerritoryRepository] Error en query:', error);
       throw error;
     }
 
-    const regions = (data || []).map(dbToTerritory);
+    // Mapear usando region_code y region_name
+    const regions = (data || []).map((t: any) => ({
+      code: t.region_code,
+      name: t.region_name,
+      centroid: t.centroid,
+    }));
     console.log(`[🟢 TerritoryRepository] ✅ Datos de SUPABASE: ${regions.length} regiones`);
     return regions;
   } catch (error) {
@@ -209,6 +215,7 @@ export async function getRegions(): Promise<Territory[]> {
 /**
  * Get comunas by region code
  * NUEVO: Usa region_code para filtrar comunas de una región
+ * NOTA: Usa comuna_code y comuna_name que son las columnas existentes en DB
  */
 export async function getComunasByRegion(regionCode: string): Promise<DbTerritory[]> {
   const client = await getSupabaseClient();
@@ -223,7 +230,7 @@ export async function getComunasByRegion(regionCode: string): Promise<DbTerritor
       .select('*')
       .eq('level', 'comuna')
       .eq('region_code', regionCode)
-      .order('name');
+      .order('comuna_name');
 
     if (error) throw error;
     return (data as DbTerritory[]) || [];
@@ -284,6 +291,7 @@ export async function getTerritoryStats(): Promise<TerritoryStats> {
 
 /**
  * Search territories by name
+ * NOTA: Usa region_name y comuna_name para búsqueda
  */
 export async function searchTerritories(query: string): Promise<DbTerritory[]> {
   const client = await getSupabaseClient();
@@ -296,7 +304,7 @@ export async function searchTerritories(query: string): Promise<DbTerritory[]> {
     const { data, error } = await client
       .from('territories')
       .select('*')
-      .or(`name.ilike.%${query}%,region_name.ilike.%${query}%`)
+      .or(`region_name.ilike.%${query}%,comuna_name.ilike.%${query}%`)
       .limit(20);
 
     if (error) throw error;
@@ -414,8 +422,8 @@ function searchLocalTerritories(query: string): DbTerritory[] {
   const lowerQuery = query.toLowerCase();
   
   return all.data.filter(t => 
-    t.name.toLowerCase().includes(lowerQuery) ||
-    (t.region_name?.toLowerCase().includes(lowerQuery) ?? false)
+    (t.region_name?.toLowerCase().includes(lowerQuery) ?? false) ||
+    (t.name?.toLowerCase().includes(lowerQuery) ?? false)
   ).slice(0, 20);
 }
 
