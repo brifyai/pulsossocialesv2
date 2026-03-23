@@ -45,6 +45,12 @@ services:
     networks:
       - pulsos-network
 
+  # Kong - Usar puertos alternativos para evitar conflictos
+  kong:
+    ports:
+      - "${KONG_HTTP_PORT:-8021}:8000/tcp"
+      - "${KONG_HTTPS_PORT:-8461}:8443/tcp"
+
 # Asegurar que use la misma red que el docker-compose principal
 networks:
   pulsos-network:
