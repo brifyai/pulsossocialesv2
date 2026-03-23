@@ -81,8 +81,15 @@ LABEL description="Pulsos Sociales - Frontend Application"
 # Crear directorio para logs
 RUN mkdir -p /var/log/nginx
 
-# Copiar configuración de nginx
+# Configurar nginx - el log_format debe estar en el contexto http, no en server
+# Primero agregamos el log_format al nginx.conf principal
+RUN sed -i '/http {/a \
+    log_format pulsos '"'"'$remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent \"$http_referer\" \"$http_user_agent\" rt=$request_time'"'"';' /etc/nginx/nginx.conf
+
+# Copiar configuración del servidor (sin el log_format)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Eliminar la línea de log_format del archivo de configuración del servidor (ya está en nginx.conf)
+RUN sed -i '/^log_format/d' /etc/nginx/conf.d/default.conf
 
 # Copiar build desde stage builder
 COPY --from=builder /app/dist /usr/share/nginx/html
