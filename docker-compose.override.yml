@@ -16,8 +16,9 @@ services:
     image: alpine:latest
     container_name: pulsos-analytics
     entrypoint: ["sh", "-c", "echo 'Analytics service disabled for EasyPanel' && while true; do sleep 3600; done"]
-    # No expone puertos para evitar conflictos de puerto 4000
-    ports: []
+    # Usar el puerto configurado en ANALYTICS_PORT (4111) para evitar conflictos
+    ports:
+      - "${ANALYTICS_PORT:-4111}:4000"
     healthcheck:
       test: ["CMD", "sh", "-c", "echo 'Health check passed' && exit 0"]
       interval: 30s
