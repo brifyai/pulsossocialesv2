@@ -334,6 +334,28 @@ services:
     networks:
       - pulsos-network
 
+  # ===========================================================================
+  # DB Fix - Servicio temporal para corregir contraseña de supabase_admin
+  # ===========================================================================
+  db-fix:
+    image: postgres:15-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}
+    command:
+      - sh
+      - -c
+      - |
+        echo "=== Fixing supabase_admin password ==="
+        psql -h db -p 5432 -U postgres -d postgres -c "ALTER USER supabase_admin WITH PASSWORD '${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}';" \
+        && echo "SUCCESS: supabase_admin password updated" \
+        || echo "FAILED: could not update supabase_admin"
+    networks:
+      - pulsos-network
+
 # =============================================================================
 # Volúmenes persistentes
 # =============================================================================
