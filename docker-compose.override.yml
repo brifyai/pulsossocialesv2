@@ -1,34 +1,33 @@
 # =============================================================================
 # Docker Compose Override - EasyPanel
-# Pulsos Sociales - Deshabilitar servicios problemáticos
+# Pulsos Sociales - Configuración para EasyPanel
 # =============================================================================
 #
-# Este archivo deshabilita servicios de analytics y vector que causan
-# problemas en el despliegue de EasyPanel.
-#
+# Este archivo sobrescribe servicios problemáticos para el despliegue en EasyPanel.
 # Se carga automáticamente con: docker compose up
 #
 # =============================================================================
 
 version: "3.8"
 
-# Deshabilitar servicios de analytics y vector para EasyPanel
-# Usando entrypoint que no hace nada para evitar que los contenedores inicien
+# Deshabilitar servicios de analytics y vector que causan problemas en EasyPanel
 services:
   analytics:
-    entrypoint: ["echo", "Analytics service disabled"]
-    command: []
+    image: alpine:latest
+    entrypoint: ["sh", "-c", "echo 'Analytics service disabled' && sleep infinity"]
     healthcheck:
-      test: ["CMD", "echo", "ok"]
+      test: ["CMD", "sh", "-c", "exit 0"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 5s
 
   vector:
-    entrypoint: ["echo", "Vector service disabled"]
-    command: []
+    image: alpine:latest
+    entrypoint: ["sh", "-c", "echo 'Vector service disabled' && sleep infinity"]
     healthcheck:
-      test: ["CMD", "echo", "ok"]
+      test: ["CMD", "sh", "-c", "exit 0"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 5s
