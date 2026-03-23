@@ -14,20 +14,34 @@ version: "3.8"
 services:
   analytics:
     image: alpine:latest
-    entrypoint: ["sh", "-c", "echo 'Analytics service disabled' && sleep infinity"]
+    container_name: pulsos-analytics
+    entrypoint: ["sh", "-c", "echo 'Analytics service disabled for EasyPanel' && while true; do sleep 3600; done"]
     healthcheck:
-      test: ["CMD", "sh", "-c", "exit 0"]
+      test: ["CMD", "sh", "-c", "echo 'Health check passed' && exit 0"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 5s
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - pulsos-network
 
   vector:
     image: alpine:latest
-    entrypoint: ["sh", "-c", "echo 'Vector service disabled' && sleep infinity"]
+    container_name: pulsos-vector
+    entrypoint: ["sh", "-c", "echo 'Vector service disabled for EasyPanel' && while true; do sleep 3600; done"]
     healthcheck:
-      test: ["CMD", "sh", "-c", "exit 0"]
+      test: ["CMD", "sh", "-c", "echo 'Health check passed' && exit 0"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 5s
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - pulsos-network
+
+# Asegurar que use la misma red que el docker-compose principal
+networks:
+  pulsos-network:
+    driver: bridge
+    external: true
