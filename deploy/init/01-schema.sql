@@ -23,7 +23,55 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 1. TERRITORIES - Territorios administrativos de Chile
+-- 1. USERS - Usuarios de la aplicación (Auth propio, NO Supabase Auth)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    
+    -- Identificación
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    
+    -- Perfil
+    name VARCHAR(255),
+    avatar TEXT,
+    
+    -- Roles y permisos
+    role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin', 'moderator')),
+    is_active BOOLEAN DEFAULT TRUE,
+    email_verified BOOLEAN DEFAULT FALSE,
+    
+    -- Tracking
+    last_login_at TIMESTAMPTZ,
+    
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Índices para users
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active);
+
+-- Comentarios
+COMMENT ON TABLE users IS 'Usuarios de la aplicación - Auth propio sin dependencia de GoTrue';
+COMMENT ON COLUMN users.password_hash IS 'Hash SHA-256 del password con salt';
+
+-- Trigger para updated_at
+CREATE TRIGGER update_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Política RLS para users
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+-- Permitir lectura de usuarios activos (para login)
+CREATE POLICY "Allow read active users" ON users
+    FOR SELECT USING (is_active = true);
+
+-- -----------------------------------------------------------------------------
+-- 2. TERRITORIES - Territorios administrativos de Chile
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS territories (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
