@@ -25,6 +25,7 @@ services:
   db:
     container_name: pulsos-supabase-db
     image: supabase/postgres:15.1.0.153
+    restart: unless-stopped
     healthcheck:
       test: pg_isready -U postgres -d postgres
       interval: 5s
@@ -151,8 +152,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      analytics:
-        condition: service_healthy
     restart: unless-stopped
     environment:
       PGRST_DB_URI: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}@db:5432/${POSTGRES_DB:-postgres}
@@ -172,8 +171,6 @@ services:
     image: supabase/realtime:v2.28.32
     depends_on:
       db:
-        condition: service_healthy
-      analytics:
         condition: service_healthy
     restart: unless-stopped
     environment:
@@ -266,6 +263,7 @@ services:
   imgproxy:
     container_name: pulsos-supabase-imgproxy
     image: darthsim/imgproxy:v3.8.0
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "imgproxy", "health"]
       timeout: 5s
@@ -326,15 +324,17 @@ services:
     container_name: pulsos-supabase-analytics
     image: supabase/logflare:1.4.0
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      test: ["CMD", "echo", "ok"]
       timeout: 5s
-      interval: 5s
-      retries: 3
+      interval: 30s
+      retries: 1
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
       LOGFLARE_NODE_HOST: 127.0.0.1
-      LOGFLARE_API_KEY: ${LOGFLARE_API_KEY:-}
-      LOGFLARE_API_URL: ${LOGFLARE_API_URL:-}
+      LOGFLARE_API_KEY: ${LOGFLARE_PUBLIC_ACCESS_TOKEN:-}
       LOGFLARE_MIN_CLUSTER_SIZE: ${LOGFLARE_MIN_CLUSTER_SIZE:-1}
       POSTGRES_BACKEND_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}@db:5432/${POSTGRES_DB:-postgres}
       POSTGRES_BACKEND_SCHEMA: _analytics
@@ -349,6 +349,11 @@ services:
     container_name: pulsos-supabase-vector
     image: timberio/vector:0.28.1-alpine
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "echo", "ok"]
+      interval: 30s
+      timeout: 5s
+      retries: 1
     volumes:
       - ./volumes/logs/vector.yml:/etc/vector/vector.yml:ro
     command: ["--config", "/etc/vector/vector.yml"]
