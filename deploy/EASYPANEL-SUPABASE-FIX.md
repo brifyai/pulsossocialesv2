@@ -46,7 +46,61 @@ Se creó el script `fix-easypanel-supabase.sh` que automatiza todo el proceso de
 
 ## 🚀 Instrucciones para Aplicar el Fix en EasyPanel
 
-### Opción A: Usar el Script Automatizado (Recomendado)
+### Opción A: Usar la Interfaz de EasyPanel (Sin SSH - Recomendado)
+
+Si no tienes acceso SSH al servidor, puedes aplicar el fix directamente desde la interfaz web de EasyPanel:
+
+1. **Accede al servicio `supabase-auth` en EasyPanel**:
+   - Ve a tu panel de EasyPanel
+   - Busca el servicio `supabase-auth` (o `pulsos-sociales-supabase-auth`)
+   - Haz clic en "Edit" o "Settings"
+
+2. **Agrega las variables de entorno faltantes**:
+   En la sección de Environment Variables, agrega las siguientes variables (todas con valor `false`):
+
+   ```
+   GOTRUE_EXTERNAL_GOOGLE_ENABLED=false
+   GOTRUE_EXTERNAL_GITHUB_ENABLED=false
+   GOTRUE_EXTERNAL_APPLE_ENABLED=false
+   GOTRUE_EXTERNAL_AZURE_ENABLED=false
+   GOTRUE_EXTERNAL_DISCORD_ENABLED=false
+   GOTRUE_EXTERNAL_FACEBOOK_ENABLED=false
+   GOTRUE_EXTERNAL_FIGMA_ENABLED=false
+   GOTRUE_EXTERNAL_GITLAB_ENABLED=false
+   GOTRUE_EXTERNAL_KEYCLOAK_ENABLED=false
+   GOTRUE_EXTERNAL_LINKEDIN_ENABLED=false
+   GOTRUE_EXTERNAL_NOTION_ENABLED=false
+   GOTRUE_EXTERNAL_TWITCH_ENABLED=false
+   GOTRUE_EXTERNAL_TWITTER_ENABLED=false
+   GOTRUE_EXTERNAL_SLACK_ENABLED=false
+   GOTRUE_EXTERNAL_SPOTIFY_ENABLED=false
+   GOTRUE_EXTERNAL_WORKOS_ENABLED=false
+   GOTRUE_EXTERNAL_ZOOM_ENABLED=false
+   ```
+
+3. **Reinicia el servicio**:
+   - Guarda los cambios
+   - Haz clic en "Restart" o "Redeploy" para el servicio `supabase-auth`
+
+4. **Verifica que el servicio esté funcionando**:
+   - Espera 30-60 segundos
+   - Revisa los logs del servicio para confirmar que no hay errores
+
+### Opción B: Re-desplegar desde el Template (Si tienes acceso al template)
+
+1. **Actualiza el archivo `pulsos-sociales.json`** en tu repositorio (ya está actualizado en este commit)
+
+2. **En EasyPanel, ve a "Templates" > "Import Template"**
+
+3. **Sube o pega el contenido del archivo actualizado** `deploy/easypanel/pulsos-sociales.json`
+
+4. **EasyPanel detectará los cambios** y te permitirá actualizar los servicios
+
+5. **Aplica los cambios** y los servicios se reiniciarán con la nueva configuración
+
+### Opción C: Usar el Script Automatizado (Requiere SSH)
+
+Si tienes acceso SSH al servidor:
 
 1. **Conectarse al servidor de EasyPanel** vía SSH:
    ```bash
@@ -64,28 +118,6 @@ Se creó el script `fix-easypanel-supabase.sh` que automatiza todo el proceso de
    ```
 
 4. **Verificar que los servicios estén healthy**:
-   ```bash
-   docker-compose -f docker-compose.supabase.yml ps
-   ```
-
-### Opción B: Aplicar Manualmente
-
-Si prefieres aplicar los cambios manualmente:
-
-1. **Detener todos los servicios**:
-   ```bash
-   cd /path/to/pulsos-sociales/deploy
-   docker-compose -f docker-compose.supabase.yml down
-   ```
-
-2. **Actualizar el archivo `.env`** con las variables de autenticación externa (ver sección 1 arriba)
-
-3. **Reiniciar los servicios**:
-   ```bash
-   docker-compose -f docker-compose.supabase.yml up -d
-   ```
-
-4. **Esperar 30-60 segundos** y verificar el estado:
    ```bash
    docker-compose -f docker-compose.supabase.yml ps
    ```
