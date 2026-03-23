@@ -296,6 +296,7 @@ services:
       PG_META_DB_NAME: ${POSTGRES_DB:-postgres}
       PG_META_DB_USER: ${POSTGRES_USER:-postgres}
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}
+      PG_META_DB_ENCRYPTION_KEY: ${PG_META_CRYPTO_KEY:-}
     networks:
       - pulsos-network
 
