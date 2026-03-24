@@ -200,8 +200,8 @@ export async function getAgentById(agentId: string): Promise<SyntheticAgent | nu
 
 /**
  * Get unique regions from agents
- * Sprint 10B: Usa territories desde Supabase o fallback local
- * NOTA: Usa code y name (columnas migradas) para consistencia
+ * Sprint 10B: Obtiene regiones únicas donde hay agentes reales
+ * NOTA: Consulta synthetic_agents para obtener solo regiones con datos
  */
 export async function getUniqueRegions(): Promise<Array<{ code: string; name: string }>> {
   const client = await getSupabaseClient();
@@ -212,24 +212,37 @@ export async function getUniqueRegions(): Promise<Array<{ code: string; name: st
   }
 
   try {
-    // Obtener regiones únicas desde la tabla de territories
-    // Usar code y name que son las columnas migradas en la DB
-    const { data: territories, error } = await client
-      .from('territories')
-      .select('code, name')
-      .eq('level', 'region')
-      .order('code');
+    // Obtener regiones únicas desde los agentes reales
+    const { data: agents, error } = await client
+      .from('synthetic_agents')
+      .select('region_code')
+      .order('region_code');
 
     if (error) throw error;
 
-    if (territories && territories.length > 0) {
-      return (territories as any[]).map((t: any) => ({ 
-        code: t.code, 
-        name: t.name 
-      }));
+    if (agents && agents.length > 0) {
+      // Extraer regiones únicas
+      const uniqueRegions = new Map<string, string>();
+      
+      (agents as any[]).forEach((agent: any) => {
+        const code = agent.region_code;
+        if (code && !uniqueRegions.has(code)) {
+          // Obtener nombre de región desde el caché o usar el código como fallback
+          uniqueRegions.set(code, code); // Temporalmente usamos el código como nombre
+        }
+      });
+      
+      // Convertir a array y obtener nombres reales
+      const result: Array<{ code: string; name: string }> = [];
+      for (const [code, _] of uniqueRegions) {
+        const name = await getRegionName(code);
+        result.push({ code, name: name !== code ? name : `Región ${code}` });
+      }
+      
+      return result.sort((a, b) => a.code.localeCompare(b.code));
     }
 
-    // Si no hay territories, fallback a datos locales
+    // Si no hay agentes, fallback a datos locales
     return getLocalUniqueRegions();
   } catch (error) {
     console.warn('[AgentRepository] Query failed, using fallback:', error);
@@ -239,8 +252,8 @@ export async function getUniqueRegions(): Promise<Array<{ code: string; name: st
 
 /**
  * Get unique communes from agents (optionally filtered by region)
- * Sprint 10B: Usa territories desde Supabase o fallback local
- * NOTA: Usa code y name (columnas migradas) en lugar de comuna_code/comuna_name
+ * Sprint 10B: Obtiene comunas únicas donde hay agentes reales
+ * NOTA: Consulta synthetic_agents para obtener solo comunas con datos
  */
 export async function getUniqueCommunes(regionCode?: string): Promise<Array<{ code: string; name: string }>> {
   const client = await getSupabaseClient();
@@ -251,29 +264,42 @@ export async function getUniqueCommunes(regionCode?: string): Promise<Array<{ co
   }
 
   try {
-    // Obtener comunas desde territories
-    // Usar code y name que son las columnas migradas en la DB
+    // Obtener comunas únicas desde los agentes reales
     let query = client
-      .from('territories')
-      .select('code, name, region_code')
-      .eq('level', 'comuna');
+      .from('synthetic_agents')
+      .select('comuna_code, region_code')
+      .order('comuna_code');
 
     if (regionCode) {
       query = query.eq('region_code', regionCode);
     }
 
-    const { data: territories, error } = await query.order('name');
+    const { data: agents, error } = await query;
 
     if (error) throw error;
 
-    if (territories && territories.length > 0) {
-      return (territories as any[]).map((t: any) => ({ 
-        code: t.code, 
-        name: t.name 
-      }));
+    if (agents && agents.length > 0) {
+      // Extraer comunas únicas
+      const uniqueCommunes = new Map<string, string>();
+      
+      (agents as any[]).forEach((agent: any) => {
+        const code = agent.comuna_code;
+        if (code && !uniqueCommunes.has(code)) {
+          uniqueCommunes.set(code, code); // Temporalmente usamos el código como nombre
+        }
+      });
+      
+      // Convertir a array y obtener nombres reales
+      const result: Array<{ code: string; name: string }> = [];
+      for (const [code, _] of uniqueCommunes) {
+        const name = await getComunaName(code);
+        result.push({ code, name: name !== code ? name : `Comuna ${code}` });
+      }
+      
+      return result.sort((a, b) => a.name.localeCompare(b.name));
     }
 
-    // Si no hay territories, fallback a datos locales
+    // Si no hay agentes, fallback a datos locales
     return getLocalUniqueCommunes(regionCode);
   } catch (error) {
     console.warn('[AgentRepository] Query failed, using fallback:', error);

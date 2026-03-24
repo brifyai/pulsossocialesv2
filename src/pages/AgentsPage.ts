@@ -78,10 +78,8 @@ async function loadAgentsData(page: HTMLElement): Promise<void> {
     // Cargar regiones
     regions = await getUniqueRegions();
     
-    // Get communes for initial region
-    if (regions.length > 0) {
-      communes = await getUniqueCommunes(regions[0].code);
-    }
+    // Cargar todas las comunas inicialmente
+    communes = await getUniqueCommunes();
     
     isLoading = false;
     
@@ -157,7 +155,7 @@ function renderPage(): string {
         
         <div class="filter-group">
           <label for="filter-comuna">Comuna</label>
-          <select id="filter-comuna" class="filter-select" ${!currentFilters.regionCode ? 'disabled' : ''}>
+          <select id="filter-comuna" class="filter-select">
             <option value="">Todas las comunas</option>
             ${communes.map(c => `<option value="${c.code}">${c.name}</option>`).join('')}
           </select>
@@ -499,6 +497,7 @@ function attachEventListeners(page: HTMLElement): void {
         if (id === 'filter-region') {
           const regionCode = currentFilters.regionCode;
           if (regionCode) {
+            // Filtrar comunas por región seleccionada
             communes = await getUniqueCommunes(regionCode);
             const comunaSelect = page.querySelector('#filter-comuna') as HTMLSelectElement;
             if (comunaSelect) {
@@ -506,13 +505,16 @@ function attachEventListeners(page: HTMLElement): void {
                 <option value="">Todas las comunas</option>
                 ${communes.map(c => `<option value="${c.code}">${c.name}</option>`).join('')}
               `;
-              comunaSelect.disabled = false;
             }
           } else {
+            // Si no hay región seleccionada, mostrar todas las comunas
+            communes = await getUniqueCommunes();
             const comunaSelect = page.querySelector('#filter-comuna') as HTMLSelectElement;
             if (comunaSelect) {
-              comunaSelect.innerHTML = '<option value="">Todas las comunas</option>';
-              comunaSelect.disabled = true;
+              comunaSelect.innerHTML = `
+                <option value="">Todas las comunas</option>
+                ${communes.map(c => `<option value="${c.code}">${c.name}</option>`).join('')}
+              `;
             }
           }
         }
@@ -541,11 +543,14 @@ function attachEventListeners(page: HTMLElement): void {
         select.value = '';
       });
       
-      // Disable comuna select
+      // Recargar todas las comunas
+      communes = await getUniqueCommunes();
       const comunaSelect = page.querySelector('#filter-comuna') as HTMLSelectElement;
       if (comunaSelect) {
-        comunaSelect.disabled = true;
-        comunaSelect.innerHTML = '<option value="">Todas las comunas</option>';
+        comunaSelect.innerHTML = `
+          <option value="">Todas las comunas</option>
+          ${communes.map(c => `<option value="${c.code}">${c.name}</option>`).join('')}
+        `;
       }
       
       // Apply filters (all) - this will also reset pagination to page 1
