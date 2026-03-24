@@ -65,10 +65,10 @@ async function loadAgentsData(page: HTMLElement): Promise<void> {
   try {
     isLoading = true;
     
-    // Cargar agents desde Supabase con paginación inicial
+    // Cargar agents desde Supabase - todos los 25,000
     const result = await getAgents({ 
       page: 1, 
-      pageSize: 1000, // Cargar más para tener datos iniciales
+      pageSize: 30000, // Cargar todos los agentes (25,000 + margen)
       filters: {} 
     });
     
