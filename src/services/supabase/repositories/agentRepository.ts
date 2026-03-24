@@ -53,7 +53,7 @@ export interface AgentStats {
 
 /**
  * Get agents with optional filtering and pagination
- * Intenta Supabase primero, fallback a datos locales
+ * SOLO usa Supabase - no hay fallback a datos locales
  */
 export async function getAgents(
   options: AgentListOptions = {}
@@ -66,14 +66,12 @@ export async function getAgents(
     orderDirection = 'asc',
   } = options;
 
-  console.log('[🟢 AgentRepository] getAgents() - Intentando leer de Supabase...');
+  console.log('[🟢 AgentRepository] getAgents() - Leyendo de Supabase...');
   const client = await getSupabaseClient();
   
   if (!client) {
-    console.log('[🟡 AgentRepository] Supabase no disponible, usando fallback local');
-    const result = await getLocalFallbackAgents(options);
-    console.log(`[🟡 AgentRepository] Fallback local: ${result.data.length} agentes`);
-    return result;
+    console.error('[🔴 AgentRepository] Supabase no disponible');
+    throw new Error('Supabase no está disponible. No se pueden cargar los agentes.');
   }
 
   try {
@@ -133,7 +131,14 @@ export async function getAgents(
     // Transform DbSyntheticAgent to SyntheticAgent
     const agents = (data as DbSyntheticAgent[]).map(dbAgentToSyntheticAgent);
 
-    console.log(`[🟢 AgentRepository] ✅ Datos de SUPABASE: ${agents.length} agentes`);
+    console.log(`[🟢 AgentRepository] ✅ Datos de SUPABASE: ${agents.length} agentes (total: ${count})`);
+    
+    // Si Supabase devuelve 0 agentes, es porque la tabla está vacía
+    if (!agents.length || count === 0) {
+      console.error('[🔴 AgentRepository] La tabla synthetic_agents está vacía en Supabase');
+      throw new Error('No hay agentes en la base de datos. Por favor, ejecuta el seed de agentes.');
+    }
+    
     return {
       data: agents,
       total: count || 0,
@@ -142,8 +147,8 @@ export async function getAgents(
       hasMore: (count || 0) > to + 1,
     };
   } catch (error) {
-    console.warn('[🟡 AgentRepository] Error en DB, usando fallback:', error);
-    return getLocalFallbackAgents(options);
+    console.error('[🔴 AgentRepository] Error al leer de Supabase:', error);
+    throw error;
   }
 }
 
