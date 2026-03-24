@@ -21,7 +21,6 @@ import type { SyntheticAgent } from '../../../types/agent';
 // Fallback data (importado estáticamente para offline)
 import { 
   loadSyntheticAgents as loadLocalAgents,
-  filterAgents as filterLocalAgents,
   getAgentById as getLocalAgentById,
   getUniqueRegions as getLocalUniqueRegions,
   getUniqueCommunes as getLocalUniqueCommunes
@@ -329,39 +328,8 @@ export async function isSupabaseAvailable(): Promise<boolean> {
 }
 
 // ===========================================
-// Local Fallback Functions
+// Local Fallback Functions (solo para otras funciones que aún usan fallback)
 // ===========================================
-
-async function getLocalFallbackAgents(options: AgentListOptions): Promise<PaginatedResult<SyntheticAgent>> {
-  const { page = 1, pageSize = 50, filters = {} } = options;
-  
-  // Convertir AgentFilters al formato esperado por filterLocalAgents
-  const localFilters: Record<string, string | number | undefined> = {};
-  if (filters.regionCode) localFilters.regionCode = filters.regionCode;
-  if (filters.comunaCode) localFilters.comunaCode = filters.comunaCode;
-  if (filters.sex) localFilters.sex = filters.sex;
-  if (filters.ageGroup) localFilters.ageGroup = filters.ageGroup;
-  if (filters.incomeDecile) localFilters.incomeDecile = filters.incomeDecile;
-  if (filters.educationLevel) localFilters.educationLevel = filters.educationLevel;
-  if (filters.connectivityLevel) localFilters.connectivityLevel = filters.connectivityLevel;
-  if (filters.agentType) localFilters.agentType = filters.agentType;
-
-  // Obtener todos los agentes filtrados
-  const allAgents = await filterLocalAgents(localFilters as any);
-  
-  // Aplicar paginación
-  const from = (page - 1) * pageSize;
-  const to = from + pageSize;
-  const paginated = allAgents.slice(from, to);
-
-  return {
-    data: paginated,
-    total: allAgents.length,
-    page,
-    pageSize,
-    hasMore: allAgents.length > to,
-  };
-}
 
 async function getLocalAgentStats(): Promise<AgentStats> {
   const agents = await loadLocalAgents();
