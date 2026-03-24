@@ -14,6 +14,10 @@
     "moduleDetection": "force",
     "noEmit": true,
 
+    /* JSON imports */
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,
@@ -22,5 +26,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src", "data"]
 }

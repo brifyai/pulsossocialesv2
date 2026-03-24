@@ -1,16 +1,19 @@
 /**
  * Synthetic Agents Data Loader
  * 
- * Carga los agentes sintéticos desde data/processed/synthetic_agents_v1.json
+ * Carga los agentes sintéticos desde el JSON empaquetado en el bundle.
+ * Esto elimina la dependencia de archivos externos en producción.
  */
 
 import type { SyntheticAgentsData, SyntheticAgent } from '../types/agent';
+// Importar el JSON directamente para que se empaquete en el bundle
+import agentsDataJson from '../../data/processed/synthetic_agents_v1.json';
 
 let cachedData: SyntheticAgentsData | null = null;
 
 /**
- * Load synthetic agents data from JSON file
- * Uses fetch to load from the public/data directory
+ * Load synthetic agents data from bundled JSON
+ * Los datos se importan estáticamente para funcionar en producción
  */
 export async function loadSyntheticAgents(): Promise<SyntheticAgentsData> {
   if (cachedData) {
@@ -18,13 +21,8 @@ export async function loadSyntheticAgents(): Promise<SyntheticAgentsData> {
   }
 
   try {
-    const response = await fetch('/data/processed/synthetic_agents_v1.json');
-    
-    if (!response.ok) {
-      throw new Error(`Failed to load synthetic agents: ${response.status} ${response.statusText}`);
-    }
-    
-    const data: SyntheticAgentsData = await response.json();
+    // Usar los datos importados estáticamente
+    const data: SyntheticAgentsData = agentsDataJson as SyntheticAgentsData;
     cachedData = data;
     
     console.log(`📊 Loaded ${data.agents.length} synthetic agents (batch: ${data.metadata.batch_id})`);
