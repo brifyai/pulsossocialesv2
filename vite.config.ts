@@ -8,6 +8,13 @@ export default defineConfig({
   // Servir archivos estáticos desde la carpeta public/
   publicDir: 'public',
   
+  // Exponer variables de entorno al frontend
+  define: {
+    'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(process.env.VITE_SUPABASE_URL || ''),
+    'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY || ''),
+    'import.meta.env.VITE_MAPTILER_KEY': JSON.stringify(process.env.VITE_MAPTILER_KEY || ''),
+  },
+  
   server: {
     // Configurar middleware para servir archivos de datos
     fs: {
