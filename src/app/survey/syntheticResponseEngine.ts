@@ -200,7 +200,6 @@ function generateTextResponse(
   
   // Calcular sentimiento basado en atributos
   const digitalReadiness = calculateDigitalReadiness(agent);
-  const economicConcern = calculateEconomicConcern(agent);
   const serviceSatisfaction = calculatePublicServiceSatisfaction(agent);
   
   // Determinar sentimiento general
