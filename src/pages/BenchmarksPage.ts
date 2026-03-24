@@ -47,7 +47,7 @@ function renderPage(): string {
     <div class="benchmarks-container">
       <header class="benchmarks-header">
         <h1 class="benchmarks-title">
-          <span class="icon">📊</span>
+          <span class="icon material-symbols-outlined">bar_chart</span>
           Benchmarks
         </h1>
         <p class="benchmarks-subtitle">
@@ -73,7 +73,7 @@ function renderPage(): string {
             </div>
           </div>
           <button id="compare-btn" class="compare-button" disabled>
-            <span class="icon">🔍</span>
+            <span class="icon material-symbols-outlined">search</span>
             Comparar
           </button>
         </section>
@@ -107,7 +107,7 @@ function renderLoadingState(): string {
 function renderErrorState(message: string): string {
   return `
     <div class="benchmarks-error-state">
-      <span class="error-icon">⚠️</span>
+      <span class="error-icon material-symbols-outlined">warning</span>
       <h3>Error al cargar benchmarks</h3>
       <p>${message}</p>
       <button class="btn btn-secondary" id="retry-benchmarks-btn">Reintentar</button>
@@ -237,7 +237,7 @@ async function runComparison(page: HTMLElement): Promise<void> {
 function renderComparisonError(title: string, message: string): string {
   return `
     <div class="comparison-error">
-      <span class="error-icon">⚠️</span>
+      <span class="error-icon material-symbols-outlined">warning</span>
       <h3>${title}</h3>
       <p>${message}</p>
       <button class="btn btn-secondary" onclick="this.closest('.comparison-results').style.display='none'">
@@ -260,11 +260,11 @@ function renderComparisonResults(container: HTMLElement, comparison: SurveyBench
             ${comparison.surveyName}
           </span>
           <span class="meta-item">
-            <span class="icon">📊</span>
+            <span class="icon material-symbols-outlined">bar_chart</span>
             ${comparison.benchmarkName}
           </span>
           <span class="meta-item">
-            <span class="icon">🕐</span>
+            <span class="icon material-symbols-outlined">schedule</span>
             ${new Date(comparison.comparedAt).toLocaleString()}
           </span>
         </div>
@@ -344,7 +344,7 @@ function renderIndicatorComparison(comp: IndicatorComparison): string {
 function renderEmptyState(): string {
   return `
     <div class="benchmarks-empty-state">
-      <span class="empty-icon">?</span>
+      <span class="empty-icon material-symbols-outlined">help</span>
       <h3>No hay benchmarks disponibles</h3>
       <p>Los benchmarks de referencia se cargan desde archivos de configuración.</p>
     </div>
@@ -398,11 +398,11 @@ function renderBenchmarkCard(benchmark: Benchmark): string {
       <p class="benchmark-description">${benchmark.source.description || ''}</p>
       <div class="benchmark-meta">
         <span class="meta-tag">
-          <span class="icon">📍</span>
+          <span class="icon material-symbols-outlined">location_on</span>
           ${benchmark.coverage.geographic.join(', ')}
         </span>
         <span class="meta-tag">
-          <span class="icon">📈</span>
+          <span class="icon material-symbols-outlined">trending_up</span>
           ${benchmark.indicators.length} indicadores
         </span>
       </div>
@@ -418,5 +418,5 @@ export function cleanupBenchmarksPage(): void {
   comparisonHistory.length = 0;
   selectedBenchmarkId = null;
   selectedSurveyId = null;
-  console.log('🧹 Benchmarks page cleaned up');
+  console.log('[BenchmarksPage] Cleaned up');
 }
