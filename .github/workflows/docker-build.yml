@@ -68,3 +68,12 @@ jobs:
       run: |
         echo "Image built and pushed successfully!"
         echo "Tags: ${{ steps.meta.outputs.tags }}"
+
+    - name: Trigger EasyPanel Deploy
+      if: github.ref == 'refs/heads/main'
+      run: |
+        echo "Triggering EasyPanel deploy..."
+        curl -X POST "${{ secrets.EASYPANEL_WEBHOOK_URL }}" \
+          -H "Content-Type: application/json" \
+          -d '{"image": "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main"}' \
+          || echo "EasyPanel webhook failed - manual deploy may be needed"
