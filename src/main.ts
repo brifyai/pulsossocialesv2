@@ -56,7 +56,7 @@ let isAppShellCreated = false;
  * Initialize the application
  */
 async function initApp(): Promise<void> {
-  console.log('🚀 PULSOS SOCIALES - Initializing... (Build with debug)');
+  console.log('🚀 PULSOS SOCIALES - Initializing... (Build with secrets)');
 
   // Initialize auth service
   await authService.initialize();
