@@ -34,6 +34,9 @@ import {
   getSurveyResultsBySurveyId,
   getSurveyResultsByRunId,
   isSurveyResultPersistenceAvailable,
+  // Sprint 11D - Survey Responses
+  saveSurveyResponses,
+  isSurveyResponsePersistenceAvailable,
 } from '../../services/supabase/repositories/surveyRepository';
 
 // ===========================================
@@ -275,6 +278,33 @@ export async function runSurvey(surveyId: string): Promise<SurveyRun> {
       }
     } catch (error) {
       console.warn('[SurveyService] Failed to persist run to DB:', error);
+    }
+  }
+  
+  // 5.5 Persistir respuestas individuales (Sprint 11D)
+  const isResponsesDbAvailable = await isSurveyResponsePersistenceAvailable();
+  if (isResponsesDbAvailable && responses.length > 0) {
+    try {
+      // Crear snapshots de agentes para trazabilidad
+      const agentSnapshots = new Map<string, Record<string, unknown>>();
+      for (const agent of selectedAgents) {
+        agentSnapshots.set(agent.agent_id, {
+          age: agent.age,
+          sex: agent.sex,
+          education_level: agent.education_level,
+          income_decile: agent.income_decile,
+          connectivity_level: agent.connectivity_level,
+          region_code: agent.region_code,
+          comuna_code: agent.comuna_code,
+        });
+      }
+      
+      const saved = await saveSurveyResponses(localRun.id, survey.id, responses, agentSnapshots);
+      if (saved) {
+        console.log(`  💾 Survey responses persisted to DB: ${responses.length} responses`);
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Failed to persist responses to DB:', error);
     }
   }
   

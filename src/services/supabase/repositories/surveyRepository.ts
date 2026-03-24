@@ -508,16 +508,179 @@ export async function getSurveyRuns(_surveyId: string): Promise<SurveyRun[]> {
 }
 
 // ===========================================
-// Survey Responses - STUB (no implementado en Sprint 11A)
+// Survey Responses - Persistencia Sprint 11D
 // ===========================================
 
+import type { DbSurveyResponse } from '../../../types/database';
+
+/**
+ * Verifica si la persistencia de respuestas está disponible
+ */
+export async function isSurveyResponsePersistenceAvailable(): Promise<boolean> {
+  const client = await getSupabaseClient();
+  if (!client) return false;
+  
+  try {
+    const { error } = await client
+      .from('survey_responses')
+      .select('id', { count: 'exact', head: true });
+    
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Convierte AgentResponse (app) a DbSurveyResponse (DB)
+ */
+function toDbSurveyResponse(
+  response: AgentResponse,
+  runId: string,
+  surveyId: string,
+  agentSnapshot: Record<string, unknown>
+): Omit<DbSurveyResponse, 'id' | 'created_at'> {
+  return {
+    survey_id: surveyId,
+    run_id: runId,
+    agent_id: response.agentId,
+    question_id: response.questionId,
+    question_type: 'single_choice', // Se determina dinámicamente
+    value: response.value,
+    confidence: response.confidence,
+    reasoning: response.reasoning,
+    heuristics_applied: [], // Se puede extender en el futuro
+    agent_snapshot: agentSnapshot,
+  };
+}
+
+/**
+ * Guarda respuestas individuales de una encuesta en Supabase
+ * Usa batch insert para mejor performance
+ * 
+ * @returns true si se guardaron exitosamente, false si falló
+ */
 export async function saveSurveyResponses(
-  _runId: string,
-  _surveyId: string,
-  _responses: AgentResponse[]
+  runId: string,
+  surveyId: string,
+  responses: AgentResponse[],
+  agentSnapshots?: Map<string, Record<string, unknown>>
 ): Promise<boolean> {
-  console.log('📋 [SurveyRepository] Responses not implemented in Sprint 11A');
-  return false;
+  if (responses.length === 0) {
+    console.log('📋 [SurveyRepository] No responses to save');
+    return true;
+  }
+  
+  return safeQuery(async (client) => {
+    // Preparar datos para insert batch
+    const dbResponses = responses.map(response => {
+      const snapshot = agentSnapshots?.get(response.agentId) || {};
+      return toDbSurveyResponse(response, runId, surveyId, snapshot);
+    });
+    
+    // Insert en batch (máximo 1000 por batch)
+    const batchSize = 1000;
+    let totalInserted = 0;
+    
+    for (let i = 0; i < dbResponses.length; i += batchSize) {
+      const batch = dbResponses.slice(i, i + batchSize);
+      
+      const { data, error } = await client
+        .from('survey_responses')
+        .insert(batch as any)
+        .select();
+      
+      if (error) {
+        console.error(`[SurveyRepository] Error saving responses batch ${i}:`, error);
+        return false;
+      }
+      
+      totalInserted += data?.length || 0;
+    }
+    
+    console.log(`💾 [SurveyRepository] Saved ${totalInserted} responses to DB for run: ${runId}`);
+    return true;
+  }, false);
+}
+
+/**
+ * Obtiene respuestas individuales de una corrida
+ * Útil para análisis detallado o debugging
+ */
+export async function getSurveyResponsesByRunId(
+  runId: string,
+  options?: { limit?: number; offset?: number }
+): Promise<AgentResponse[]> {
+  return safeQuery(async (client) => {
+    let query = client
+      .from('survey_responses')
+      .select('*')
+      .eq('run_id', runId)
+      .order('created_at', { ascending: true });
+    
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    if (options?.offset) {
+      query = query.range(options.offset, options.offset + (options.limit || 1000) - 1);
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) {
+      console.error('[SurveyRepository] Error fetching responses:', error);
+      return [];
+    }
+    
+    return (data || []).map((db: DbSurveyResponse) => ({
+      agentId: db.agent_id,
+      questionId: db.question_id,
+      value: db.value as string | number | string[] | null,
+      confidence: db.confidence,
+      reasoning: db.reasoning,
+    }));
+  }, []);
+}
+
+/**
+ * Obtiene el conteo de respuestas por corrida
+ * Útil para paginación
+ */
+export async function getSurveyResponsesCount(runId: string): Promise<number> {
+  return safeQuery(async (client) => {
+    const { count, error } = await client
+      .from('survey_responses')
+      .select('*', { count: 'exact', head: true })
+      .eq('run_id', runId);
+    
+    if (error) {
+      console.error('[SurveyRepository] Error counting responses:', error);
+      return 0;
+    }
+    
+    return count || 0;
+  }, 0);
+}
+
+/**
+ * Elimina respuestas de una corrida
+ * Útil para re-ejecución o limpieza
+ */
+export async function deleteSurveyResponsesByRunId(runId: string): Promise<boolean> {
+  return safeQuery(async (client) => {
+    const { error } = await client
+      .from('survey_responses')
+      .delete()
+      .eq('run_id', runId);
+    
+    if (error) {
+      console.error('[SurveyRepository] Error deleting responses:', error);
+      return false;
+    }
+    
+    console.log('🗑️ [SurveyRepository] Deleted responses for run:', runId);
+    return true;
+  }, false);
 }
 
 // ===========================================

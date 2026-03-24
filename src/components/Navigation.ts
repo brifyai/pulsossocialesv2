@@ -18,7 +18,7 @@ const navItems: NavItem[] = [
   { route: 'map', label: 'Mapa', icon: 'map' },
   { route: 'territory', label: 'Territorio', icon: 'public' },
   { route: 'agents', label: 'Agentes', icon: 'groups' },
-  { route: 'surveys', label: 'Encuestas', icon: 'poll' },
+  { route: 'surveys', label: 'Encuestas', icon: 'assignment' },
   { route: 'benchmarks', label: 'Benchmarks', icon: 'insights' },
   { route: 'methodology', label: 'Metodología', icon: 'menu_book' },
 ];
