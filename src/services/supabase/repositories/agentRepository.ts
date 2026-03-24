@@ -147,7 +147,7 @@ export async function getAgents(
       if (error) throw error;
       
       if (data) {
-        const agents = (data as DbSyntheticAgent[]).map(dbAgentToSyntheticAgent);
+        const agents = await Promise.all((data as DbSyntheticAgent[]).map(dbAgentToSyntheticAgent));
         allAgents.push(...agents);
         console.log(`[🟢 AgentRepository] Cargados ${agents.length} agentes (total acumulado: ${allAgents.length})`);
       }
@@ -375,23 +375,108 @@ async function getLocalAgentStats(): Promise<AgentStats> {
 }
 
 // ===========================================
+// Territory Cache
+// ===========================================
+
+// Caché en memoria para nombres de territorios
+let territoryNamesCache: Map<string, { region_name: string; comuna_name: string }> | null = null;
+
+/**
+ * Carga los nombres de territorios desde Supabase
+ * Usa un cache para evitar múltiples queries
+ */
+async function loadTerritoryNamesCache(): Promise<Map<string, { region_name: string; comuna_name: string }>> {
+  if (territoryNamesCache) {
+    return territoryNamesCache;
+  }
+
+  const client = await getSupabaseClient();
+  if (!client) {
+    console.warn('[🟡 AgentRepository] No se puede cargar caché de territorios, Supabase no disponible');
+    return new Map();
+  }
+
+  try {
+    console.log('[🟢 AgentRepository] Cargando caché de nombres de territorios...');
+    const { data, error } = await client
+      .from('territories')
+      .select('code, region_code, region_name, comuna_name, level');
+
+    if (error) throw error;
+
+    territoryNamesCache = new Map();
+    
+    (data || []).forEach((territory: any) => {
+      // Para regiones: usar code como region_code
+      if (territory.level === 'region' && territory.region_code) {
+        territoryNamesCache!.set(territory.region_code, {
+          region_name: territory.region_name || territory.name || '',
+          comuna_name: ''
+        });
+      }
+      // Para comunas: usar comuna_code si existe, o code
+      if (territory.level === 'comuna') {
+        const comunaCode = territory.code || territory.comuna_code;
+        if (comunaCode) {
+          territoryNamesCache!.set(comunaCode, {
+            region_name: territory.region_name || '',
+            comuna_name: territory.comuna_name || territory.name || ''
+          });
+        }
+      }
+    });
+
+    console.log(`[🟢 AgentRepository] ✅ Caché cargada: ${territoryNamesCache.size} territorios`);
+    return territoryNamesCache;
+  } catch (error) {
+    console.error('[🔴 AgentRepository] Error cargando caché de territorios:', error);
+    return new Map();
+  }
+}
+
+/**
+ * Obtiene el nombre de una región desde el caché
+ */
+async function getRegionName(regionCode: string): Promise<string> {
+  const cache = await loadTerritoryNamesCache();
+  const territory = cache.get(regionCode);
+  return territory?.region_name || regionCode; // Fallback al código si no se encuentra
+}
+
+/**
+ * Obtiene el nombre de una comuna desde el caché
+ */
+async function getComunaName(comunaCode: string): Promise<string> {
+  const cache = await loadTerritoryNamesCache();
+  const territory = cache.get(comunaCode);
+  return territory?.comuna_name || comunaCode; // Fallback al código si no se encuentra
+}
+
+// ===========================================
 // Transformers
 // ===========================================
 
 /**
  * Transform DbSyntheticAgent to SyntheticAgent
  * Mapea los campos de la DB al formato usado por el frontend
+ * AHORA obtiene los nombres de territorios desde Supabase
  */
-function dbAgentToSyntheticAgent(dbAgent: DbSyntheticAgent): SyntheticAgent {
+async function dbAgentToSyntheticAgent(dbAgent: DbSyntheticAgent): Promise<SyntheticAgent> {
+  // Obtener nombres de territorios en paralelo
+  const [region_name, comuna_name] = await Promise.all([
+    getRegionName(dbAgent.region_code),
+    getComunaName(dbAgent.comuna_code)
+  ]);
+
   return {
     agent_id: dbAgent.agent_id,
     synthetic_batch_id: dbAgent.batch_id,
     source_version: dbAgent.version,
     country_code: dbAgent.country_code,
     region_code: dbAgent.region_code,
-    region_name: '', // Se obtiene de territories si es necesario
+    region_name,
     comuna_code: dbAgent.comuna_code,
-    comuna_name: '', // Se obtiene de territories si es necesario
+    comuna_name,
     urbanicity: dbAgent.urbanicity,
     sex: dbAgent.sex,
     age: dbAgent.age,
