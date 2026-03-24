@@ -173,7 +173,7 @@ class DataLoader {
 
   private async loadComunaCoordinates(): Promise<void> {
     // Cargar coordenadas desde archivo JSON con 340 comunas
-    const coordinatesPath = path.join(process.cwd(), 'data', 'comuna_coordinates.json');
+    const coordinatesPath = path.join(CONFIG.dataDir, 'comuna_coordinates.json');
     
     if (fs.existsSync(coordinatesPath)) {
       const coordinatesData = JSON.parse(fs.readFileSync(coordinatesPath, 'utf-8'));

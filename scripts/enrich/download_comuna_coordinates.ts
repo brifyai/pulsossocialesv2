@@ -489,7 +489,6 @@ const COMUNA_COORDINATES: Record<string, { lat: number; lng: number }> = {
   '05502': { lat: -32.7833, lng: -71.1667 }, // Calera
   '05503': { lat: -32.8000, lng: -71.2333 }, // Hijuelas
   '05504': { lat: -32.6833, lng: -71.2333 }, // La Cruz
-  '05504': { lat: -32.6833, lng: -71.2333 }, // La Cruz
   '05505': { lat: -32.7333, lng: -71.2000 }, // Nogales
   '05506': { lat: -33.0000, lng: -71.5167 }, // Olmué
   '05601': { lat: -33.5833, lng: -71.6167 }, // San Antonio
@@ -680,6 +679,27 @@ const COMUNA_COORDINATES: Record<string, { lat: number; lng: number }> = {
   '08212': { lat: -37.3000, lng: -71.9500 }, // Tucapel
   '08213': { lat: -37.0833, lng: -72.5667 }, // Yumbel
   '08214': { lat: -37.5500, lng: -71.7000 }, // Alto Biobío
+  // Comunas 083XX - Provincia de Ñuble (históricamente parte del Biobío)
+  '08301': { lat: -36.6000, lng: -72.1000 }, // Chillán
+  '08302': { lat: -36.2833, lng: -72.2000 }, // Bulnes
+  '08303': { lat: -36.5333, lng: -72.7833 }, // Cobquecura
+  '08304': { lat: -36.4833, lng: -72.7000 }, // Coelemu
+  '08305': { lat: -36.6167, lng: -71.8333 }, // Coihueco
+  '08306': { lat: -36.6333, lng: -72.1333 }, // Chillán Viejo
+  '08307': { lat: -36.8333, lng: -72.0333 }, // El Carmen
+  '08308': { lat: -36.4000, lng: -72.6500 }, // Ninhue
+  '08309': { lat: -36.3000, lng: -71.9000 }, // Ñiquén
+  '08310': { lat: -36.3833, lng: -72.1000 }, // Pemuco
+  '08311': { lat: -36.7000, lng: -72.4000 }, // Pinto
+  '08312': { lat: -36.4333, lng: -72.4333 }, // Portezuelo
+  '08313': { lat: -36.7333, lng: -72.4667 }, // Quillón
+  '08314': { lat: -36.2833, lng: -72.5500 }, // Quirihue
+  '08315': { lat: -36.5500, lng: -72.3167 }, // Ránquil
+  '08316': { lat: -36.4667, lng: -71.5500 }, // San Fabián
+  '08317': { lat: -36.8000, lng: -72.0333 }, // San Ignacio
+  '08318': { lat: -36.4000, lng: -72.2167 }, // San Nicolás
+  '08319': { lat: -36.6500, lng: -72.6667 }, // Treguaco
+  '08320': { lat: -37.1167, lng: -72.0333 }, // Yungay
   
   // La Araucanía
   '09101': { lat: -38.7333, lng: -72.6667 }, // Temuco

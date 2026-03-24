@@ -73,7 +73,7 @@ function renderContent(container: HTMLElement): void {
   tabs.className = 'surveys-tabs';
   tabs.innerHTML = `
     <button class="tab-btn ${currentView === 'list' ? 'active' : ''}" data-view="list">
-      <span class="tab-icon">📋</span> Mis Encuestas
+      <span class="tab-icon material-symbols-outlined">assignment</span> Mis Encuestas
     </button>
     <button class="tab-btn ${currentView === 'create' ? 'active' : ''}" data-view="create">
       <span class="tab-icon">➕</span> Crear Nueva
@@ -124,7 +124,7 @@ async function renderSurveyList(container: HTMLElement): Promise<void> {
     
     if (surveys.length === 0) {
       container.appendChild(createEmptyStateElement(
-        '📋',
+        '<span class="material-symbols-outlined">assignment</span>',
         'No hay encuestas',
         'Crea tu primera encuesta para comenzar a analizar datos sintéticos',
         'Crear Encuesta',
@@ -178,7 +178,7 @@ async function renderSurveyList(container: HTMLElement): Promise<void> {
         <p class="survey-description">${escapeHtml(survey.description || 'Sin descripción')}</p>
         
         <div class="survey-meta">
-          <span class="meta-item" title="Preguntas">📋 ${survey.questions.length} preguntas</span>
+          <span class="meta-item" title="Preguntas"><span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">assignment</span> ${survey.questions.length} preguntas</span>
           <span class="meta-item" title="Tamaño de muestra">👥 Muestra: ${survey.sampleSize}</span>
           <span class="meta-item" title="Segmento">🎯 ${formatSegment(survey.segment)}</span>
           ${hasRuns ? `<span class="meta-item" title="Ejecuciones">🔄 ${runs.length} ejecución${runs.length > 1 ? 'es' : ''}</span>` : ''}

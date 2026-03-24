@@ -1715,6 +1715,146 @@
     "region": "Biobío"
   },
   {
+    "code": "08301",
+    "name": "Chillán",
+    "lat": -36.6,
+    "lng": -72.1,
+    "region": "Biobío"
+  },
+  {
+    "code": "08302",
+    "name": "Bulnes",
+    "lat": -36.2833,
+    "lng": -72.2,
+    "region": "Biobío"
+  },
+  {
+    "code": "08303",
+    "name": "Cobquecura",
+    "lat": -36.5333,
+    "lng": -72.7833,
+    "region": "Biobío"
+  },
+  {
+    "code": "08304",
+    "name": "Coelemu",
+    "lat": -36.4833,
+    "lng": -72.7,
+    "region": "Biobío"
+  },
+  {
+    "code": "08305",
+    "name": "Coihueco",
+    "lat": -36.6167,
+    "lng": -71.8333,
+    "region": "Biobío"
+  },
+  {
+    "code": "08306",
+    "name": "Chillán Viejo",
+    "lat": -36.6333,
+    "lng": -72.1333,
+    "region": "Biobío"
+  },
+  {
+    "code": "08307",
+    "name": "El Carmen",
+    "lat": -36.8333,
+    "lng": -72.0333,
+    "region": "Biobío"
+  },
+  {
+    "code": "08308",
+    "name": "Ninhue",
+    "lat": -36.4,
+    "lng": -72.65,
+    "region": "Biobío"
+  },
+  {
+    "code": "08309",
+    "name": "Ñiquén",
+    "lat": -36.3,
+    "lng": -71.9,
+    "region": "Biobío"
+  },
+  {
+    "code": "08310",
+    "name": "Pemuco",
+    "lat": -36.3833,
+    "lng": -72.1,
+    "region": "Biobío"
+  },
+  {
+    "code": "08311",
+    "name": "Pinto",
+    "lat": -36.7,
+    "lng": -72.4,
+    "region": "Biobío"
+  },
+  {
+    "code": "08312",
+    "name": "Portezuelo",
+    "lat": -36.4333,
+    "lng": -72.4333,
+    "region": "Biobío"
+  },
+  {
+    "code": "08313",
+    "name": "Quillón",
+    "lat": -36.7333,
+    "lng": -72.4667,
+    "region": "Biobío"
+  },
+  {
+    "code": "08314",
+    "name": "Quirihue",
+    "lat": -36.2833,
+    "lng": -72.55,
+    "region": "Biobío"
+  },
+  {
+    "code": "08315",
+    "name": "Ránquil",
+    "lat": -36.55,
+    "lng": -72.3167,
+    "region": "Biobío"
+  },
+  {
+    "code": "08316",
+    "name": "San Fabián",
+    "lat": -36.4667,
+    "lng": -71.55,
+    "region": "Biobío"
+  },
+  {
+    "code": "08317",
+    "name": "San Ignacio",
+    "lat": -36.8,
+    "lng": -72.0333,
+    "region": "Biobío"
+  },
+  {
+    "code": "08318",
+    "name": "San Nicolás",
+    "lat": -36.4,
+    "lng": -72.2167,
+    "region": "Biobío"
+  },
+  {
+    "code": "08319",
+    "name": "Treguaco",
+    "lat": -36.65,
+    "lng": -72.6667,
+    "region": "Biobío"
+  },
+  {
+    "code": "08320",
+    "name": "Yungay",
+    "lat": -37.1167,
+    "lng": -72.0333,
+    "region": "Biobío"
+  },
+  {
     "code": "09101",
     "name": "Temuco",
     "lat": -38.7333,

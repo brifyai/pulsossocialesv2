@@ -43,7 +43,7 @@ export function createRegionDetailPage(): HTMLElement {
             <li>🏙️ Comunas y centros urbanos</li>
             <li>📈 Indicadores económicos</li>
             <li>🗺️ Mapa interactivo de la región</li>
-            <li>📋 Datos de encuestas y censos</li>
+            <li><span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">assignment</span> Datos de encuestas y censos</li>
           </ul>
           
           ${region ? `

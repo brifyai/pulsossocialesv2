@@ -256,7 +256,7 @@ function renderComparisonResults(container: HTMLElement, comparison: SurveyBench
         <h3 class="comparison-title">Resultados de Comparación</h3>
         <div class="comparison-meta">
           <span class="meta-item">
-            <span class="icon">📋</span>
+            <span class="icon material-symbols-outlined">assignment</span>
             ${comparison.surveyName}
           </span>
           <span class="meta-item">
