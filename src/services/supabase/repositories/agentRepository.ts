@@ -201,7 +201,7 @@ export async function getAgentById(agentId: string): Promise<SyntheticAgent | nu
 /**
  * Get unique regions from agents
  * Sprint 10B: Usa territories desde Supabase o fallback local
- * NOTA: Usa region_code y region_name que son las columnas existentes en DB
+ * NOTA: Usa code y name (columnas migradas) para consistencia
  */
 export async function getUniqueRegions(): Promise<Array<{ code: string; name: string }>> {
   const client = await getSupabaseClient();
@@ -213,19 +213,19 @@ export async function getUniqueRegions(): Promise<Array<{ code: string; name: st
 
   try {
     // Obtener regiones únicas desde la tabla de territories
-    // Usar region_code y region_name que son las columnas que existen en la DB
+    // Usar code y name que son las columnas migradas en la DB
     const { data: territories, error } = await client
       .from('territories')
-      .select('region_code, region_name')
+      .select('code, name')
       .eq('level', 'region')
-      .order('region_code');
+      .order('code');
 
     if (error) throw error;
 
     if (territories && territories.length > 0) {
       return (territories as any[]).map((t: any) => ({ 
-        code: t.region_code, 
-        name: t.region_name 
+        code: t.code, 
+        name: t.name 
       }));
     }
 
@@ -240,7 +240,7 @@ export async function getUniqueRegions(): Promise<Array<{ code: string; name: st
 /**
  * Get unique communes from agents (optionally filtered by region)
  * Sprint 10B: Usa territories desde Supabase o fallback local
- * NOTA: Usa comuna_code y comuna_name que son las columnas existentes en DB
+ * NOTA: Usa code y name (columnas migradas) en lugar de comuna_code/comuna_name
  */
 export async function getUniqueCommunes(regionCode?: string): Promise<Array<{ code: string; name: string }>> {
   const client = await getSupabaseClient();
@@ -252,24 +252,24 @@ export async function getUniqueCommunes(regionCode?: string): Promise<Array<{ co
 
   try {
     // Obtener comunas desde territories
-    // Usar comuna_code y comuna_name que son las columnas que existen en la DB
+    // Usar code y name que son las columnas migradas en la DB
     let query = client
       .from('territories')
-      .select('comuna_code, comuna_name')
+      .select('code, name, region_code')
       .eq('level', 'comuna');
 
     if (regionCode) {
       query = query.eq('region_code', regionCode);
     }
 
-    const { data: territories, error } = await query.order('comuna_name');
+    const { data: territories, error } = await query.order('name');
 
     if (error) throw error;
 
     if (territories && territories.length > 0) {
       return (territories as any[]).map((t: any) => ({ 
-        code: t.comuna_code, 
-        name: t.comuna_name 
+        code: t.code, 
+        name: t.name 
       }));
     }
 
@@ -384,6 +384,7 @@ let territoryNamesCache: Map<string, { region_name: string; comuna_name: string 
 /**
  * Carga los nombres de territorios desde Supabase
  * Usa un cache para evitar múltiples queries
+ * NOTA: Usa code y name (columnas migradas) para comunas
  */
 async function loadTerritoryNamesCache(): Promise<Map<string, { region_name: string; comuna_name: string }>> {
   if (territoryNamesCache) {
@@ -400,7 +401,7 @@ async function loadTerritoryNamesCache(): Promise<Map<string, { region_name: str
     console.log('[🟢 AgentRepository] Cargando caché de nombres de territorios...');
     const { data, error } = await client
       .from('territories')
-      .select('code, region_code, region_name, comuna_name, level');
+      .select('code, name, region_code, region_name, level');
 
     if (error) throw error;
 
@@ -408,21 +409,18 @@ async function loadTerritoryNamesCache(): Promise<Map<string, { region_name: str
     
     (data || []).forEach((territory: any) => {
       // Para regiones: usar code como region_code
-      if (territory.level === 'region' && territory.region_code) {
-        territoryNamesCache!.set(territory.region_code, {
-          region_name: territory.region_name || territory.name || '',
+      if (territory.level === 'region' && territory.code) {
+        territoryNamesCache!.set(territory.code, {
+          region_name: territory.name || territory.region_name || '',
           comuna_name: ''
         });
       }
-      // Para comunas: usar comuna_code si existe, o code
-      if (territory.level === 'comuna') {
-        const comunaCode = territory.code || territory.comuna_code;
-        if (comunaCode) {
-          territoryNamesCache!.set(comunaCode, {
-            region_name: territory.region_name || '',
-            comuna_name: territory.comuna_name || territory.name || ''
-          });
-        }
+      // Para comunas: usar code (columna migrada)
+      if (territory.level === 'comuna' && territory.code) {
+        territoryNamesCache!.set(territory.code, {
+          region_name: territory.region_name || '',
+          comuna_name: territory.name || ''
+        });
       }
     });
 
