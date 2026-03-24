@@ -822,3 +822,108 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ===========================================
+   Table Loading States - Sprint 19A
+   Estados de carga para paginación server-side
+   =========================================== */
+
+/* Loading row in table */
+.table-loading-row {
+  background: transparent !important;
+}
+
+.table-loading-row:hover {
+  background: transparent !important;
+}
+
+.table-loading-cell {
+  padding: 40px 20px !important;
+  text-align: center;
+  color: var(--color-text-secondary);
+  border-bottom: none !important;
+}
+
+.table-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent-cyan);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 12px;
+}
+
+.table-loading-cell span {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+/* Error cell in table */
+.table-error-cell {
+  padding: 30px 20px !important;
+  text-align: center;
+  color: #ff6b6b;
+  border-bottom: none !important;
+}
+
+.btn-retry {
+  margin-left: 8px;
+  padding: 6px 12px;
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 4px;
+  color: #ff6b6b;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-retry:hover {
+  background: rgba(255, 107, 107, 0.2);
+  border-color: rgba(255, 107, 107, 0.5);
+}
+
+/* Pagination loading indicator */
+.pagination-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.8rem;
+  color: var(--color-accent-cyan);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pagination-loading::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent-cyan);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Disabled state for pagination during loading */
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  position: relative;
+}
+
+.pagination-select:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Smooth transitions for table content */
+#agents-table-body {
+  transition: opacity 0.2s ease;
+}
+
+#agents-table-body.loading {
+  opacity: 0.5;
+}

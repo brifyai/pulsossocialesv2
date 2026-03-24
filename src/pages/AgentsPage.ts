@@ -22,10 +22,12 @@ let selectedAgent: SyntheticAgent | null = null;
 let regions: Array<{ code: string; name: string }> = [];
 let communes: Array<{ code: string; name: string }> = [];
 let isLoading = true;
+let isLoadingPage = false;
 
-// Pagination state
+// Pagination state - Server-side pagination
 let currentPage = 1;
 let itemsPerPage = 50;
+let totalAgents = 0;
 
 // Filter state
 const currentFilters = {
@@ -59,21 +61,24 @@ export async function createAgentsPage(): Promise<HTMLElement> {
 }
 
 /**
- * Load agents data with error handling
+ * Load agents data with error handling - LAZY LOADING
+ * Solo carga la primera página de agentes, no todos
  */
 async function loadAgentsData(page: HTMLElement): Promise<void> {
   try {
     isLoading = true;
     
-    // Cargar agents desde Supabase - todos los 25,000
+    // Cargar SOLO la primera página de agentes (server-side pagination)
     const result = await getAgents({ 
       page: 1, 
-      pageSize: 30000, // Cargar todos los agentes (25,000 + margen)
+      pageSize: itemsPerPage,
       filters: {} 
     });
     
     agents = result.data;
     filteredAgents = [...agents];
+    totalAgents = result.total;
+    currentPage = 1;
     
     // Cargar regiones
     regions = await getUniqueRegions();
@@ -84,7 +89,7 @@ async function loadAgentsData(page: HTMLElement): Promise<void> {
     isLoading = false;
     
     // Check if empty
-    if (agents.length === 0) {
+    if (agents.length === 0 && totalAgents === 0) {
       page.innerHTML = renderEmptyState();
       attachRetryListener(page);
       return;
@@ -95,7 +100,7 @@ async function loadAgentsData(page: HTMLElement): Promise<void> {
     attachEventListeners(page);
     
     // Log para debugging
-    console.log(`[AgentsPage] Cargados ${agents.length} agentes desde ${result.total > 0 ? 'Supabase' : 'fallback local'}`);
+    console.log(`[AgentsPage] Cargados ${agents.length} agentes (página 1 de ${Math.ceil(totalAgents / itemsPerPage)}). Total en DB: ${totalAgents}`);
     
   } catch (error) {
     console.error('[AgentsPage] Error cargando agentes:', error);
@@ -277,14 +282,15 @@ function renderPage(): string {
 }
 
 /**
- * Render table rows with pagination
+ * Render table rows - Los agentes ya vienen paginados del servidor
  */
 function renderTableRows(): string {
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const displayAgents = filteredAgents.slice(startIndex, endIndex);
+  // Los agentes ya vienen paginados del servidor, no necesitamos slice
+  if (filteredAgents.length === 0) {
+    return '';
+  }
   
-  return displayAgents.map(agent => `
+  return filteredAgents.map(agent => `
     <tr class="agent-row" data-agent-id="${agent.agent_id}">
       <td class="agent-id">${agent.agent_id}</td>
       <td>${agent.region_name}</td>
@@ -299,41 +305,42 @@ function renderTableRows(): string {
 }
 
 /**
- * Render pagination controls
+ * Render pagination controls - Usa totalAgents del servidor
  */
 function renderPagination(): string {
-  const totalItems = filteredAgents.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const totalPages = Math.ceil(totalAgents / itemsPerPage);
   const startItem = (currentPage - 1) * itemsPerPage + 1;
-  const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+  const endItem = Math.min(currentPage * itemsPerPage, totalAgents);
   
   return `
     <div class="pagination-container">
       <div class="pagination-info">
-        Mostrando <strong>${startItem}-${endItem}</strong> de <strong>${totalItems}</strong> agentes
+        Mostrando <strong>${startItem.toLocaleString()}-${endItem.toLocaleString()}</strong> de <strong>${totalAgents.toLocaleString()}</strong> agentes
       </div>
       
       <div class="pagination-controls">
-        <button class="pagination-btn" id="pagination-prev" ${currentPage === 1 ? 'disabled' : ''}>
+        <button class="pagination-btn" id="pagination-prev" ${currentPage === 1 || isLoadingPage ? 'disabled' : ''}>
           ← Anterior
         </button>
         
         <span class="pagination-page">Página ${currentPage} de ${totalPages}</span>
         
-        <button class="pagination-btn" id="pagination-next" ${currentPage >= totalPages ? 'disabled' : ''}>
+        <button class="pagination-btn" id="pagination-next" ${currentPage >= totalPages || isLoadingPage ? 'disabled' : ''}>
           Siguiente →
         </button>
       </div>
       
       <div class="pagination-size">
         <label for="items-per-page">Mostrar:</label>
-        <select id="items-per-page" class="pagination-select">
+        <select id="items-per-page" class="pagination-select" ${isLoadingPage ? 'disabled' : ''}>
           <option value="20" ${itemsPerPage === 20 ? 'selected' : ''}>20</option>
           <option value="50" ${itemsPerPage === 50 ? 'selected' : ''}>50</option>
           <option value="100" ${itemsPerPage === 100 ? 'selected' : ''}>100</option>
         </select>
         <span>por página</span>
       </div>
+      
+      ${isLoadingPage ? '<div class="pagination-loading">Cargando...</div>' : ''}
     </div>
   `;
 }
@@ -596,8 +603,8 @@ function attachEventListeners(page: HTMLElement): void {
 }
 
 /**
- * Apply filters and update table
- * Sprint 10B: Ahora usa agentRepository con filtros en Supabase
+ * Apply filters and update table - SERVER-SIDE
+ * Los filtros se aplican en la base de datos, no en el cliente
  */
 async function applyFilters(page: HTMLElement): Promise<void> {
   const filters: AgentFilters = {};
@@ -611,14 +618,15 @@ async function applyFilters(page: HTMLElement): Promise<void> {
   if (currentFilters.connectivityLevel) filters.connectivityLevel = currentFilters.connectivityLevel as any;
   if (currentFilters.agentType) filters.agentType = currentFilters.agentType as any;
   
-  // Cargar agents filtrados desde Supabase (con fallback local)
+  // Cargar SOLO la primera página de agentes filtrados (server-side)
   const result = await getAgents({ 
     page: 1, 
-    pageSize: 30000, // Cargar todos los agentes filtrados
+    pageSize: itemsPerPage,
     filters 
   });
   
   filteredAgents = result.data;
+  totalAgents = result.total;
   
   // Reset to page 1 when filters change
   currentPage = 1;
@@ -626,14 +634,14 @@ async function applyFilters(page: HTMLElement): Promise<void> {
   // Update results count
   const resultsCount = page.querySelector('#results-count');
   if (resultsCount) {
-    resultsCount.textContent = `${result.total} agentes`;
+    resultsCount.textContent = `${totalAgents.toLocaleString()} agentes`;
   }
   
   // Update table and pagination
   updateTableAndPagination(page);
   
   // Log para debugging
-  console.log(`[AgentsPage] Filtros aplicados: ${filteredAgents.length} agentes`);
+  console.log(`[AgentsPage] Filtros aplicados: ${filteredAgents.length} agentes mostrados de ${totalAgents} total`);
 }
 
 /**
@@ -673,19 +681,25 @@ function updateTableAndPagination(page: HTMLElement): void {
   if (noResults) {
     noResults.style.display = filteredAgents.length === 0 ? 'block' : 'none';
   }
+  
+  // Hide loading state if present
+  const loadingRow = page.querySelector('.table-loading-row');
+  if (loadingRow) {
+    loadingRow.remove();
+  }
 }
 
 /**
- * Attach pagination event listeners
+ * Attach pagination event listeners - SERVER-SIDE PAGINATION
+ * Cada cambio de página hace una nueva consulta a la base de datos
  */
 function attachPaginationListeners(page: HTMLElement): void {
   // Previous page button
   const prevBtn = page.querySelector('#pagination-prev') as HTMLButtonElement | null;
   if (prevBtn) {
-    prevBtn.addEventListener('click', () => {
-      if (currentPage > 1) {
-        currentPage--;
-        updateTableAndPagination(page);
+    prevBtn.addEventListener('click', async () => {
+      if (currentPage > 1 && !isLoadingPage) {
+        await loadPage(page, currentPage - 1);
       }
     });
   }
@@ -693,11 +707,10 @@ function attachPaginationListeners(page: HTMLElement): void {
   // Next page button
   const nextBtn = page.querySelector('#pagination-next') as HTMLButtonElement | null;
   if (nextBtn) {
-    nextBtn.addEventListener('click', () => {
-      const totalPages = Math.ceil(filteredAgents.length / itemsPerPage);
-      if (currentPage < totalPages) {
-        currentPage++;
-        updateTableAndPagination(page);
+    nextBtn.addEventListener('click', async () => {
+      const totalPages = Math.ceil(totalAgents / itemsPerPage);
+      if (currentPage < totalPages && !isLoadingPage) {
+        await loadPage(page, currentPage + 1);
       }
     });
   }
@@ -705,11 +718,81 @@ function attachPaginationListeners(page: HTMLElement): void {
   // Items per page selector
   const itemsPerPageSelect = page.querySelector('#items-per-page') as HTMLSelectElement | null;
   if (itemsPerPageSelect) {
-    itemsPerPageSelect.addEventListener('change', () => {
+    itemsPerPageSelect.addEventListener('change', async () => {
       itemsPerPage = parseInt(itemsPerPageSelect.value);
       currentPage = 1; // Reset to first page when changing page size
-      updateTableAndPagination(page);
+      await loadPage(page, 1);
     });
+  }
+}
+
+/**
+ * Load a specific page from the server
+ */
+async function loadPage(page: HTMLElement, pageNum: number): Promise<void> {
+  if (isLoadingPage) return;
+  
+  isLoadingPage = true;
+  
+  // Show loading indicator in table
+  const tbody = page.querySelector('#agents-table-body');
+  if (tbody) {
+    tbody.innerHTML = `
+      <tr class="table-loading-row">
+        <td colspan="8" class="table-loading-cell">
+          <div class="table-loading-spinner"></div>
+          <span>Cargando agentes...</span>
+        </td>
+      </tr>
+    `;
+  }
+  
+  try {
+    const filters: AgentFilters = {};
+    
+    if (currentFilters.regionCode) filters.regionCode = currentFilters.regionCode;
+    if (currentFilters.comunaCode) filters.comunaCode = currentFilters.comunaCode;
+    if (currentFilters.sex) filters.sex = currentFilters.sex as any;
+    if (currentFilters.ageGroup) filters.ageGroup = currentFilters.ageGroup as any;
+    if (currentFilters.incomeDecile) filters.incomeDecile = parseInt(currentFilters.incomeDecile);
+    if (currentFilters.educationLevel) filters.educationLevel = currentFilters.educationLevel as any;
+    if (currentFilters.connectivityLevel) filters.connectivityLevel = currentFilters.connectivityLevel as any;
+    if (currentFilters.agentType) filters.agentType = currentFilters.agentType as any;
+    
+    // Cargar la página específica desde el servidor
+    const result = await getAgents({ 
+      page: pageNum, 
+      pageSize: itemsPerPage,
+      filters 
+    });
+    
+    filteredAgents = result.data;
+    totalAgents = result.total;
+    currentPage = pageNum;
+    
+    // Update table and pagination
+    updateTableAndPagination(page);
+    
+    console.log(`[AgentsPage] Página ${pageNum} cargada: ${filteredAgents.length} agentes`);
+    
+  } catch (error) {
+    console.error('[AgentsPage] Error cargando página:', error);
+    // Show error in table
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" class="table-error-cell">
+            Error al cargar los agentes. <button class="btn-retry" id="retry-page">Reintentar</button>
+          </td>
+        </tr>
+      `;
+      const retryBtn = tbody.querySelector('#retry-page');
+      if (retryBtn) {
+        retryBtn.addEventListener('click', () => loadPage(page, pageNum));
+      }
+    }
+  } finally {
+    isLoadingPage = false;
   }
 }
 
@@ -895,4 +978,8 @@ export function cleanupAgentsPage(): void {
   selectedAgent = null;
   regions = [];
   communes = [];
+  isLoading = true;
+  isLoadingPage = false;
+  currentPage = 1;
+  totalAgents = 0;
 }
