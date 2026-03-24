@@ -609,7 +609,7 @@ async function applyFilters(page: HTMLElement): Promise<void> {
   // Cargar agents filtrados desde Supabase (con fallback local)
   const result = await getAgents({ 
     page: 1, 
-    pageSize: 1000, // Cargar suficientes para paginación local
+    pageSize: 30000, // Cargar todos los agentes filtrados
     filters 
   });
   
