@@ -53,6 +53,7 @@ export interface AgentStats {
 /**
  * Get agents with optional filtering and pagination
  * SOLO usa Supabase - no hay fallback a datos locales
+ * NOTA: Supabase limita a 1000 registros por query, así que hacemos múltiples queries
  */
 export async function getAgents(
   options: AgentListOptions = {}
@@ -75,75 +76,91 @@ export async function getAgents(
 
   try {
     console.log('[🟢 AgentRepository] Ejecutando query a synthetic_agents...');
-    let query = client
-      .from('synthetic_agents')
-      .select('*', { count: 'exact' });
-
-    // Apply filters
-    if (filters.territoryId) {
-      query = query.eq('territory_id', filters.territoryId);
-    }
-    if (filters.regionCode) {
-      query = query.eq('region_code', filters.regionCode);
-    }
-    if (filters.comunaCode) {
-      query = query.eq('comuna_code', filters.comunaCode);
-    }
-    if (filters.sex) {
-      query = query.eq('sex', filters.sex);
-    }
-    if (filters.ageGroup) {
-      query = query.eq('age_group', filters.ageGroup);
-    }
-    if (filters.ageMin !== undefined) {
-      query = query.gte('age', filters.ageMin);
-    }
-    if (filters.ageMax !== undefined) {
-      query = query.lte('age', filters.ageMax);
-    }
-    if (filters.incomeDecile) {
-      query = query.eq('income_decile', filters.incomeDecile);
-    }
-    if (filters.educationLevel) {
-      query = query.eq('education_level', filters.educationLevel);
-    }
-    if (filters.connectivityLevel) {
-      query = query.eq('connectivity_level', filters.connectivityLevel);
-    }
-    if (filters.agentType) {
-      query = query.eq('agent_type', filters.agentType);
-    }
-    if (filters.batchId) {
-      query = query.eq('batch_id', filters.batchId);
-    }
-
-    // Apply ordering and pagination
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-
-    const { data, error, count } = await query
-      .order(orderBy, { ascending: orderDirection === 'asc' })
-      .range(from, to);
-
-    if (error) throw error;
-
-    // Transform DbSyntheticAgent to SyntheticAgent
-    const agents = (data as DbSyntheticAgent[]).map(dbAgentToSyntheticAgent);
-
-    console.log(`[🟢 AgentRepository] ✅ Datos de SUPABASE: ${agents.length} agentes (total: ${count})`);
     
-    // Si Supabase devuelve 0 agentes, es porque la tabla está vacía
-    if (!agents.length || count === 0) {
+    // Primero obtener el conteo total
+    let countQuery = client
+      .from('synthetic_agents')
+      .select('*', { count: 'exact', head: true });
+    
+    // Apply filters al conteo
+    if (filters.territoryId) countQuery = countQuery.eq('territory_id', filters.territoryId);
+    if (filters.regionCode) countQuery = countQuery.eq('region_code', filters.regionCode);
+    if (filters.comunaCode) countQuery = countQuery.eq('comuna_code', filters.comunaCode);
+    if (filters.sex) countQuery = countQuery.eq('sex', filters.sex);
+    if (filters.ageGroup) countQuery = countQuery.eq('age_group', filters.ageGroup);
+    if (filters.ageMin !== undefined) countQuery = countQuery.gte('age', filters.ageMin);
+    if (filters.ageMax !== undefined) countQuery = countQuery.lte('age', filters.ageMax);
+    if (filters.incomeDecile) countQuery = countQuery.eq('income_decile', filters.incomeDecile);
+    if (filters.educationLevel) countQuery = countQuery.eq('education_level', filters.educationLevel);
+    if (filters.connectivityLevel) countQuery = countQuery.eq('connectivity_level', filters.connectivityLevel);
+    if (filters.agentType) countQuery = countQuery.eq('agent_type', filters.agentType);
+    if (filters.batchId) countQuery = countQuery.eq('batch_id', filters.batchId);
+    
+    const { count: totalCount, error: countError } = await countQuery;
+    if (countError) throw countError;
+    
+    const total = totalCount || 0;
+    console.log(`[🟢 AgentRepository] Total de agentes en DB: ${total}`);
+    
+    // Si no hay agentes, error
+    if (total === 0) {
       console.error('[🔴 AgentRepository] La tabla synthetic_agents está vacía en Supabase');
       throw new Error('No hay agentes en la base de datos. Por favor, ejecuta el seed de agentes.');
     }
     
+    // Calcular cuántos registros necesitamos cargar
+    const from = (page - 1) * pageSize;
+    const to = Math.min(from + pageSize - 1, total - 1);
+    const neededRecords = to - from + 1;
+    
+    // Supabase limita a 1000 registros por query, así que hacemos múltiples queries si es necesario
+    const allAgents: SyntheticAgent[] = [];
+    const SUPABASE_MAX_LIMIT = 1000;
+    
+    for (let currentFrom = from; currentFrom <= to && allAgents.length < neededRecords; currentFrom += SUPABASE_MAX_LIMIT) {
+      const currentTo = Math.min(currentFrom + SUPABASE_MAX_LIMIT - 1, to);
+      
+      console.log(`[🟢 AgentRepository] Cargando registros ${currentFrom}-${currentTo}...`);
+      
+      let query = client
+        .from('synthetic_agents')
+        .select('*');
+      
+      // Apply filters
+      if (filters.territoryId) query = query.eq('territory_id', filters.territoryId);
+      if (filters.regionCode) query = query.eq('region_code', filters.regionCode);
+      if (filters.comunaCode) query = query.eq('comuna_code', filters.comunaCode);
+      if (filters.sex) query = query.eq('sex', filters.sex);
+      if (filters.ageGroup) query = query.eq('age_group', filters.ageGroup);
+      if (filters.ageMin !== undefined) query = query.gte('age', filters.ageMin);
+      if (filters.ageMax !== undefined) query = query.lte('age', filters.ageMax);
+      if (filters.incomeDecile) query = query.eq('income_decile', filters.incomeDecile);
+      if (filters.educationLevel) query = query.eq('education_level', filters.educationLevel);
+      if (filters.connectivityLevel) query = query.eq('connectivity_level', filters.connectivityLevel);
+      if (filters.agentType) query = query.eq('agent_type', filters.agentType);
+      if (filters.batchId) query = query.eq('batch_id', filters.batchId);
+      
+      const { data, error } = await query
+        .order(orderBy, { ascending: orderDirection === 'asc' })
+        .range(currentFrom, currentTo);
+      
+      if (error) throw error;
+      
+      if (data) {
+        const agents = (data as DbSyntheticAgent[]).map(dbAgentToSyntheticAgent);
+        allAgents.push(...agents);
+        console.log(`[🟢 AgentRepository] Cargados ${agents.length} agentes (total acumulado: ${allAgents.length})`);
+      }
+    }
+    
+    console.log(`[🟢 AgentRepository] ✅ Datos de SUPABASE: ${allAgents.length} agentes (total en DB: ${total})`);
+    
     return {
-      data: agents,
-      total: count || 0,
+      data: allAgents,
+      total: total,
       page,
       pageSize,
-      hasMore: (count || 0) > to + 1,
+      hasMore: total > to + 1,
     };
   } catch (error) {
     console.error('[🔴 AgentRepository] Error al leer de Supabase:', error);
