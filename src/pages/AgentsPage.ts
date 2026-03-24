@@ -381,7 +381,7 @@ function renderAgentDetail(agent: SyntheticAgent): string {
       <section class="detail-section">
         <h3>Hogar</h3>
         <dl class="detail-list">
-          <dt>Tamaño</dt><dd>${agent.household_size} personas</dd>
+          <dt>Tamaño</dt><dd>${agent.household_size !== undefined && agent.household_size !== null ? agent.household_size : 'No disponible'} personas</dd>
           <dt>Tipo</dt><dd>${formatHouseholdType(agent.household_type)}</dd>
         </dl>
       </section>
@@ -389,7 +389,7 @@ function renderAgentDetail(agent: SyntheticAgent): string {
       <section class="detail-section">
         <h3>Socioeconómico</h3>
         <dl class="detail-list">
-          <dt>Decil ingreso</dt><dd>${agent.income_decile ?? 'No disponible'}</dd>
+          <dt>Decil ingreso</dt><dd>${agent.income_decile !== undefined && agent.income_decile !== null ? agent.income_decile : 'No disponible'}</dd>
           <dt>Pobreza</dt><dd>${formatPovertyStatus(agent.poverty_status)}</dd>
           <dt>Educación</dt><dd>${formatEducationLevel(agent.education_level)}</dd>
           <dt>Ocupación</dt><dd>${formatOccupationStatus(agent.occupation_status)}</dd>
@@ -409,17 +409,17 @@ function renderAgentDetail(agent: SyntheticAgent): string {
       <section class="detail-section">
         <h3>Funcional</h3>
         <dl class="detail-list">
-          <dt>Tipo de agente</dt><dd>${formatAgentType(agent.agent_type)}</dd>
+          <dt>Tipo de agente</dt><dd>${formatAgentType(agent.agent_type) || 'No disponible'}</dd>
         </dl>
       </section>
       
       <section class="detail-section">
         <h3>Trazabilidad</h3>
         <dl class="detail-list">
-          <dt>Backbone key</dt><dd>${agent.backbone_key}</dd>
-          <dt>SUBTEL profile</dt><dd>${agent.subtel_profile_key ?? 'No disponible'}</dd>
-          <dt>CASEN profile</dt><dd>${agent.casen_profile_key ?? 'No disponible'}</dd>
-          <dt>Notas</dt><dd class="notes">${agent.generation_notes}</dd>
+          <dt>Backbone key</dt><dd>${agent.backbone_key !== undefined && agent.backbone_key !== null ? agent.backbone_key : 'No disponible'}</dd>
+          <dt>SUBTEL profile</dt><dd>${agent.subtel_profile_key !== undefined && agent.subtel_profile_key !== null ? agent.subtel_profile_key : 'No disponible'}</dd>
+          <dt>CASEN profile</dt><dd>${agent.casen_profile_key !== undefined && agent.casen_profile_key !== null ? agent.casen_profile_key : 'No disponible'}</dd>
+          <dt>Notas</dt><dd class="notes">${agent.generation_notes !== undefined && agent.generation_notes !== null ? agent.generation_notes : 'Sin notas'}</dd>
         </dl>
       </section>
     </div>
