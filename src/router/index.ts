@@ -138,6 +138,7 @@ export function onRouteChange(callback: (route: Route) => void): () => void {
 /**
  * Initialize router from URL hash
  * Handles authentication check on init
+ * PRESERVES current route on page refresh if authenticated
  */
 export function initRouter(): void {
   // Check authentication status
@@ -162,25 +163,30 @@ export function initRouter(): void {
       state.currentRoute = 'login';
       state.params = { redirect: route };
     } else {
+      // Preserve the requested route (don't redirect to home)
       state.currentRoute = route;
+      console.log('✅ Preserving current route:', route);
     }
   } else {
     // Default to landing if invalid route
     state.currentRoute = 'landing';
   }
 
-  // If authenticated and on landing/login, redirect to home
-  if (state.isAuthenticated && (state.currentRoute === 'landing' || state.currentRoute === 'login')) {
+  // Only redirect to home if explicitly on landing/login AND no specific route was requested
+  // This preserves the current route on page refresh
+  if (state.isAuthenticated && (state.currentRoute === 'landing' || state.currentRoute === 'login') && !hashPart) {
     state.currentRoute = 'home';
     state.params = {};
   }
 
-  // Update URL to match state
-  if (Object.keys(state.params).length > 0) {
-    const queryString = new URLSearchParams(state.params).toString();
-    window.location.hash = `${state.currentRoute}?${queryString}`;
-  } else {
-    window.location.hash = state.currentRoute;
+  // Update URL to match state only if we changed it
+  if (state.currentRoute !== route || (state.params.redirect && state.currentRoute !== 'login')) {
+    if (Object.keys(state.params).length > 0) {
+      const newQueryString = new URLSearchParams(state.params).toString();
+      window.location.hash = `${state.currentRoute}?${newQueryString}`;
+    } else {
+      window.location.hash = state.currentRoute;
+    }
   }
 
   // Listen for hash changes
