@@ -138,8 +138,8 @@ async function initializePage(page: HTMLElement): Promise<void> {
 
     // Populate benchmark select
     const benchmarkSelect = page.querySelector('#benchmark-select') as HTMLSelectElement;
-    const benchmarks = getAllBenchmarks();
-    
+    const benchmarks = await getAllBenchmarks();
+
     benchmarks.forEach(benchmark => {
       const option = document.createElement('option');
       option.value = benchmark.id;
@@ -148,7 +148,7 @@ async function initializePage(page: HTMLElement): Promise<void> {
     });
 
     // Render benchmarks list
-    renderBenchmarksList(page);
+    await renderBenchmarksList(page);
 
     // Event listeners
     surveySelect.addEventListener('change', (e) => {
@@ -212,8 +212,8 @@ async function runComparison(page: HTMLElement): Promise<void> {
     }
 
     // Run comparison
-    const comparison = compareSurveyWithBenchmark(surveyResults, selectedBenchmarkId);
-    
+    const comparison = await compareSurveyWithBenchmark(surveyResults, selectedBenchmarkId);
+
     if (!comparison) {
       resultsContainer.innerHTML = renderComparisonError(
         'No se pudo realizar la comparación',
@@ -351,25 +351,25 @@ function renderEmptyState(): string {
   `;
 }
 
-function renderBenchmarksList(page: HTMLElement): void {
+async function renderBenchmarksList(page: HTMLElement): Promise<void> {
   const listContainer = page.querySelector('#benchmarks-list') as HTMLElement;
-  
+
   try {
-    const benchmarks = getAllBenchmarks();
-    const categories = getCategories();
-    
+    const benchmarks = await getAllBenchmarks();
+    const categories = await getCategories();
+
     if (benchmarks.length === 0) {
       listContainer.innerHTML = renderEmptyState();
       return;
     }
 
     listContainer.innerHTML = categories.map(category => {
-      const categoryBenchmarks = benchmarks.filter(b => 
+      const categoryBenchmarks = benchmarks.filter(b =>
         b.indicators.some(i => i.category === category)
       );
-      
+
       if (categoryBenchmarks.length === 0) return '';
-      
+
       return `
         <div class="benchmark-category">
           <h3 class="category-title">${category}</h3>
