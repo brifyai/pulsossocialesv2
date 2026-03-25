@@ -85,6 +85,11 @@ CREATE TABLE IF NOT EXISTS territories (
     comuna_code VARCHAR(10) NOT NULL UNIQUE,    -- Ej: '13101'
     comuna_name VARCHAR(100) NOT NULL,          -- Ej: 'Santiago'
     
+    -- Campos adicionales para compatibilidad con el modelo
+    code VARCHAR(20) NOT NULL,                  -- Código corto (ej: 'RM' para región, '13101' para comuna)
+    name VARCHAR(200) NOT NULL,                 -- Nombre del territorio
+    level VARCHAR(20) NOT NULL DEFAULT 'comuna', -- Nivel: 'region' o 'comuna'
+    
     -- Geometría (GeoJSON como JSONB)
     geometry JSONB,
     bbox NUMERIC[4],                            -- [minX, minY, maxX, maxY]
@@ -104,7 +109,8 @@ CREATE TABLE IF NOT EXISTS territories (
     
     -- Constraints
     CONSTRAINT valid_country CHECK (country_code = 'CL'),
-    CONSTRAINT valid_region_code CHECK (region_code ~ '^CL-[0-9]+$')
+    CONSTRAINT valid_region_code CHECK (region_code ~ '^CL-[0-9]+$'),
+    CONSTRAINT valid_level CHECK (level IN ('region', 'comuna'))
 );
 
 -- Índices para territories
@@ -112,10 +118,20 @@ CREATE INDEX IF NOT EXISTS idx_territories_region_code ON territories(region_cod
 CREATE INDEX IF NOT EXISTS idx_territories_comuna_code ON territories(comuna_code);
 CREATE INDEX IF NOT EXISTS idx_territories_comuna_name ON territories(comuna_name);
 CREATE INDEX IF NOT EXISTS idx_territories_geometry ON territories USING GIN(geometry);
+CREATE INDEX IF NOT EXISTS idx_territories_code ON territories(code);
+CREATE INDEX IF NOT EXISTS idx_territories_level ON territories(level);
+CREATE INDEX IF NOT EXISTS idx_territories_level_code ON territories(level, code);
+
+-- Constraint UNIQUE para code + level
+ALTER TABLE territories DROP CONSTRAINT IF EXISTS territories_code_level_key;
+ALTER TABLE territories ADD CONSTRAINT territories_code_level_key UNIQUE (code, level);
 
 -- Comentarios
 COMMENT ON TABLE territories IS 'Territorios administrativos de Chile (regiones y comunas)';
 COMMENT ON COLUMN territories.comuna_code IS 'Código único de comuna según INE';
+COMMENT ON COLUMN territories.code IS 'Código corto del territorio (región o comuna)';
+COMMENT ON COLUMN territories.name IS 'Nombre del territorio';
+COMMENT ON COLUMN territories.level IS 'Nivel administrativo: region o comuna';
 COMMENT ON COLUMN territories.geometry IS 'GeoJSON Polygon/MultiPolygon de la comuna';
 
 -- -----------------------------------------------------------------------------
@@ -528,9 +544,9 @@ CREATE POLICY "Allow anonymous read" ON benchmark_comparisons
 -- =============================================================================
 
 -- Insertar región Metropolitana como ejemplo
-INSERT INTO territories (region_code, region_name, comuna_code, comuna_name, population_total)
+INSERT INTO territories (region_code, region_name, comuna_code, comuna_name, code, name, level, population_total)
 VALUES 
-    ('CL-13', 'Metropolitana de Santiago', '13101', 'Santiago', 404495)
+    ('CL-13', 'Metropolitana de Santiago', '13101', 'Santiago', '13101', 'Santiago', 'comuna', 404495)
 ON CONFLICT (comuna_code) DO NOTHING;
 
 -- =============================================================================
