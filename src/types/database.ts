@@ -1,5 +1,5 @@
 /**
- * Database Types - Sprint 9
+ * Database Types - Sprint 12C
  * 
  * Tipos para entidades de base de datos en Supabase.
  * Estos tipos representan las tablas que se crearán en PostgreSQL.
@@ -31,6 +31,8 @@ export type DbRunStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 export type DbBenchmarkSource = 'casen' | 'subtel' | 'cep' | 'ine' | 'other';
 export type DbBenchmarkCategory = 'demographics' | 'connectivity' | 'socioeconomic' | 'digital' | 'other';
+export type DbBenchmarkStatus = 'active' | 'processing' | 'error' | 'archived';
+export type DbExtractionStatus = 'pending' | 'processing' | 'completed' | 'error';
 
 // ===========================================
 // Users Table
@@ -441,122 +443,136 @@ export interface DbTextResult {
 }
 
 // ===========================================
-// Benchmark Tables
+// Benchmark Tables (Sprint 12C - Actualizado)
 // ===========================================
 
 /**
  * Table: benchmarks
- * Descripción: Benchmarks de referencia (CASEN, SUBTEL, etc.)
- * Pipeline: Ingestado desde fuentes externas
- * Supabase: Sí
+ * Descripción: Benchmarks de referencia cargados desde PDFs
+ * Sprint 12C: Ahora soporta carga dinámica desde UI
  */
 export interface DbBenchmark {
   id: string;                    // UUID primary key
-  
-  // Fuente
-  source: DbBenchmarkSource;
-  source_name: string;           // 'CASEN 2022'
-  source_organization: string;   // 'Ministerio de Desarrollo Social'
-  source_year: number;           // 2022
-  source_url: string | null;
-  source_description: string | null;
-  
-  // Indicadores (JSONB)
-  indicators: DbBenchmarkIndicator[];
+  source_id: string;             // ID único (ej: 'casen_2022')
+  name: string;                  // 'CASEN 2022'
+  organization: string;          // 'Ministerio de Desarrollo Social'
+  year: number;                  // 2022
+  description: string | null;
+  url: string | null;
   
   // Cobertura
-  coverage: {
-    geographic: string[];        // ['CL-13', 'national']
-    demographic?: string[];
-    temporal: {
-      start: string;
-      end: string;
-    };
-  };
+  coverage_geographic: string[]; // ['CL-13', 'national']
+  coverage_temporal_start: string | null;
+  coverage_temporal_end: string | null;
   
-  // Metadata
+  // PDF y extracción
+  pdf_url: string | null;
+  pdf_extracted_data: Record<string, unknown> | null;
+  status: DbBenchmarkStatus;
+  
+  // Autoría
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
 
+/**
+ * Table: benchmark_indicators
+ * Descripción: Indicadores individuales de cada benchmark
+ */
 export interface DbBenchmarkIndicator {
-  id: string;
+  id: string;                    // UUID primary key
+  benchmark_id: string;          // FK -> benchmarks.id
+  indicator_id: string;          // ID único dentro del benchmark
   name: string;
-  description: string;
-  category: DbBenchmarkCategory;
-  unit: 'percentage' | 'average' | 'index' | 'count';
+  description: string | null;
+  category: string;              // 'Conectividad Digital', 'Economía', etc.
+  unit: 'percentage' | 'average' | 'count';
   
   // Valor
   value: number;
-  percentage?: number;
-  sample_size?: number;
-  confidence_interval?: [number, number];
-  margin_of_error?: number;
+  percentage: number | null;
+  sample_size: number | null;
+  margin_of_error: number | null;
+  confidence_interval: { lower: number; upper: number } | null;
   
-  // Mapeo con encuestas
+  // Compatibilidad
   compatible_question_types: DbQuestionType[];
   compatible_segments: string[];
   
-  // Desagregaciones disponibles
-  breakdowns?: {
-    by_sex?: Record<string, number>;
-    by_age_group?: Record<string, number>;
-    by_region?: Record<string, number>;
-  };
+  // Metadata de extracción
+  page_number: number | null;
+  extracted_confidence: number | null;
+  
+  created_at: string;
+  updated_at: string;
 }
 
 /**
  * Table: benchmark_comparisons
  * Descripción: Comparaciones entre encuestas sintéticas y benchmarks
- * Pipeline: Generado por benchmarkService
- * Supabase: Sí
  */
 export interface DbBenchmarkComparison {
   id: string;                    // UUID primary key
-  
-  // Referencias
-  survey_id: string;
-  run_id: string;
-  benchmark_id: string;
-  
-  // Comparaciones por indicador
-  comparisons: DbIndicatorComparison[];
-  
-  // Resumen
-  summary: {
-    total_indicators: number;
-    matched_indicators: number;
-    above_benchmark: number;
-    below_benchmark: number;
-    match_benchmark: number;
-    average_gap: number;
-    max_gap: number;
-  };
-  
-  // Timestamps
+  survey_id: string;             // FK -> surveys.id
+  benchmark_id: string;          // FK -> benchmarks.id
+  compared_by: string | null;    // FK -> users.id
   compared_at: string;
+  
+  // Resultados
+  summary: {
+    totalIndicators: number;
+    matchedIndicators: number;
+    aboveBenchmark: number;
+    belowBenchmark: number;
+    matchBenchmark: number;
+    averageGap: number;
+  };
+  comparisons: DbIndicatorComparison[];
+  notes: string | null;
+  
   created_at: string;
 }
 
 export interface DbIndicatorComparison {
-  benchmark_indicator_id: string;
-  indicator_name: string;
+  benchmarkId: string;
+  indicatorId: string;
+  indicatorName: string;
   category: string;
   unit: string;
   
   // Valores
-  synthetic_value: number;
-  benchmark_value: number;
+  syntheticValue: number;
+  benchmarkValue: number;
   
   // Gap
-  gap_absolute: number;
-  gap_relative: number;          // porcentaje
-  gap_direction: 'above' | 'below' | 'match';
-  significance: 'high' | 'medium' | 'low';
+  gap: {
+    absolute: number;
+    relative: number;
+    direction: 'above' | 'below' | 'match';
+    significance: 'high' | 'medium' | 'low';
+  };
   
   // Metadata
-  synthetic_sample_size: number;
-  benchmark_sample_size: number | null;
+  syntheticSampleSize: number;
+  benchmarkSampleSize: number | null;
+  benchmarkConfidenceInterval: { lower: number; upper: number } | null;
+}
+
+/**
+ * Table: benchmark_pdf_extractions
+ * Descripción: Tracking de extracción de datos desde PDFs
+ */
+export interface DbBenchmarkPdfExtraction {
+  id: string;                    // UUID primary key
+  benchmark_id: string;          // FK -> benchmarks.id
+  pdf_url: string;
+  extraction_status: DbExtractionStatus;
+  extracted_data: Record<string, unknown> | null;
+  error_message: string | null;
+  processing_started_at: string | null;
+  processing_completed_at: string | null;
+  created_at: string;
 }
 
 // ===========================================
@@ -697,10 +713,20 @@ export interface Database {
         Insert: Omit<DbBenchmark, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string };
         Update: Partial<Omit<DbBenchmark, 'id' | 'created_at'>>;
       };
+      benchmark_indicators: {
+        Row: DbBenchmarkIndicator;
+        Insert: Omit<DbBenchmarkIndicator, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string };
+        Update: Partial<Omit<DbBenchmarkIndicator, 'id' | 'created_at'>>;
+      };
       benchmark_comparisons: {
         Row: DbBenchmarkComparison;
         Insert: Omit<DbBenchmarkComparison, 'id' | 'created_at'> & { id?: string; created_at?: string };
         Update: Partial<Omit<DbBenchmarkComparison, 'id' | 'created_at'>>;
+      };
+      benchmark_pdf_extractions: {
+        Row: DbBenchmarkPdfExtraction;
+        Insert: Omit<DbBenchmarkPdfExtraction, 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Update: Partial<Omit<DbBenchmarkPdfExtraction, 'id' | 'created_at'>>;
       };
     };
     Views: Record<string, never>;
