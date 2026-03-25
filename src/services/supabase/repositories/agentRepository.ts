@@ -977,6 +977,8 @@ const comunaCode4ToName: Record<string, string> = {
   '1007': 'Llanquihue',
   '1008': 'Maullín',
   '1009': 'Puerto Varas',
+  // Región de Valparaíso (5) - códigos de 4 dígitos
+  '5109': 'Quilpué',
   '1010': 'Castro',
   '1011': 'Ancud',
   '1012': 'Chonchi',
