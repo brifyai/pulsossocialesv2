@@ -132,15 +132,15 @@ export async function ensureAgentsLayer(map: Map): Promise<boolean> {
         type: 'fill-extrusion',
         source: AGENTS_CONFIG.sourceId,
         paint: {
-          // Height of the extrusion in meters
-          'fill-extrusion-height': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            10, AGENTS_CONFIG.extrusionHeight * 0.3,  // Shorter when zoomed out
-            14, AGENTS_CONFIG.extrusionHeight * 0.6,
-            18, AGENTS_CONFIG.extrusionHeight,         // Full height when zoomed in
-          ],
+      // Height of the extrusion in meters - use 'height' property from GeoJSON
+      'fill-extrusion-height': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        10, ['*', ['get', 'height'], 0.3],  // Shorter when zoomed out
+        14, ['*', ['get', 'height'], 0.6],
+        18, ['get', 'height'],              // Full height when zoomed in
+      ],
           // Base height (start from ground)
           'fill-extrusion-base': 0,
           // Color of the extrusion

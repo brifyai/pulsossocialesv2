@@ -13,6 +13,7 @@ import {
   isRunning,
   getAgentCount,
 } from '../app/simulation/agentEngine';
+import { getViewportAgentCount } from '../app/layers/agentsViewport';
 import {
   getQualityMode,
   setQualityMode,
@@ -256,8 +257,11 @@ function setupEventListeners(panel: HTMLElement, map: Map): void {
     });
   });
 
-  // Update status periodically
-  setInterval(updateSimulationStatus, 500);
+  // Update status periodically (use viewport count for Supabase agents)
+  setInterval(() => {
+    updateSimulationStatus();
+    updateViewportAgentCount();
+  }, 500);
 }
 
 /**
@@ -398,7 +402,6 @@ function startMetricsUpdate(): void {
 function updateSimulationStatus(): void {
   const statusDot = document.querySelector('#status-dot') as HTMLElement;
   const statusText = document.querySelector('#status-text') as HTMLElement;
-  const countEl = document.querySelector('#agent-count-display') as HTMLElement;
   const playBtn = document.querySelector('#btn-play') as HTMLButtonElement;
 
   if (statusDot && statusText) {
@@ -416,9 +419,15 @@ function updateSimulationStatus(): void {
       }
     }
   }
+}
 
+/**
+ * Update agent count display from viewport (Supabase agents)
+ */
+function updateViewportAgentCount(): void {
+  const countEl = document.querySelector('#agent-count-display') as HTMLElement;
   if (countEl) {
-    const count = getAgentCount();
+    const count = getViewportAgentCount();
     countEl.textContent = `${count} agente${count !== 1 ? 's' : ''}`;
   }
 }

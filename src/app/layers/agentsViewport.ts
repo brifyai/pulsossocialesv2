@@ -45,6 +45,7 @@ interface ViewportState {
   lastZoom: number;
   debounceTimer: number | null;
   abortController: AbortController | null;
+  currentAgentCount: number;
 }
 
 const state: ViewportState = {
@@ -53,6 +54,7 @@ const state: ViewportState = {
   lastZoom: 0,
   debounceTimer: null,
   abortController: null,
+  currentAgentCount: 0,
 };
 
 // Callbacks
@@ -191,6 +193,7 @@ async function loadClusters(
     })),
   };
   
+  state.currentAgentCount = clusters.length;
   updateAgentsGeoJSON(map, geojson);
   callbacks.onLoaded?.(clusters.length);
   
@@ -211,6 +214,7 @@ async function loadSimplifiedAgents(
     limit: CONFIG.limits.simplified,
   });
   
+  state.currentAgentCount = agents.length;
   const geojson = agentsToGeoJSON(agents, 'simplified');
   updateAgentsGeoJSON(map, geojson);
   callbacks.onLoaded?.(agents.length);
@@ -232,6 +236,7 @@ async function loadDetailedAgents(
     limit: CONFIG.limits.detailed,
   });
   
+  state.currentAgentCount = agents.length;
   const geojson = agentsToGeoJSON(agents, 'detailed');
   updateAgentsGeoJSON(map, geojson);
   callbacks.onLoaded?.(agents.length);
@@ -263,6 +268,8 @@ function agentsToGeoJSON(
           id: agent.agent_id,
           type: 'agent',
           mode,
+          // Height for 3D extrusion (vertical bars) - random between 150-300m
+          height: 150 + Math.random() * 150,
           // Simplified properties
           ...(mode === 'simplified' && {
             age_group: agent.age_group,
@@ -309,6 +316,13 @@ export function cleanupAgentsViewport(): void {
  */
 export function isViewportLoading(): boolean {
   return state.isLoading;
+}
+
+/**
+ * Get current agent count from viewport
+ */
+export function getViewportAgentCount(): number {
+  return state.currentAgentCount;
 }
 
 /**
