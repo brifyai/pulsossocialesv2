@@ -183,3 +183,78 @@ export function headingBetween(
 
   return Math.atan2(y, x);
 }
+
+// Region names for Chile
+const REGION_NAMES: Record<string, string> = {
+  '15': 'Arica y Parinacota',
+  '01': 'Tarapacá',
+  '02': 'Antofagasta',
+  '03': 'Atacama',
+  '04': 'Coquimbo',
+  '05': 'Valparaíso',
+  '13': 'Metropolitana',
+  '06': "O'Higgins",
+  '07': 'Maule',
+  '16': 'Ñuble',
+  '08': 'Biobío',
+  '09': 'La Araucanía',
+  '14': 'Los Ríos',
+  '10': 'Los Lagos',
+  '11': 'Aysén',
+  '12': 'Magallanes',
+};
+
+// Approximate region centers (longitude, latitude)
+const REGION_CENTERS: Record<string, [number, number]> = {
+  '15': [-70.3, -18.5],   // Arica
+  '01': [-70.1, -20.2],   // Iquique
+  '02': [-70.4, -23.6],   // Antofagasta
+  '03': [-70.3, -27.4],   // Copiapó
+  '04': [-71.3, -29.9],   // La Serena
+  '05': [-71.6, -33.0],   // Valparaíso
+  '13': [-70.6, -33.5],   // Santiago
+  '06': [-70.7, -34.2],   // Rancagua
+  '07': [-71.7, -35.4],   // Talca
+  '16': [-72.1, -36.6],   // Chillán
+  '08': [-73.0, -37.5],   // Concepción
+  '09': [-72.6, -38.7],   // Temuco
+  '14': [-73.2, -39.8],   // Valdivia
+  '10': [-73.1, -41.5],   // Puerto Montt
+  '11': [-72.1, -46.4],   // Coyhaique
+  '12': [-72.5, -51.7],   // Punta Arenas
+};
+
+/**
+ * Get region name from viewport center coordinates
+ * Returns the name of the region closest to the viewport center
+ */
+export function getRegionNameFromViewport(
+  centerLng: number,
+  centerLat: number,
+  zoom: number
+): string {
+  // If zoomed out (showing all Chile), return "Chile"
+  if (zoom < 6) {
+    return 'Chile';
+  }
+  
+  // Find closest region by distance to center
+  let closestRegion = '13'; // Default to Metropolitana
+  let minDistance = Infinity;
+  
+  for (const [regionCode, [lng, lat]] of Object.entries(REGION_CENTERS)) {
+    const distance = distanceBetween(centerLng, centerLat, lng, lat);
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestRegion = regionCode;
+    }
+  }
+  
+  // If very far from any region center, might be showing multiple regions
+  // Return "Chile" if distance is very large (> 500km)
+  if (minDistance > 500000) {
+    return 'Chile';
+  }
+  
+  return REGION_NAMES[closestRegion] || 'Chile';
+}

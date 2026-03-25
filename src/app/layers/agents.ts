@@ -132,26 +132,34 @@ export async function ensureAgentsLayer(map: Map): Promise<boolean> {
         type: 'fill-extrusion',
         source: AGENTS_CONFIG.sourceId,
         paint: {
-      // Height of the extrusion in meters - use 'height' property from GeoJSON
-      'fill-extrusion-height': [
-        'interpolate',
-        ['linear'],
-        ['zoom'],
-        10, ['*', ['get', 'height'], 0.3],  // Shorter when zoomed out
-        14, ['*', ['get', 'height'], 0.6],
-        18, ['get', 'height'],              // Full height when zoomed in
-      ],
+          // Height of the extrusion in meters - use 'height' property from GeoJSON
+          // Ensure minimum height of 50m so bars are always visible
+          'fill-extrusion-height': [
+            'max',
+            50, // Minimum height to ensure visibility
+            [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              6, ['*', ['get', 'height'], 0.2],   // Very short when zoomed out
+              10, ['*', ['get', 'height'], 0.4],  // Short at medium zoom
+              14, ['*', ['get', 'height'], 0.7],  // Medium height
+              18, ['get', 'height'],              // Full height when zoomed in
+            ]
+          ],
           // Base height (start from ground)
           'fill-extrusion-base': 0,
-          // Color of the extrusion
+          // Color of the extrusion - bright cyan for visibility
           'fill-extrusion-color': AGENTS_CONFIG.extrusionColor,
-          // Opacity
+          // Opacity - higher for better visibility
           'fill-extrusion-opacity': [
             'interpolate',
             ['linear'],
             ['zoom'],
-            10, AGENTS_CONFIG.extrusionOpacity * 0.5,
-            14, AGENTS_CONFIG.extrusionOpacity,
+            6, 0.6,   // Visible even when zoomed out
+            10, 0.7,
+            14, 0.85,
+            18, AGENTS_CONFIG.extrusionOpacity,
           ],
           // Vertical gradient (darker at bottom, lighter at top)
           'fill-extrusion-vertical-gradient': true,
@@ -280,4 +288,221 @@ export function setAgentIconSize(map: Map, size: number): void {
   } catch (error) {
     console.error('Failed to set agent icon size:', error);
   }
+}
+
+// Track if click handler is already set up
+let clickHandlerSetup = false;
+
+/**
+ * Setup click handler for agents to show profile popup
+ * Call this once after the map is initialized
+ */
+export function setupAgentClickHandler(map: Map): void {
+  if (clickHandlerSetup) return;
+  
+  // Click on agent layer
+  map.on('click', AGENTS_CONFIG.symbolLayerId, (e) => {
+    if (e.features && e.features.length > 0) {
+      const feature = e.features[0];
+      const properties = feature.properties;
+      
+      if (properties) {
+        showAgentProfilePopup(map, e.lngLat, properties);
+      }
+    }
+  });
+
+  // Change cursor on hover
+  map.on('mouseenter', AGENTS_CONFIG.symbolLayerId, () => {
+    map.getCanvas().style.cursor = 'pointer';
+  });
+
+  map.on('mouseleave', AGENTS_CONFIG.symbolLayerId, () => {
+    map.getCanvas().style.cursor = '';
+  });
+
+  // Also handle clicks on extrusion layer
+  map.on('click', AGENTS_CONFIG.extrusionLayerId, (e) => {
+    if (e.features && e.features.length > 0) {
+      const feature = e.features[0];
+      const properties = feature.properties;
+      
+      if (properties) {
+        showAgentProfilePopup(map, e.lngLat, properties);
+      }
+    }
+  });
+
+  map.on('mouseenter', AGENTS_CONFIG.extrusionLayerId, () => {
+    map.getCanvas().style.cursor = 'pointer';
+  });
+
+  map.on('mouseleave', AGENTS_CONFIG.extrusionLayerId, () => {
+    map.getCanvas().style.cursor = '';
+  });
+
+  clickHandlerSetup = true;
+  console.log('✅ Agent click handler setup complete');
+}
+
+/**
+ * Show agent profile popup
+ */
+function showAgentProfilePopup(
+  map: Map,
+  lngLat: { lng: number; lat: number },
+  properties: Record<string, unknown>
+): void {
+  // Remove existing popup if any
+  const existingPopup = document.querySelector('.agent-profile-popup');
+  if (existingPopup) {
+    existingPopup.remove();
+  }
+
+  // Create popup element
+  const popup = document.createElement('div');
+  popup.className = 'agent-profile-popup';
+  
+  // Extract agent data
+  const agentId = properties.id || properties.agent_id || 'Unknown';
+  const age = properties.age || properties.edad || 'N/A';
+  const gender = properties.gender || properties.sexo || 'N/A';
+  const education = properties.education || properties.educacion || 'N/A';
+  const income = properties.income || properties.ingreso || 'N/A';
+  const region = properties.region || 'N/A';
+  const comuna = properties.comuna || 'N/A';
+  
+  // Format gender
+  const genderDisplay = typeof gender === 'string' ? 
+    (gender.toLowerCase() === 'm' ? 'Masculino' : 
+     gender.toLowerCase() === 'f' ? 'Femenino' : gender) : 
+    gender;
+
+  popup.innerHTML = `
+    <div class="agent-profile-header">
+      <span class="agent-profile-icon">👤</span>
+      <span class="agent-profile-title">Agente #${agentId}</span>
+      <button class="agent-profile-close">×</button>
+    </div>
+    <div class="agent-profile-content">
+      <div class="agent-profile-row">
+        <span class="agent-profile-label">Edad:</span>
+        <span class="agent-profile-value">${age} años</span>
+      </div>
+      <div class="agent-profile-row">
+        <span class="agent-profile-label">Género:</span>
+        <span class="agent-profile-value">${genderDisplay}</span>
+      </div>
+      <div class="agent-profile-row">
+        <span class="agent-profile-label">Educación:</span>
+        <span class="agent-profile-value">${education}</span>
+      </div>
+      <div class="agent-profile-row">
+        <span class="agent-profile-label">Ingreso:</span>
+        <span class="agent-profile-value">${income}</span>
+      </div>
+      <div class="agent-profile-row">
+        <span class="agent-profile-label">Ubicación:</span>
+        <span class="agent-profile-value">${comuna}, ${region}</span>
+      </div>
+    </div>
+  `;
+
+  // Style the popup
+  popup.style.cssText = `
+    position: absolute;
+    background: rgba(10, 15, 30, 0.95);
+    border: 1px solid rgba(142, 252, 255, 0.5);
+    border-radius: 8px;
+    padding: 12px;
+    min-width: 220px;
+    color: #fff;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 13px;
+    z-index: 1000;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 20px rgba(142, 252, 255, 0.2);
+    pointer-events: auto;
+  `;
+
+  // Add styles for inner elements
+  const style = document.createElement('style');
+  style.textContent = `
+    .agent-profile-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(142, 252, 255, 0.3);
+    }
+    .agent-profile-icon {
+      font-size: 18px;
+    }
+    .agent-profile-title {
+      font-weight: 600;
+      color: #8efcff;
+      flex: 1;
+    }
+    .agent-profile-close {
+      background: none;
+      border: none;
+      color: #8efcff;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 0;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .agent-profile-close:hover {
+      background: rgba(142, 252, 255, 0.2);
+    }
+    .agent-profile-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .agent-profile-label {
+      color: rgba(255, 255, 255, 0.6);
+    }
+    .agent-profile-value {
+      color: #fff;
+      font-weight: 500;
+    }
+  `;
+  document.head.appendChild(style);
+
+  // Position popup near the click
+  const canvas = map.getCanvas();
+  const rect = canvas.getBoundingClientRect();
+  const point = map.project([lngLat.lng, lngLat.lat]);
+  
+  popup.style.left = `${rect.left + point.x + 10}px`;
+  popup.style.top = `${rect.top + point.y - 50}px`;
+
+  // Close button handler
+  const closeBtn = popup.querySelector('.agent-profile-close');
+  closeBtn?.addEventListener('click', () => {
+    popup.remove();
+  });
+
+  // Close on click outside
+  const closeOnClickOutside = (e: MouseEvent) => {
+    if (!popup.contains(e.target as Node)) {
+      popup.remove();
+      document.removeEventListener('click', closeOnClickOutside);
+    }
+  };
+  
+  // Add to document
+  document.body.appendChild(popup);
+  
+  // Delay adding the click listener to avoid immediate close
+  setTimeout(() => {
+    document.addEventListener('click', closeOnClickOutside);
+  }, 100);
 }

@@ -20,6 +20,7 @@ import {
   getPerformanceMetrics,
   type QualityMode,
 } from '../app/performance/qualityMode';
+import { getRegionNameFromViewport } from '../app/utils/geoUtils';
 
 interface PanelState {
   buildings: boolean;
@@ -52,7 +53,7 @@ export function createPanel(map: Map): HTMLElement {
     <div class="panel-basic">
       <div class="panel-header-compact">
         <h1 class="panel-title-sm">Pulso Social</h1>
-        <p class="panel-subtitle-sm">El Golf / Tobalaba</p>
+        <p class="panel-subtitle-sm" id="region-subtitle">Chile</p>
       </div>
 
       <!-- Status compact -->
@@ -261,6 +262,7 @@ function setupEventListeners(panel: HTMLElement, map: Map): void {
   setInterval(() => {
     updateSimulationStatus();
     updateViewportAgentCount();
+    updateRegionSubtitle(map);
   }, 500);
 }
 
@@ -459,4 +461,21 @@ export function updatePanelState(newState: Partial<PanelState>): void {
  */
 export function getPanelState(): PanelState {
   return { ...state };
+}
+
+/**
+ * Update region subtitle based on viewport center
+ */
+function updateRegionSubtitle(map: Map): void {
+  const subtitleEl = document.querySelector('#region-subtitle') as HTMLElement;
+  if (!subtitleEl) return;
+
+  const center = map.getCenter();
+  const zoom = map.getZoom();
+  const regionName = getRegionNameFromViewport(center.lng, center.lat, zoom);
+  
+  // Only update if changed
+  if (subtitleEl.textContent !== regionName) {
+    subtitleEl.textContent = regionName;
+  }
 }

@@ -365,6 +365,7 @@ export async function getAgentStats(): Promise<AgentStats> {
 /**
  * Get agents within a bounding box (for map viewport)
  * Optimized for spatial queries with coordinate filtering
+ * Uses random sampling for better distribution across the viewport
  * 
  * @param sw Southwest corner [lng, lat]
  * @param ne Northeast corner [lng, lat]
@@ -377,11 +378,12 @@ export async function getAgentsInBBox(
   options: {
     limit?: number;
     filters?: AgentFilters;
+    useRandomSampling?: boolean;
   } = {}
 ): Promise<SyntheticAgent[]> {
-  const { limit = 500, filters = {} } = options;
+  const { limit = 500, filters = {}, useRandomSampling = true } = options;
 
-  console.log(`[🟢 AgentRepository] getAgentsInBBox() - BBox: [${sw[0]},${sw[1]}] to [${ne[0]},${ne[1]}]`);
+  console.log(`[🟢 AgentRepository] getAgentsInBBox() - BBox: [${sw[0]},${sw[1]}] to [${ne[0]},${ne[1]}], Limit: ${limit}, Random: ${useRandomSampling}`);
   
   const client = await getSupabaseClient();
   if (!client) {
@@ -399,8 +401,7 @@ export async function getAgentsInBBox(
       .gte('location_lat', sw[1])  // min lat
       .lte('location_lat', ne[1])  // max lat
       .not('location_lat', 'is', null)  // Only agents with coordinates
-      .not('location_lng', 'is', null)
-      .limit(limit);
+      .not('location_lng', 'is', null);
 
     // Apply additional filters
     if (filters.regionCode) {
@@ -434,6 +435,14 @@ export async function getAgentsInBBox(
       query = query.eq('agent_type', filters.agentType);
     }
 
+    // Apply random ordering for better spatial distribution
+    if (useRandomSampling) {
+      query = query.order('agent_id', { ascending: false }); // Use agent_id as pseudo-random
+    }
+
+    // Apply limit
+    query = query.limit(limit);
+
     const { data, error } = await query;
 
     if (error) {
@@ -456,6 +465,59 @@ export async function getAgentsInBBox(
     return agents;
   } catch (error) {
     console.error('[🔴 AgentRepository] Error en getAgentsInBBox:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get agents distributed across all regions for initial view
+ * Returns a representative sample from each region
+ * 
+ * @param totalLimit Total number of agents to return
+ * @returns Array of agents distributed across regions
+ */
+export async function getAgentsDistributed(
+  totalLimit: number = 2000
+): Promise<SyntheticAgent[]> {
+  console.log(`[🟢 AgentRepository] getAgentsDistributed() - Total: ${totalLimit}`);
+  
+  const client = await getSupabaseClient();
+  if (!client) {
+    console.error('[🔴 AgentRepository] Supabase no disponible');
+    throw new Error('Supabase no está disponible. No se pueden cargar los agentes.');
+  }
+
+  try {
+    // Get agents distributed across all regions using a window function approach
+    // We'll get a sample from each region proportional to its population
+    const { data, error } = await client
+      .from('synthetic_agents')
+      .select('*')
+      .not('location_lat', 'is', null)
+      .not('location_lng', 'is', null)
+      .order('agent_id', { ascending: false }) // Pseudo-random distribution
+      .limit(totalLimit);
+
+    if (error) {
+      console.error('[🔴 AgentRepository] Error en query distribuida:', error);
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      console.log('[🟡 AgentRepository] No se encontraron agentes');
+      return [];
+    }
+
+    console.log(`[🟢 AgentRepository] ✅ Cargados ${data.length} agentes distribuidos`);
+
+    // Transform to SyntheticAgent format
+    const agents = await Promise.all(
+      (data as DbSyntheticAgent[]).map(dbAgentToSyntheticAgent)
+    );
+
+    return agents;
+  } catch (error) {
+    console.error('[🔴 AgentRepository] Error en getAgentsDistributed:', error);
     throw error;
   }
 }

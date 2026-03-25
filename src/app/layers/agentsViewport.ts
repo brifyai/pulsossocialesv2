@@ -11,7 +11,7 @@
  */
 
 import type { Map } from 'maplibre-gl';
-import { getAgentsInBBox, getAgentClusters } from '../../services/supabase/repositories/agentRepository';
+import { getAgentsInBBox, getAgentClusters, getAgentsDistributed } from '../../services/supabase/repositories/agentRepository';
 import type { SyntheticAgent } from '../../types/agent';
 import { updateAgentsGeoJSON, ensureAgentsLayer } from './agents';
 
@@ -22,16 +22,18 @@ const CONFIG = {
   
   // Zoom thresholds
   zoom: {
-    cluster: 10,      // Below this: show clusters
-    simplified: 14,   // Below this: show simplified points
-    detailed: 18,     // Above this: show detailed agents
+    chileOverview: 6,   // Below this: show Chile overview with distributed agents
+    cluster: 10,        // Below this: show clusters
+    simplified: 14,     // Below this: show simplified points
+    detailed: 18,       // Above this: show detailed agents
   },
   
-  // Limits
+  // Limits - Adaptive based on zoom level
   limits: {
-    cluster: 5000,    // Max agents for clustering
-    simplified: 1000, // Max agents for simplified view
-    detailed: 500,    // Max agents for detailed view
+    chileOverview: 2000, // Max agents for Chile overview (distributed across all regions)
+    cluster: 5000,       // Max agents for clustering
+    simplified: 1000,    // Max agents for simplified view
+    detailed: 500,       // Max agents for detailed view
   },
   
   // Grid size for clustering (degrees)
@@ -141,7 +143,10 @@ async function loadAgentsForViewport(map: Map): Promise<void> {
     console.log(`[🟢 AgentsViewport] Cargando agentes - Zoom: ${zoom.toFixed(1)}, BBox: [${sw[0].toFixed(2)},${sw[1].toFixed(2)}] to [${ne[0].toFixed(2)},${ne[1].toFixed(2)}]`);
     
     // Strategy based on zoom level
-    if (zoom < CONFIG.zoom.cluster) {
+    if (zoom < CONFIG.zoom.chileOverview) {
+      // Very low zoom: show distributed agents across all Chile
+      await loadChileOverview(map);
+    } else if (zoom < CONFIG.zoom.cluster) {
       // Low zoom: show clusters
       await loadClusters(map, sw, ne);
     } else if (zoom < CONFIG.zoom.simplified) {
@@ -242,6 +247,23 @@ async function loadDetailedAgents(
   callbacks.onLoaded?.(agents.length);
   
   console.log(`[🟢 AgentsViewport] ✅ ${agents.length} agentes detallados renderizados`);
+}
+
+/**
+ * Load distributed agents for Chile overview (very low zoom)
+ * Shows agents distributed across all regions
+ */
+async function loadChileOverview(map: Map): Promise<void> {
+  console.log('[🟢 AgentsViewport] Modo: Chile Overview');
+  
+  const agents = await getAgentsDistributed(CONFIG.limits.chileOverview);
+  
+  state.currentAgentCount = agents.length;
+  const geojson = agentsToGeoJSON(agents, 'simplified');
+  updateAgentsGeoJSON(map, geojson);
+  callbacks.onLoaded?.(agents.length);
+  
+  console.log(`[🟢 AgentsViewport] ✅ ${agents.length} agentes distribuidos en Chile renderizados`);
 }
 
 /**

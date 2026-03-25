@@ -21,7 +21,7 @@ import { createBuildingLayer } from './layers/buildings';
 import { recolorizeRoads } from './layers/roads';
 import { recolorizeLabels } from './layers/labels';
 import { applyStyleTweaks } from './styleTweaks';
-import { ensureAgentsLayer } from './layers/agents';
+import { ensureAgentsLayer, setupAgentClickHandler } from './layers/agents';
 import { initAgentsViewport } from './layers/agentsViewport';
 import { createPanel } from '../ui/panel';
 
@@ -91,6 +91,9 @@ export function initMap(): MapInstance {
       onLoaded: (count) => console.log(`✅ ${count} agentes renderizados`),
       onError: (error) => console.error('🔴 Error cargando agentes:', error),
     });
+
+    // Setup agent click handler for profile popup
+    setupAgentClickHandler(map);
 
     // Create UI panel
     const panel = createPanel(map);
