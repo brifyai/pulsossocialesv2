@@ -363,6 +363,208 @@ export async function getAgentStats(): Promise<AgentStats> {
 }
 
 /**
+ * Get agents within a bounding box (for map viewport)
+ * Optimized for spatial queries with coordinate filtering
+ * 
+ * @param sw Southwest corner [lng, lat]
+ * @param ne Northeast corner [lng, lat]
+ * @param options Optional filters and limit
+ * @returns Array of agents within the bounding box
+ */
+export async function getAgentsInBBox(
+  sw: [number, number],
+  ne: [number, number],
+  options: {
+    limit?: number;
+    filters?: AgentFilters;
+  } = {}
+): Promise<SyntheticAgent[]> {
+  const { limit = 500, filters = {} } = options;
+
+  console.log(`[🟢 AgentRepository] getAgentsInBBox() - BBox: [${sw[0]},${sw[1]}] to [${ne[0]},${ne[1]}]`);
+  
+  const client = await getSupabaseClient();
+  if (!client) {
+    console.error('[🔴 AgentRepository] Supabase no disponible');
+    throw new Error('Supabase no está disponible. No se pueden cargar los agentes.');
+  }
+
+  try {
+    // Build query with spatial filters
+    let query = client
+      .from('synthetic_agents')
+      .select('*')
+      .gte('location_lng', sw[0])  // min lng
+      .lte('location_lng', ne[0])  // max lng
+      .gte('location_lat', sw[1])  // min lat
+      .lte('location_lat', ne[1])  // max lat
+      .not('location_lat', 'is', null)  // Only agents with coordinates
+      .not('location_lng', 'is', null)
+      .limit(limit);
+
+    // Apply additional filters
+    if (filters.regionCode) {
+      query = query.eq('region_code', filters.regionCode);
+    }
+    if (filters.comunaCode) {
+      query = query.eq('comuna_code', filters.comunaCode);
+    }
+    if (filters.sex) {
+      query = query.eq('sex', filters.sex);
+    }
+    if (filters.ageGroup) {
+      query = query.eq('age_group', filters.ageGroup);
+    }
+    if (filters.ageMin !== undefined) {
+      query = query.gte('age', filters.ageMin);
+    }
+    if (filters.ageMax !== undefined) {
+      query = query.lte('age', filters.ageMax);
+    }
+    if (filters.incomeDecile) {
+      query = query.eq('income_decile', filters.incomeDecile);
+    }
+    if (filters.educationLevel) {
+      query = query.eq('education_level', filters.educationLevel);
+    }
+    if (filters.connectivityLevel) {
+      query = query.eq('connectivity_level', filters.connectivityLevel);
+    }
+    if (filters.agentType) {
+      query = query.eq('agent_type', filters.agentType);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('[🔴 AgentRepository] Error en query espacial:', error);
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      console.log('[🟡 AgentRepository] No se encontraron agentes en el bounding box');
+      return [];
+    }
+
+    console.log(`[🟢 AgentRepository] ✅ Encontrados ${data.length} agentes en el viewport`);
+
+    // Transform to SyntheticAgent format
+    const agents = await Promise.all(
+      (data as DbSyntheticAgent[]).map(dbAgentToSyntheticAgent)
+    );
+
+    return agents;
+  } catch (error) {
+    console.error('[🔴 AgentRepository] Error en getAgentsInBBox:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get agent clusters for low zoom levels
+ * Groups agents by geographic grid cells for efficient rendering
+ * 
+ * @param sw Southwest corner [lng, lat]
+ * @param ne Northeast corner [lng, lat]
+ * @param gridSize Size of grid cells in degrees (default: 0.1)
+ * @returns Array of clusters with count and centroid
+ */
+export async function getAgentClusters(
+  sw: [number, number],
+  ne: [number, number],
+  gridSize: number = 0.1
+): Promise<Array<{
+  id: string;
+  lat: number;
+  lng: number;
+  count: number;
+  bounds: [[number, number], [number, number]];
+}>> {
+  console.log(`[🟢 AgentRepository] getAgentClusters() - Grid: ${gridSize}°`);
+  
+  const client = await getSupabaseClient();
+  if (!client) {
+    console.error('[🔴 AgentRepository] Supabase no disponible');
+    return [];
+  }
+
+  try {
+    // For clustering, we use a simpler approach:
+    // Get all agents in bbox (limited) and cluster them client-side
+    // For production, consider using PostGIS or a dedicated clustering service
+    const { data, error } = await client
+      .from('synthetic_agents')
+      .select('location_lat, location_lng, agent_id')
+      .gte('location_lng', sw[0])
+      .lte('location_lng', ne[0])
+      .gte('location_lat', sw[1])
+      .lte('location_lat', ne[1])
+      .not('location_lat', 'is', null)
+      .limit(5000); // Limit for clustering
+
+    if (error) throw error;
+    if (!data || data.length === 0) return [];
+
+    // Simple grid-based clustering
+    const clusters = new Map<string, {
+      lat: number;
+      lng: number;
+      count: number;
+      minLat: number;
+      maxLat: number;
+      minLng: number;
+      maxLng: number;
+    }>();
+
+    data.forEach((agent: any) => {
+      if (!agent.location_lat || !agent.location_lng) return;
+
+      // Calculate grid cell
+      const cellX = Math.floor(agent.location_lng / gridSize);
+      const cellY = Math.floor(agent.location_lat / gridSize);
+      const cellKey = `${cellX},${cellY}`;
+
+      if (clusters.has(cellKey)) {
+        const cluster = clusters.get(cellKey)!;
+        cluster.count++;
+        cluster.minLat = Math.min(cluster.minLat, agent.location_lat);
+        cluster.maxLat = Math.max(cluster.maxLat, agent.location_lat);
+        cluster.minLng = Math.min(cluster.minLng, agent.location_lng);
+        cluster.maxLng = Math.max(cluster.maxLng, agent.location_lng);
+        // Update centroid (running average)
+        cluster.lat = (cluster.lat * (cluster.count - 1) + agent.location_lat) / cluster.count;
+        cluster.lng = (cluster.lng * (cluster.count - 1) + agent.location_lng) / cluster.count;
+      } else {
+        clusters.set(cellKey, {
+          lat: agent.location_lat,
+          lng: agent.location_lng,
+          count: 1,
+          minLat: agent.location_lat,
+          maxLat: agent.location_lat,
+          minLng: agent.location_lng,
+          maxLng: agent.location_lng,
+        });
+      }
+    });
+
+    // Convert to array format
+    return Array.from(clusters.entries()).map(([key, cluster]) => ({
+      id: key,
+      lat: cluster.lat,
+      lng: cluster.lng,
+      count: cluster.count,
+      bounds: [
+        [cluster.minLng, cluster.minLat],
+        [cluster.maxLng, cluster.maxLat],
+      ] as [[number, number], [number, number]],
+    }));
+  } catch (error) {
+    console.error('[🔴 AgentRepository] Error en getAgentClusters:', error);
+    return [];
+  }
+}
+
+/**
  * Check if Supabase is available
  */
 export async function isSupabaseAvailable(): Promise<boolean> {
@@ -522,5 +724,8 @@ async function dbAgentToSyntheticAgent(dbAgent: DbSyntheticAgent): Promise<Synth
     casen_profile_key: dbAgent.casen_profile_key,
     generation_notes: dbAgent.generation_notes,
     created_at: dbAgent.created_at,
+    // Geolocation (from enriched data)
+    location_lat: dbAgent.location_lat,
+    location_lng: dbAgent.location_lng,
   };
 }

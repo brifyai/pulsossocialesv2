@@ -157,6 +157,10 @@ export interface DbSyntheticAgent {
   casen_profile_key: string | null;
   generation_notes: string;
   
+  // Geolocalización
+  location_lat: number | null;   // Latitud GPS
+  location_lng: number | null;   // Longitud GPS
+  
   // Metadata
   created_at: string;
   updated_at: string;

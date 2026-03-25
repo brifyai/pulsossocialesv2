@@ -142,6 +142,10 @@ export interface SyntheticAgent {
   subtel_profile_key: string | null;
   casen_profile_key: string | null;
   generation_notes: string;
+  
+  // Geolocation (from enriched data)
+  location_lat?: number | null;
+  location_lng?: number | null;
 }
 
 export interface SyntheticAgentsData {
