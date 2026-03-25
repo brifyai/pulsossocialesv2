@@ -13,7 +13,6 @@
 import type { Map } from 'maplibre-gl';
 import { getAgentsInBBox, getAgentClusters } from '../../services/supabase/repositories/agentRepository';
 import type { SyntheticAgent } from '../../types/agent';
-import type { AgentFilters } from '../../types/database';
 import { updateAgentsGeoJSON, ensureAgentsLayer } from './agents';
 
 // Configuration
