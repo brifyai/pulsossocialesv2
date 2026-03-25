@@ -236,9 +236,16 @@ function initChileMap(containerId: string, infoPanel: HTMLElement): void {
     map.on('click', 'region-fills', (e) => {
       if (!map || !e.features || !e.features[0]) return;
 
-      const props = e.features[0].properties;
-      if (props && props.code) {
-        selectRegion(props.code);
+      const feature = e.features[0];
+      const featureId = feature.id;
+      
+      // Buscar la feature completa en el GeoJSON original usando el ID
+      // para evitar problemas con features duplicadas
+      const fullFeature = chileRegionsGeoJSON.features.find(f => f.id === featureId);
+      const code = fullFeature?.properties?.code || feature.properties?.code;
+      
+      if (code) {
+        selectRegion(code);
       }
     });
 
