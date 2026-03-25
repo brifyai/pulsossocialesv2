@@ -22,6 +22,7 @@ import { recolorizeRoads } from './layers/roads';
 import { recolorizeLabels } from './layers/labels';
 import { applyStyleTweaks } from './styleTweaks';
 import { ensureAgentsLayer } from './layers/agents';
+import { initAgentsViewport } from './layers/agentsViewport';
 import { createPanel } from '../ui/panel';
 
 /**
@@ -83,6 +84,13 @@ export function initMap(): MapInstance {
     createBuildingLayer(map);
     applyFog(map);
     ensureAgentsLayer(map);
+
+    // Initialize agents viewport (Sprint 12C: 25,000 agents)
+    initAgentsViewport(map, {
+      onLoading: () => console.log('🟡 Cargando agentes...'),
+      onLoaded: (count) => console.log(`✅ ${count} agentes renderizados`),
+      onError: (error) => console.error('🔴 Error cargando agentes:', error),
+    });
 
     // Create UI panel
     const panel = createPanel(map);
