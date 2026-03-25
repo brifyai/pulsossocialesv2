@@ -671,16 +671,45 @@ async function getLocalAgentStats(): Promise<AgentStats> {
 // Caché en memoria para nombres de territorios
 let territoryNamesCache: Map<string, { region_name: string; comuna_name: string }> | null = null;
 
+// Promise singleton para evitar múltiples peticiones simultáneas
+let territoryCacheLoadingPromise: Promise<Map<string, { region_name: string; comuna_name: string }>> | null = null;
+
 /**
  * Carga los nombres de territorios desde Supabase
  * Usa un cache para evitar múltiples queries
  * NOTA: Usa code y name (columnas migradas) para comunas
+ * 
+ * IMPLEMENTA SINGLETON PATTERN: Si ya hay una petición en curso, reutiliza esa promise
+ * para evitar múltiples peticiones simultáneas que causan ERR_INSUFFICIENT_RESOURCES
  */
 async function loadTerritoryNamesCache(): Promise<Map<string, { region_name: string; comuna_name: string }>> {
+  // Si ya tenemos el caché cargado, retornarlo inmediatamente
   if (territoryNamesCache) {
     return territoryNamesCache;
   }
 
+  // Si ya hay una petición en curso, esperar a que termine y reutilizar el resultado
+  if (territoryCacheLoadingPromise) {
+    console.log('[🟡 AgentRepository] Reutilizando petición de caché de territorios en curso...');
+    return territoryCacheLoadingPromise;
+  }
+
+  // Crear la petición y guardarla como singleton
+  territoryCacheLoadingPromise = loadTerritoryNamesCacheInternal();
+  
+  try {
+    const result = await territoryCacheLoadingPromise;
+    return result;
+  } finally {
+    // Limpiar la promise después de completar (éxito o error)
+    territoryCacheLoadingPromise = null;
+  }
+}
+
+/**
+ * Implementación interna de la carga de caché
+ */
+async function loadTerritoryNamesCacheInternal(): Promise<Map<string, { region_name: string; comuna_name: string }>> {
   const client = await getSupabaseClient();
   if (!client) {
     console.warn('[🟡 AgentRepository] No se puede cargar caché de territorios, Supabase no disponible');

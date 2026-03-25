@@ -17,8 +17,11 @@ import { updateAgentsGeoJSON, ensureAgentsLayer } from './agents';
 
 // Configuration
 const CONFIG = {
-  // Debounce time in ms
-  debounceMs: 300,
+  // Debounce time in ms - increased to prevent resource exhaustion
+  debounceMs: 800,
+  
+  // Minimum time between requests (rate limiting)
+  minRequestIntervalMs: 1000,
   
   // Zoom thresholds
   zoom: {
@@ -28,17 +31,29 @@ const CONFIG = {
     detailed: 18,       // Above this: show detailed agents
   },
   
-  // Limits - Adaptive based on zoom level
+  // Limits - Adaptive based on zoom level (reduced to prevent overload)
   limits: {
-    chileOverview: 2000, // Max agents for Chile overview (distributed across all regions)
-    cluster: 5000,       // Max agents for clustering
-    simplified: 1000,    // Max agents for simplified view
-    detailed: 500,       // Max agents for detailed view
+    chileOverview: 500,  // Reduced from 2000 to prevent resource exhaustion
+    cluster: 100,        // Reduced from 5000
+    simplified: 200,     // Reduced from 1000
+    detailed: 100,       // Reduced from 500
   },
   
   // Grid size for clustering (degrees)
   clusterGridSize: 0.1,
+  
+  // Maximum retries for failed requests
+  maxRetries: 3,
+  
+  // Retry delay in ms
+  retryDelayMs: 2000,
 };
+
+// Track last request time for rate limiting
+let lastRequestTime = 0;
+
+// Track consecutive errors
+let consecutiveErrors = 0;
 
 // State
 interface ViewportState {
@@ -110,9 +125,9 @@ function handleViewportChange(map: Map): void {
 }
 
 /**
- * Load agents based on current viewport
+ * Load agents based on current viewport with rate limiting and retry logic
  */
-async function loadAgentsForViewport(map: Map): Promise<void> {
+async function loadAgentsForViewport(map: Map, retryCount = 0): Promise<void> {
   const bounds = map.getBounds();
   const zoom = map.getZoom();
   
@@ -130,8 +145,18 @@ async function loadAgentsForViewport(map: Map): Promise<void> {
     return;
   }
   
+  // Rate limiting: check if enough time has passed since last request
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastRequestTime;
+  if (timeSinceLastRequest < CONFIG.minRequestIntervalMs) {
+    const waitTime = CONFIG.minRequestIntervalMs - timeSinceLastRequest;
+    console.log(`[🟡 AgentsViewport] Rate limiting: esperando ${waitTime}ms`);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+  
   state.lastBounds = [sw, ne];
   state.lastZoom = zoom;
+  lastRequestTime = Date.now();
   
   // Create new abort controller
   state.abortController = new AbortController();
@@ -157,12 +182,27 @@ async function loadAgentsForViewport(map: Map): Promise<void> {
       await loadDetailedAgents(map, sw, ne);
     }
     
+    // Reset consecutive errors on success
+    consecutiveErrors = 0;
+    
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       console.log('[🟡 AgentsViewport] Request cancelado');
       return;
     }
-    console.error('[🔴 AgentsViewport] Error cargando agentes:', error);
+    
+    consecutiveErrors++;
+    console.error(`[🔴 AgentsViewport] Error cargando agentes (intento ${retryCount + 1}/${CONFIG.maxRetries}):`, error);
+    
+    // Retry logic
+    if (retryCount < CONFIG.maxRetries && consecutiveErrors < CONFIG.maxRetries) {
+      console.log(`[🟡 AgentsViewport] Reintentando en ${CONFIG.retryDelayMs}ms...`);
+      await new Promise(resolve => setTimeout(resolve, CONFIG.retryDelayMs));
+      return loadAgentsForViewport(map, retryCount + 1);
+    }
+    
+    // Max retries reached
+    console.error('[🔴 AgentsViewport] Máximo de reintentos alcanzado');
     callbacks.onError?.(error as Error);
   } finally {
     state.isLoading = false;
