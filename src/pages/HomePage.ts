@@ -56,9 +56,9 @@ export function createHomePage(): HTMLElement {
 
     <div class="home-info">
       <div class="info-section">
-        <h2>Zona de Demo</h2>
-        <p>El Golf / Tobalaba, Santiago</p>
-        <p class="info-note">Demo interactiva con agentes en tiempo real</p>
+        <h2>Pulso Social</h2>
+        <p>Plataforma de simulación territorial para Chile</p>
+        <p class="info-note">Simulación completa con agentes sintéticos en tiempo real</p>
       </div>
     </div>
 
