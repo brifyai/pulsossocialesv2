@@ -883,6 +883,7 @@ async function loadComunaCoordinatesCache(): Promise<Map<string, { name: string;
   
   try {
     // Cargar el JSON de comunas usando fetch
+    console.log('[🟢 AgentRepository] Cargando comuna_coordinates.json...');
     const response = await fetch('/data/comuna_coordinates.json');
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -900,6 +901,13 @@ async function loadComunaCoordinatesCache(): Promise<Map<string, { name: string;
       });
     }
     console.log(`[🟢 AgentRepository] Cache de coordenadas de comunas cargado: ${comunaCoordinatesCache.size} comunas`);
+    
+    // Log de ejemplo para verificar
+    const sampleCodes = ['09101', '9101', '13101', '01101'];
+    sampleCodes.forEach(code => {
+      const data = comunaCoordinatesCache!.get(code);
+      console.log(`[🟢 AgentRepository] Ejemplo - Código ${code}: ${data ? data.name : 'NO ENCONTRADO'}`);
+    });
   } catch (error) {
     console.warn('[🟡 AgentRepository] Error cargando coordenadas de comunas:', error);
   }
@@ -975,8 +983,8 @@ async function getComunaName(comunaCode: string, regionCode?: string): Promise<s
     // Fallback: intentar con diferentes prefijos de región
     const regionPrefixes = ['13', '09', '08', '07', '06', '05', '04', '03', '02', '01', '10', '11', '12', '14', '15', '16'];
     for (const prefix of regionPrefixes) {
-      const withPrefix = prefix + comunaCode;
-      const comunaDataPrefix = coordinatesCache.get(withPrefix);
+      const fullCode = prefix + comunaCode;
+      const comunaDataPrefix = coordinatesCache.get(fullCode);
       if (comunaDataPrefix) {
         return comunaDataPrefix.name;
       }
