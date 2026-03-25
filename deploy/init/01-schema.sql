@@ -59,6 +59,7 @@ COMMENT ON TABLE users IS 'Usuarios de la aplicación - Auth propio sin dependen
 COMMENT ON COLUMN users.password_hash IS 'Hash SHA-256 del password con salt';
 
 -- Trigger para updated_at
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at
     BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -428,18 +429,22 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Triggers para updated_at
+DROP TRIGGER IF EXISTS update_territories_updated_at ON territories;
 CREATE TRIGGER update_territories_updated_at
     BEFORE UPDATE ON territories
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_synthetic_agents_updated_at ON synthetic_agents;
 CREATE TRIGGER update_synthetic_agents_updated_at
     BEFORE UPDATE ON synthetic_agents
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_survey_definitions_updated_at ON survey_definitions;
 CREATE TRIGGER update_survey_definitions_updated_at
     BEFORE UPDATE ON survey_definitions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_benchmarks_updated_at ON benchmarks;
 CREATE TRIGGER update_benchmarks_updated_at
     BEFORE UPDATE ON benchmarks
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
