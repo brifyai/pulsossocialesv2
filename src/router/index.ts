@@ -148,10 +148,14 @@ export function initRouter(): void {
   const rawHash = window.location.hash.slice(1);
   const hasExplicitHash = rawHash.length > 0;
   
+  console.log('🔍 Router init - rawHash:', rawHash, 'hasExplicitHash:', hasExplicitHash);
+  
   // Parse hash and query params (use 'landing' only as default, not replacement)
   const hashPart = rawHash || 'landing';
   const [hash, queryString] = hashPart.split('?');
   const route = hash as Route;
+
+  console.log('🔍 Router init - parsed route:', route, 'hashPart:', hashPart);
 
   // Parse query params if present
   if (queryString) {
@@ -174,6 +178,7 @@ export function initRouter(): void {
   } else {
     // Default to landing if invalid route
     state.currentRoute = 'landing';
+    console.log('⚠️ Invalid route, defaulting to landing');
   }
 
   // Only redirect to home if:
@@ -187,14 +192,19 @@ export function initRouter(): void {
     state.params = {};
   }
 
+  console.log('🔍 Router init - final state.currentRoute:', state.currentRoute);
+
   // Update URL to match state only if we changed it
   if (state.currentRoute !== route || (state.params.redirect && state.currentRoute !== 'login')) {
+    console.log('📝 Updating URL hash to:', state.currentRoute);
     if (Object.keys(state.params).length > 0) {
       const newQueryString = new URLSearchParams(state.params).toString();
       window.location.hash = `${state.currentRoute}?${newQueryString}`;
     } else {
       window.location.hash = state.currentRoute;
     }
+  } else {
+    console.log('📝 Not updating URL hash (route unchanged)');
   }
 
   // Listen for hash changes
