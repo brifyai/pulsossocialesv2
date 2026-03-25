@@ -433,18 +433,29 @@ function showAgentProfilePopup(
   
   // Extract agent data
   const agentId = properties.id || properties.agent_id || 'Unknown';
-  const age = properties.age || properties.edad || 'N/A';
-  const gender = properties.gender || properties.sexo || 'N/A';
-  const education = properties.education || properties.educacion || 'N/A';
-  const income = properties.income || properties.ingreso || 'N/A';
-  const region = properties.region || 'N/A';
-  const comuna = properties.comuna || 'N/A';
+  const age = properties.age ?? 'N/A';
+  const sex = properties.sex ?? 'N/A';
+  const educationLevel = properties.education_level ?? 'N/A';
+  const incomeDecile = properties.income_decile ?? 'N/A';
+  const regionName = properties.region_name ?? properties.region_code ?? 'N/A';
+  const comunaName = properties.comuna_name ?? properties.comuna_code ?? 'N/A';
   
-  // Format gender
-  const genderDisplay = typeof gender === 'string' ? 
-    (gender.toLowerCase() === 'm' ? 'Masculino' : 
-     gender.toLowerCase() === 'f' ? 'Femenino' : gender) : 
-    gender;
+  // Format sex to display
+  const sexDisplay = typeof sex === 'string' ? 
+    (sex.toLowerCase() === 'male' ? 'Masculino' : 
+     sex.toLowerCase() === 'female' ? 'Femenino' : 
+     sex.toLowerCase() === 'm' ? 'Masculino' : 
+     sex.toLowerCase() === 'f' ? 'Femenino' : sex) : 
+    sex;
+  
+  // Format education level
+  const educationDisplay = typeof educationLevel === 'string' ? 
+    educationLevel.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 
+    educationLevel;
+  
+  // Format income decile
+  const incomeDisplay = incomeDecile !== 'N/A' && incomeDecile !== null ? 
+    `Decil ${incomeDecile}` : 'N/A';
 
   popup.innerHTML = `
     <div class="agent-profile-header">
@@ -459,19 +470,19 @@ function showAgentProfilePopup(
       </div>
       <div class="agent-profile-row">
         <span class="agent-profile-label">Género:</span>
-        <span class="agent-profile-value">${genderDisplay}</span>
+        <span class="agent-profile-value">${sexDisplay}</span>
       </div>
       <div class="agent-profile-row">
         <span class="agent-profile-label">Educación:</span>
-        <span class="agent-profile-value">${education}</span>
+        <span class="agent-profile-value">${educationDisplay}</span>
       </div>
       <div class="agent-profile-row">
         <span class="agent-profile-label">Ingreso:</span>
-        <span class="agent-profile-value">${income}</span>
+        <span class="agent-profile-value">${incomeDisplay}</span>
       </div>
       <div class="agent-profile-row">
         <span class="agent-profile-label">Ubicación:</span>
-        <span class="agent-profile-value">${comuna}, ${region}</span>
+        <span class="agent-profile-value">${comunaName}, ${regionName}</span>
       </div>
     </div>
   `;
