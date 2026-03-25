@@ -448,9 +448,37 @@ function showAgentProfilePopup(
      sex.toLowerCase() === 'f' ? 'Femenino' : sex) : 
     sex;
   
-  // Format education level
+  // Format education level - translate to Spanish
+  const educationTranslations: Record<string, string> = {
+    'none': 'Sin educación',
+    'primary': 'Educación básica',
+    'primary_incomplete': 'Educación básica incompleta',
+    'primary_complete': 'Educación básica completa',
+    'secondary': 'Educación media',
+    'secondary_incomplete': 'Educación media incompleta',
+    'secondary_complete': 'Educación media completa',
+    'high_school': 'Educación media',
+    'high_school_incomplete': 'Educación media incompleta',
+    'high_school_complete': 'Educación media completa',
+    'technical': 'Educación técnica',
+    'technical_incomplete': 'Educación técnica incompleta',
+    'technical_complete': 'Educación técnica completa',
+    'university': 'Educación universitaria',
+    'university_incomplete': 'Educación universitaria incompleta',
+    'university_complete': 'Educación universitaria completa',
+    'professional': 'Educación universitaria',
+    'professional_incomplete': 'Educación universitaria incompleta',
+    'professional_complete': 'Educación universitaria completa',
+    'postgraduate': 'Postgrado',
+    'master': 'Magíster',
+    'doctorate': 'Doctorado',
+    'other': 'Otra',
+    'unknown': 'Desconocido',
+  };
+  
   const educationDisplay = typeof educationLevel === 'string' ? 
-    educationLevel.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 
+    (educationTranslations[educationLevel.toLowerCase()] || 
+     educationLevel.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())) : 
     educationLevel;
   
   // Format income decile
