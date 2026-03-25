@@ -138,28 +138,41 @@ export function onRouteChange(callback: (route: Route) => void): () => void {
   return () => listeners.delete(callback);
 }
 
-// Storage key for preserving route
+// Storage keys for preserving route
 const ROUTE_STORAGE_KEY = 'pulsossociales_last_route';
+const ROUTE_LOCAL_STORAGE_KEY = 'pulsossociales_last_route_persistent';
 
 /**
- * Save current route to sessionStorage
+ * Save current route to both sessionStorage and localStorage
+ * localStorage persists across app updates/reinstalls
  */
 function saveRouteToStorage(route: Route): void {
   try {
     sessionStorage.setItem(ROUTE_STORAGE_KEY, route);
+    localStorage.setItem(ROUTE_LOCAL_STORAGE_KEY, route);
   } catch (e) {
     // Ignore storage errors
   }
 }
 
 /**
- * Get last route from sessionStorage
+ * Get last route from storage
+ * Priority: 1) sessionStorage (same session), 2) localStorage (across updates)
  */
 function getRouteFromStorage(): Route | null {
   try {
-    const saved = sessionStorage.getItem(ROUTE_STORAGE_KEY);
-    if (saved && validRoutes.includes(saved as Route)) {
-      return saved as Route;
+    // First try sessionStorage (for same-session navigation)
+    const sessionSaved = sessionStorage.getItem(ROUTE_STORAGE_KEY);
+    if (sessionSaved && validRoutes.includes(sessionSaved as Route)) {
+      return sessionSaved as Route;
+    }
+    
+    // Then try localStorage (persists across app updates)
+    const localSaved = localStorage.getItem(ROUTE_LOCAL_STORAGE_KEY);
+    if (localSaved && validRoutes.includes(localSaved as Route)) {
+      // Restore to sessionStorage for consistency
+      sessionStorage.setItem(ROUTE_STORAGE_KEY, localSaved);
+      return localSaved as Route;
     }
   } catch (e) {
     // Ignore storage errors
@@ -329,6 +342,7 @@ export async function logout(): Promise<void> {
   // Clear saved route from storage on logout
   try {
     sessionStorage.removeItem(ROUTE_STORAGE_KEY);
+    localStorage.removeItem(ROUTE_LOCAL_STORAGE_KEY);
     console.log('🗑️ Cleared saved route from storage on logout');
   } catch (e) {
     // Ignore storage errors
