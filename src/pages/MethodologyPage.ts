@@ -19,7 +19,11 @@ export function createMethodologyPage(): HTMLElement {
     <div class="methodology-container">
       <header class="methodology-header">
         <h1 class="methodology-title">
-          <span class="icon">📖</span>
+          <span class="material-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z"/>
+            </svg>
+          </span>
           Metodología
         </h1>
         <p class="methodology-subtitle">
@@ -88,7 +92,11 @@ export function createMethodologyPage(): HTMLElement {
             
             <div class="source-cards">
               <div class="source-card">
-                <div class="source-icon">🏛️</div>
+                <div class="source-icon material-icon">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/>
+                  </svg>
+                </div>
                 <h3 class="source-name">Censo 2024</h3>
                 <p class="source-desc">
                   Instituto Nacional de Estadísticas (INE). Proporciona la estructura demográfica 
@@ -98,7 +106,11 @@ export function createMethodologyPage(): HTMLElement {
               </div>
               
               <div class="source-card">
-                <div class="source-icon">📊</div>
+                <div class="source-icon material-icon">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
+                  </svg>
+                </div>
                 <h3 class="source-name">CASEN</h3>
                 <p class="source-desc">
                   Encuesta de Caracterización Socioeconómica Nacional. Ministerio de Desarrollo Social. 
@@ -108,7 +120,11 @@ export function createMethodologyPage(): HTMLElement {
               </div>
               
               <div class="source-card">
-                <div class="source-icon">📡</div>
+                <div class="source-icon material-icon">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                  </svg>
+                </div>
                 <h3 class="source-name">SUBTEL</h3>
                 <p class="source-desc">
                   Subsecretaría de Telecomunicaciones. Datos de acceso a internet, 
@@ -260,7 +276,11 @@ export function createMethodologyPage(): HTMLElement {
           <div class="section-content">
             <div class="limitation-cards">
               <div class="limitation-card">
-                <div class="limitation-icon">⚠️</div>
+                <div class="limitation-icon material-icon">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+                  </svg>
+                </div>
                 <h3>No reemplaza encuestas reales</h3>
                 <p>
                   Pulso Social es una herramienta de exploración y análisis, no un sustituto 
@@ -270,7 +290,11 @@ export function createMethodologyPage(): HTMLElement {
               </div>
               
               <div class="limitation-card">
-                <div class="limitation-icon">🤖</div>
+                <div class="limitation-icon material-icon">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20 9V7c0-1.1-.9-2-2-2h-3c0-1.66-1.34-3-3-3S9 3.34 9 5H6c-1.1 0-2 .9-2 2v2c-1.66 0-3 1.34-3 3s1.34 3 3 3v4c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-4c1.66 0 3-1.34 3-3s-1.34-3-3-3zM7.5 11.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5S9.83 13 9 13s-1.5-.67-1.5-1.5zM16 17H8v-2h8v2zm-1-4c-.83 0-1.5-.67-1.5-1.5S14.17 10 15 10s1.5.67 1.5 1.5S15.83 13 15 13z"/>
+                  </svg>
+                </div>
                 <h3>Agentes sintéticos ≠ Personas reales</h3>
                 <p>
                   Los agentes no tienen conciencia, emociones ni experiencias genuinas. 
@@ -279,7 +303,11 @@ export function createMethodologyPage(): HTMLElement {
               </div>
               
               <div class="limitation-card">
-                <div class="limitation-icon">📅</div>
+                <div class="limitation-icon material-icon">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm-8 4H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z"/>
+                  </svg>
+                </div>
                 <h3>Datos con fecha de vencimiento</h3>
                 <p>
                   Los modelos se basan en datos históricos. Eventos recientes (pandemias, 
@@ -288,7 +316,11 @@ export function createMethodologyPage(): HTMLElement {
               </div>
               
               <div class="limitation-card">
-                <div class="limitation-icon">🎯</div>
+                <div class="limitation-icon material-icon">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.88-11.71L10 14.17l-1.88-1.88a.996.996 0 1 0-1.41 1.41l2.59 2.59c.39.39 1.02.39 1.41 0L17.3 9.7a.996.996 0 0 0 0-1.41c-.39-.39-1.03-.39-1.42 0z"/>
+                  </svg>
+                </div>
                 <h3>Validez contextual</h3>
                 <p>
                   Los resultados son más confiables para variables demográficas y socioeconómicas 
@@ -297,7 +329,11 @@ export function createMethodologyPage(): HTMLElement {
               </div>
               
               <div class="limitation-card">
-                <div class="limitation-icon">🔍</div>
+                <div class="limitation-icon material-icon">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                  </svg>
+                </div>
                 <h3>Benchmarks parciales</h3>
                 <p>
                   Las comparaciones con benchmarks dependen de la disponibilidad de datos 
@@ -306,7 +342,11 @@ export function createMethodologyPage(): HTMLElement {
               </div>
               
               <div class="limitation-card">
-                <div class="limitation-icon">🗺️</div>
+                <div class="limitation-icon material-icon">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20.5 3l-6 1.5-5.5-1.5-6 1.5v15l6-1.5 5.5 1.5 6-1.5V3zM12.5 17.5l-5.5-1.5V6l5.5 1.5v10zm6 1.5l-5-1.25V6.75l5 1.25v10.5z"/>
+                  </svg>
+                </div>
                 <h3>Cobertura geográfica limitada</h3>
                 <p>
                   La granularidad territorial depende de la disponibilidad de datos censales. 
