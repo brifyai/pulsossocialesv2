@@ -200,6 +200,7 @@ CREATE TABLE IF NOT EXISTS survey_definitions (
     -- Timestamps
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
+    published_at TIMESTAMPTZ,  -- Fecha de publicación (null si está en draft)
     created_by UUID,  -- Referencia a auth.users si se usa auth
     
     -- Metadatos
