@@ -13,7 +13,7 @@
  * - Optimización de inicialización
  */
 
-import { Map, NavigationControl } from 'maplibre-gl';
+import { Map, NavigationControl, ScaleControl } from 'maplibre-gl';
 import type { MapInstance } from '../types/map';
 import { mapConfig, INITIAL_CAMERA } from './mapConfig';
 import { applyFog } from './fog';
@@ -72,6 +72,12 @@ export function initMap(): MapInstance {
 
   // Add navigation control
   map.addControl(new NavigationControl(), 'top-right');
+
+  // Add scale control (shows distance in meters/km)
+  map.addControl(new ScaleControl({
+    maxWidth: 100,
+    unit: 'metric'
+  }), 'bottom-left');
 
   // Setup map load handler
   map.on('load', () => {

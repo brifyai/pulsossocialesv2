@@ -23,7 +23,7 @@ export const INITIAL_CAMERA: CameraOptions = {
   center: [-70.5, -33.5], // Center on Santiago area but showing more of Chile
   zoom: 6.5, // Zoomed out to see a large portion of Chile
   pitch: 60, // Angled view for 3D effect (was 75, now 60 for better overview)
-  bearing: -20, // Slight rotation for better perspective
+  bearing: 0, // North orientation (0 = north)
 };
 
 // Map configuration
