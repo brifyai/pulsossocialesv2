@@ -80,6 +80,9 @@ export function navigateTo(route: Route, params: Record<string, string> = {}): v
   state.params = params;
   state.isAuthenticated = isAuthenticated();
 
+  // Save route to storage for persistence across page refreshes
+  saveRouteToStorage(route);
+
   // Update URL hash for shareability
   if (Object.keys(params).length > 0) {
     const queryString = new URLSearchParams(params).toString();
@@ -135,6 +138,35 @@ export function onRouteChange(callback: (route: Route) => void): () => void {
   return () => listeners.delete(callback);
 }
 
+// Storage key for preserving route
+const ROUTE_STORAGE_KEY = 'pulsossociales_last_route';
+
+/**
+ * Save current route to sessionStorage
+ */
+function saveRouteToStorage(route: Route): void {
+  try {
+    sessionStorage.setItem(ROUTE_STORAGE_KEY, route);
+  } catch (e) {
+    // Ignore storage errors
+  }
+}
+
+/**
+ * Get last route from sessionStorage
+ */
+function getRouteFromStorage(): Route | null {
+  try {
+    const saved = sessionStorage.getItem(ROUTE_STORAGE_KEY);
+    if (saved && validRoutes.includes(saved as Route)) {
+      return saved as Route;
+    }
+  } catch (e) {
+    // Ignore storage errors
+  }
+  return null;
+}
+
 /**
  * Initialize router from URL hash
  * Handles authentication check on init
@@ -145,15 +177,29 @@ export function initRouter(): void {
   state.isAuthenticated = isAuthenticated();
 
   // Get raw hash (without the #) - preserve empty string if no hash
-  // Use setTimeout to ensure the hash is available after any redirects
   const rawHash = window.location.hash.slice(1);
   const hasExplicitHash = rawHash.length > 0;
   
   console.log('🔍 Router init - rawHash:', rawHash, 'hasExplicitHash:', hasExplicitHash);
   console.log('🔍 Router init - window.location.href:', window.location.href);
   
-  // Parse hash and query params (use 'landing' only as default, not replacement)
-  const hashPart = rawHash || 'landing';
+  // Try to get saved route from storage (for page refresh scenarios)
+  const savedRoute = getRouteFromStorage();
+  console.log('🔍 Router init - savedRoute from storage:', savedRoute);
+  
+  // Parse hash and query params
+  // Priority: 1) URL hash, 2) saved route from storage, 3) default 'landing'
+  let hashPart: string;
+  if (hasExplicitHash) {
+    hashPart = rawHash;
+  } else if (savedRoute && state.isAuthenticated) {
+    // Use saved route if authenticated and no hash in URL
+    hashPart = savedRoute;
+    console.log('📦 Using saved route from storage:', savedRoute);
+  } else {
+    hashPart = 'landing';
+  }
+  
   const [hash, queryString] = hashPart.split('?');
   const route = hash as Route;
 
@@ -186,13 +232,18 @@ export function initRouter(): void {
   // Only redirect to home if:
   // - User is authenticated AND
   // - Current route is landing/login AND  
-  // - No explicit hash was in the URL (user visited root /)
+  // - No explicit hash was in the URL AND
+  // - No saved route in storage
   // This preserves the current route on page refresh
-  if (state.isAuthenticated && (state.currentRoute === 'landing' || state.currentRoute === 'login') && !hasExplicitHash) {
-    console.log('🏠 No explicit hash, redirecting authenticated user to home');
+  if (state.isAuthenticated && (state.currentRoute === 'landing' || state.currentRoute === 'login') && !hasExplicitHash && !savedRoute) {
+    console.log('🏠 No explicit hash or saved route, redirecting authenticated user to home');
     state.currentRoute = 'home';
     state.params = {};
   }
+
+  // Save the current route to storage for next refresh
+  saveRouteToStorage(state.currentRoute);
+  console.log('💾 Saved route to storage:', state.currentRoute);
 
   console.log('🔍 Router init - final state.currentRoute:', state.currentRoute);
 
@@ -234,6 +285,9 @@ export function initRouter(): void {
       state.params = newParams;
       state.isAuthenticated = isAuthenticated();
 
+      // Save route to storage for persistence
+      saveRouteToStorage(newRoute);
+
       // Notify listeners
       listeners.forEach(listener => listener(newRoute));
     }
@@ -271,6 +325,15 @@ export function requireAuth(): boolean {
 export async function logout(): Promise<void> {
   await authService.signOut();
   state.isAuthenticated = false;
+  
+  // Clear saved route from storage on logout
+  try {
+    sessionStorage.removeItem(ROUTE_STORAGE_KEY);
+    console.log('🗑️ Cleared saved route from storage on logout');
+  } catch (e) {
+    // Ignore storage errors
+  }
+  
   navigateTo('landing');
 }
 
