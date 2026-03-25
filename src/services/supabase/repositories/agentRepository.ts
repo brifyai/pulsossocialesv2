@@ -708,6 +708,9 @@ async function loadTerritoryNamesCache(): Promise<Map<string, { region_name: str
 
 /**
  * Implementación interna de la carga de caché
+ * CORREGIDO: Ahora maneja correctamente las columnas de la tabla territories
+ * - Regiones: code, name
+ * - Comunas: code, name, region_code, region_name
  */
 async function loadTerritoryNamesCacheInternal(): Promise<Map<string, { region_name: string; comuna_name: string }>> {
   const client = await getSupabaseClient();
@@ -727,18 +730,22 @@ async function loadTerritoryNamesCacheInternal(): Promise<Map<string, { region_n
     territoryNamesCache = new Map();
     
     (data || []).forEach((territory: any) => {
-      // Para regiones: usar code como region_code
+      // Para regiones: usar code como key y name como nombre de región
       if (territory.level === 'region' && territory.code) {
+        const regionName = territory.name || territory.code;
         territoryNamesCache!.set(territory.code, {
-          region_name: territory.name || territory.region_name || '',
+          region_name: regionName,
           comuna_name: ''
         });
+        console.log(`[🟢 AgentRepository] Región cargada: ${territory.code} -> ${regionName}`);
       }
-      // Para comunas: usar code (columna migrada)
+      // Para comunas: usar code como key, name como nombre de comuna, region_name como nombre de región
       if (territory.level === 'comuna' && territory.code) {
+        const comunaName = territory.name || territory.code;
+        const regionName = territory.region_name || '';
         territoryNamesCache!.set(territory.code, {
-          region_name: territory.region_name || '',
-          comuna_name: territory.name || ''
+          region_name: regionName,
+          comuna_name: comunaName
         });
       }
     });
@@ -753,11 +760,53 @@ async function loadTerritoryNamesCacheInternal(): Promise<Map<string, { region_n
 
 /**
  * Obtiene el nombre de una región desde el caché
+ * CORREGIDO: Maneja tanto códigos con prefijo CL- (ej: CL-13) como códigos cortos (ej: RM)
  */
 async function getRegionName(regionCode: string): Promise<string> {
   const cache = await loadTerritoryNamesCache();
+  
+  // Intentar buscar directamente primero
   const territory = cache.get(regionCode);
-  return territory?.region_name || regionCode; // Fallback al código si no se encuentra
+  if (territory?.region_name) {
+    return territory.region_name;
+  }
+  
+  // Si no se encuentra y el código tiene formato CL-XX, intentar buscar por código corto
+  if (regionCode.startsWith('CL-')) {
+    // Extraer el número de región (ej: CL-13 -> 13)
+    const regionNum = regionCode.replace('CL-', '');
+    
+    // Mapeo de números de región a códigos cortos
+    const regionCodeMap: Record<string, string> = {
+      '15': 'AP', // Arica y Parinacota
+      '1': 'TA',  // Tarapacá
+      '2': 'AN',  // Antofagasta
+      '3': 'AT',  // Atacama
+      '4': 'CO',  // Coquimbo
+      '5': 'VA',  // Valparaíso
+      '13': 'RM', // Metropolitana
+      '6': 'LI',  // O'Higgins
+      '7': 'ML',  // Maule
+      '16': 'NB', // Ñuble
+      '8': 'BI',  // Biobío
+      '9': 'AR',  // La Araucanía
+      '14': 'LR', // Los Ríos
+      '10': 'LL', // Los Lagos
+      '11': 'AI', // Aysén
+      '12': 'MA', // Magallanes
+    };
+    
+    const shortCode = regionCodeMap[regionNum];
+    if (shortCode) {
+      const territoryByShortCode = cache.get(shortCode);
+      if (territoryByShortCode?.region_name) {
+        return territoryByShortCode.region_name;
+      }
+    }
+  }
+  
+  // Si no se encuentra, devolver el código original
+  return regionCode;
 }
 
 // Diccionario de comunas cargado desde el JSON local
