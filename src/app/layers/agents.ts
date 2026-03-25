@@ -437,8 +437,19 @@ function showAgentProfilePopup(
   const sex = properties.sex ?? 'N/A';
   const educationLevel = properties.education_level ?? 'N/A';
   const incomeDecile = properties.income_decile ?? 'N/A';
-  const regionName = properties.region_name ?? properties.region_code ?? 'N/A';
-  const comunaName = properties.comuna_name ?? properties.comuna_code ?? 'N/A';
+  
+  // Location: prioritize comuna_name, fallback to comuna_code, then region
+  let locationDisplay = 'N/A';
+  if (properties.comuna_name && properties.comuna_name !== properties.comuna_code) {
+    locationDisplay = String(properties.comuna_name);
+  } else if (properties.region_name && properties.region_name !== properties.region_code) {
+    locationDisplay = String(properties.region_name);
+  } else if (properties.comuna_code) {
+    // If we only have codes, show a more descriptive message
+    locationDisplay = `Comuna ${properties.comuna_code}`;
+  } else if (properties.region_code) {
+    locationDisplay = `Región ${properties.region_code}`;
+  }
   
   // Format sex to display
   const sexDisplay = typeof sex === 'string' ? 
@@ -510,7 +521,7 @@ function showAgentProfilePopup(
       </div>
       <div class="agent-profile-row">
         <span class="agent-profile-label">Ubicación:</span>
-        <span class="agent-profile-value">${comunaName}, ${regionName}</span>
+        <span class="agent-profile-value">${locationDisplay}</span>
       </div>
     </div>
   `;
