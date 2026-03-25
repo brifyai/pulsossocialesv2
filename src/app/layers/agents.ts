@@ -133,19 +133,15 @@ export async function ensureAgentsLayer(map: Map): Promise<boolean> {
         source: AGENTS_CONFIG.sourceId,
         paint: {
           // Height of the extrusion in meters - use 'height' property from GeoJSON
-          // Ensure minimum height of 50m so bars are always visible
+          // Height scales with zoom level for better visibility
           'fill-extrusion-height': [
-            'max',
-            50, // Minimum height to ensure visibility
-            [
-              'interpolate',
-              ['linear'],
-              ['zoom'],
-              6, ['*', ['get', 'height'], 0.2],   // Very short when zoomed out
-              10, ['*', ['get', 'height'], 0.4],  // Short at medium zoom
-              14, ['*', ['get', 'height'], 0.7],  // Medium height
-              18, ['get', 'height'],              // Full height when zoomed in
-            ]
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            6, 50,    // Fixed 50m minimum when zoomed out
+            10, 80,   // Short at medium zoom
+            14, 120,  // Medium height
+            18, ['get', 'height'],  // Full height from data when zoomed in
           ],
           // Base height (start from ground)
           'fill-extrusion-base': 0,
