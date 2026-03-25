@@ -181,6 +181,17 @@ function getRouteFromStorage(): Route | null {
 }
 
 /**
+ * Check if a hash looks like map coordinates (format: zoom/lat/lng/pitch/bearing)
+ * Example: "6.5/-33.5/-70.5/0/60" or "6.5/-33.5/-70.5"
+ */
+function isMapCoordinates(hash: string): boolean {
+  // Map coordinates pattern: numbers separated by slashes
+  // Matches patterns like: "6.5/-33.5/-70.5/0/60" or "6.5/-33.5/-70.5"
+  const coordPattern = /^-?\d+\.?\d*\/\d+\.?\d*\/\d+\.?\d*.*$/;
+  return coordPattern.test(hash);
+}
+
+/**
  * Initialize router from URL hash
  * Handles authentication check on init
  * PRESERVES current route on page refresh if authenticated
@@ -200,13 +211,19 @@ export function initRouter(): void {
   const savedRoute = getRouteFromStorage();
   console.log('🔍 Router init - savedRoute from storage:', savedRoute);
   
+  // Check if hash looks like map coordinates (e.g., "6.5/-33.5/-70.5/0/60")
+  const hashLooksLikeCoords = hasExplicitHash && isMapCoordinates(rawHash);
+  if (hashLooksLikeCoords) {
+    console.log('🗺️ Hash looks like map coordinates, ignoring and using saved route');
+  }
+  
   // Parse hash and query params
-  // Priority: 1) URL hash, 2) saved route from storage, 3) default 'landing'
+  // Priority: 1) URL hash (if not coordinates), 2) saved route from storage, 3) default 'landing'
   let hashPart: string;
-  if (hasExplicitHash) {
+  if (hasExplicitHash && !hashLooksLikeCoords) {
     hashPart = rawHash;
   } else if (savedRoute && state.isAuthenticated) {
-    // Use saved route if authenticated and no hash in URL
+    // Use saved route if authenticated and no valid hash in URL
     hashPart = savedRoute;
     console.log('📦 Using saved route from storage:', savedRoute);
   } else {
@@ -276,6 +293,13 @@ export function initRouter(): void {
   // Listen for hash changes
   window.addEventListener('hashchange', () => {
     const newHashPart = window.location.hash.slice(1);
+    
+    // Ignore hash changes that look like map coordinates
+    if (isMapCoordinates(newHashPart)) {
+      console.log('🗺️ Ignoring hash change - looks like map coordinates');
+      return;
+    }
+    
     const [newHash, newQueryString] = newHashPart.split('?');
     const newRoute = newHash as Route;
 
