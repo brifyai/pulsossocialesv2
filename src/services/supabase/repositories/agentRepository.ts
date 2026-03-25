@@ -279,21 +279,22 @@ export async function getUniqueCommunes(regionCode?: string): Promise<Array<{ co
     if (error) throw error;
 
     if (agents && agents.length > 0) {
-      // Extraer comunas únicas
-      const uniqueCommunes = new Map<string, string>();
+      // Extraer comunas únicas con su región asociada
+      const uniqueCommunes = new Map<string, { code: string; regionCode: string }>();
       
       (agents as any[]).forEach((agent: any) => {
         const code = agent.comuna_code;
+        const regionCode = agent.region_code;
         if (code && !uniqueCommunes.has(code)) {
-          uniqueCommunes.set(code, code); // Temporalmente usamos el código como nombre
+          uniqueCommunes.set(code, { code, regionCode });
         }
       });
       
       // Convertir a array y obtener nombres reales
       const result: Array<{ code: string; name: string }> = [];
-      for (const [code, _] of uniqueCommunes) {
-        const name = await getComunaName(code);
-        result.push({ code, name: name !== code ? name : `Comuna ${code}` });
+      for (const [_, data] of uniqueCommunes) {
+        const name = await getComunaName(data.code, data.regionCode);
+        result.push({ code: data.code, name: name !== data.code ? name : `Comuna ${data.code}` });
       }
       
       return result.sort((a, b) => a.name.localeCompare(b.name));
@@ -760,7 +761,8 @@ async function loadTerritoryNamesCacheInternal(): Promise<Map<string, { region_n
 
 /**
  * Obtiene el nombre de una región desde el caché
- * CORREGIDO: Maneja tanto códigos con prefijo CL- (ej: CL-13) como códigos cortos (ej: RM)
+ * CORREGIDO: Maneja códigos con prefijo CL- (ej: CL-13), códigos cortos (ej: RM), 
+ * y códigos numéricos directos (ej: 13, 9, 6)
  */
 async function getRegionName(regionCode: string): Promise<string> {
   const cache = await loadTerritoryNamesCache();
@@ -771,37 +773,62 @@ async function getRegionName(regionCode: string): Promise<string> {
     return territory.region_name;
   }
   
-  // Si no se encuentra y el código tiene formato CL-XX, intentar buscar por código corto
+  // Mapeo de números de región a códigos cortos
+  const regionCodeMap: Record<string, string> = {
+    '15': 'AP', // Arica y Parinacota
+    '1': 'TA',  // Tarapacá
+    '2': 'AN',  // Antofagasta
+    '3': 'AT',  // Atacama
+    '4': 'CO',  // Coquimbo
+    '5': 'VA',  // Valparaíso
+    '13': 'RM', // Metropolitana
+    '6': 'LI',  // O'Higgins
+    '7': 'ML',  // Maule
+    '16': 'NB', // Ñuble
+    '8': 'BI',  // Biobío
+    '9': 'AR',  // La Araucanía
+    '14': 'LR', // Los Ríos
+    '10': 'LL', // Los Lagos
+    '11': 'AI', // Aysén
+    '12': 'MA', // Magallanes
+  };
+  
+  // Mapeo de números de región a nombres completos (fallback si no está en el caché)
+  const regionNameMap: Record<string, string> = {
+    '15': 'Arica y Parinacota',
+    '1': 'Tarapacá',
+    '2': 'Antofagasta',
+    '3': 'Atacama',
+    '4': 'Coquimbo',
+    '5': 'Valparaíso',
+    '13': 'Metropolitana de Santiago',
+    '6': "Libertador General Bernardo O'Higgins",
+    '7': 'Maule',
+    '16': 'Ñuble',
+    '8': 'Biobío',
+    '9': 'La Araucanía',
+    '14': 'Los Ríos',
+    '10': 'Los Lagos',
+    '11': 'Aysén del General Carlos Ibáñez del Campo',
+    '12': 'Magallanes y de la Antártica Chilena',
+  };
+  
+  // Si el código tiene formato CL-XX, extraer el número
+  let regionNum = regionCode;
   if (regionCode.startsWith('CL-')) {
-    // Extraer el número de región (ej: CL-13 -> 13)
-    const regionNum = regionCode.replace('CL-', '');
-    
-    // Mapeo de números de región a códigos cortos
-    const regionCodeMap: Record<string, string> = {
-      '15': 'AP', // Arica y Parinacota
-      '1': 'TA',  // Tarapacá
-      '2': 'AN',  // Antofagasta
-      '3': 'AT',  // Atacama
-      '4': 'CO',  // Coquimbo
-      '5': 'VA',  // Valparaíso
-      '13': 'RM', // Metropolitana
-      '6': 'LI',  // O'Higgins
-      '7': 'ML',  // Maule
-      '16': 'NB', // Ñuble
-      '8': 'BI',  // Biobío
-      '9': 'AR',  // La Araucanía
-      '14': 'LR', // Los Ríos
-      '10': 'LL', // Los Lagos
-      '11': 'AI', // Aysén
-      '12': 'MA', // Magallanes
-    };
-    
+    regionNum = regionCode.replace('CL-', '');
+  }
+  
+  // Si es un código numérico, intentar buscar por código corto
+  if (regionCodeMap[regionNum]) {
     const shortCode = regionCodeMap[regionNum];
-    if (shortCode) {
-      const territoryByShortCode = cache.get(shortCode);
-      if (territoryByShortCode?.region_name) {
-        return territoryByShortCode.region_name;
-      }
+    const territoryByShortCode = cache.get(shortCode);
+    if (territoryByShortCode?.region_name) {
+      return territoryByShortCode.region_name;
+    }
+    // Fallback: usar el nombre del mapeo directo
+    if (regionNameMap[regionNum]) {
+      return regionNameMap[regionNum];
     }
   }
   
@@ -811,6 +838,9 @@ async function getRegionName(regionCode: string): Promise<string> {
 
 // Diccionario de comunas cargado desde el JSON local
 let comunaNamesCache: Map<string, string> | null = null;
+
+// Cache del JSON de comunas con coordenadas
+let comunaCoordinatesCache: Map<string, { name: string; region: string }> | null = null;
 
 /**
  * Carga el diccionario de nombres de comunas desde el JSON local
@@ -841,9 +871,49 @@ async function loadComunaNamesFromLocalData(): Promise<Map<string, string>> {
 }
 
 /**
- * Obtiene el nombre de una comuna desde el caché o del JSON local
+ * Carga el cache de comunas desde el JSON de coordenadas
+ * Este archivo tiene los códigos oficiales de 5 dígitos
  */
-async function getComunaName(comunaCode: string): Promise<string> {
+async function loadComunaCoordinatesCache(): Promise<Map<string, { name: string; region: string }>> {
+  if (comunaCoordinatesCache) {
+    return comunaCoordinatesCache;
+  }
+  
+  comunaCoordinatesCache = new Map();
+  
+  try {
+    // Cargar el JSON de comunas usando fetch
+    const response = await fetch('/data/comuna_coordinates.json');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const comunas = await response.json();
+    
+    if (Array.isArray(comunas)) {
+      comunas.forEach((comuna: any) => {
+        if (comuna.code && comuna.name) {
+          comunaCoordinatesCache!.set(comuna.code, {
+            name: comuna.name,
+            region: comuna.region || ''
+          });
+        }
+      });
+    }
+    console.log(`[🟢 AgentRepository] Cache de coordenadas de comunas cargado: ${comunaCoordinatesCache.size} comunas`);
+  } catch (error) {
+    console.warn('[🟡 AgentRepository] Error cargando coordenadas de comunas:', error);
+  }
+  
+  return comunaCoordinatesCache;
+}
+
+/**
+ * Obtiene el nombre de una comuna desde el caché o del JSON local
+ * CORREGIDO: Maneja códigos de comuna de 4 dígitos (sin prefijo de región)
+ * y códigos de 5 dígitos (con prefijo de región)
+ * AHORA recibe el regionCode para construir el código completo correctamente
+ */
+async function getComunaName(comunaCode: string, regionCode?: string): Promise<string> {
   // Primero intentar desde el caché de Supabase
   const cache = await loadTerritoryNamesCache();
   const territory = cache.get(comunaCode);
@@ -851,7 +921,69 @@ async function getComunaName(comunaCode: string): Promise<string> {
     return territory.comuna_name;
   }
   
-  // Fallback al diccionario local
+  // Cargar cache de coordenadas de comunas
+  const coordinatesCache = await loadComunaCoordinatesCache();
+  
+  // Intentar buscar directamente (código de 5 dígitos)
+  const comunaData = coordinatesCache.get(comunaCode);
+  if (comunaData) {
+    return comunaData.name;
+  }
+  
+  // Si el código tiene 4 dígitos, intentar agregarle el prefijo de región
+  // Los códigos de comuna en Chile tienen formato: XXYYY donde XX es la región y YYY es la comuna
+  if (comunaCode.length === 4) {
+    // Si tenemos el regionCode, usarlo para construir el código completo
+    if (regionCode) {
+      // Mapeo de códigos de región a prefijos numéricos
+      const regionToPrefix: Record<string, string> = {
+        '15': '15', // Arica y Parinacota
+        '1': '01',  // Tarapacá
+        '2': '02',  // Antofagasta
+        '3': '03',  // Atacama
+        '4': '04',  // Coquimbo
+        '5': '05',  // Valparaíso
+        '13': '13', // Metropolitana
+        '6': '06',  // O'Higgins
+        '7': '07',  // Maule
+        '16': '16', // Ñuble
+        '8': '08',  // Biobío
+        '9': '09',  // La Araucanía
+        '14': '14', // Los Ríos
+        '10': '10', // Los Lagos
+        '11': '11', // Aysén
+        '12': '12', // Magallanes
+      };
+      
+      const prefix = regionToPrefix[regionCode];
+      if (prefix) {
+        const fullCode = prefix + comunaCode;
+        const comunaDataWithPrefix = coordinatesCache.get(fullCode);
+        if (comunaDataWithPrefix) {
+          return comunaDataWithPrefix.name;
+        }
+      }
+    }
+    
+    // Fallback: intentar con prefijo 0 (para regiones 1-9)
+    const withPrefix0 = '0' + comunaCode;
+    const comunaData0 = coordinatesCache.get(withPrefix0);
+    if (comunaData0) {
+      return comunaData0.name;
+    }
+    
+    // Fallback: intentar con diferentes prefijos de región
+    const regionPrefixes = ['13', '09', '08', '07', '06', '05', '04', '03', '02', '01', '10', '11', '12', '14', '15', '16'];
+    for (const prefix of regionPrefixes) {
+      const withPrefix = prefix + comunaCode;
+      const comunaDataPrefix = coordinatesCache.get(withPrefix);
+      if (comunaDataPrefix) {
+        return comunaDataPrefix.name;
+      }
+    }
+  }
+  
+  // Fallback al diccionario local de agentes
   const localCache = await loadComunaNamesFromLocalData();
   const localName = localCache.get(comunaCode);
   if (localName) {
@@ -870,12 +1002,14 @@ async function getComunaName(comunaCode: string): Promise<string> {
  * Transform DbSyntheticAgent to SyntheticAgent
  * Mapea los campos de la DB al formato usado por el frontend
  * AHORA obtiene los nombres de territorios desde Supabase
+ * CORREGIDO: Pasa region_code a getComunaName para resolver códigos de 4 dígitos
  */
 async function dbAgentToSyntheticAgent(dbAgent: DbSyntheticAgent): Promise<SyntheticAgent> {
   // Obtener nombres de territorios en paralelo
+  // Pasamos region_code a getComunaName para poder resolver códigos de comuna de 4 dígitos
   const [region_name, comuna_name] = await Promise.all([
     getRegionName(dbAgent.region_code),
-    getComunaName(dbAgent.comuna_code)
+    getComunaName(dbAgent.comuna_code, dbAgent.region_code)
   ]);
 
   return {
