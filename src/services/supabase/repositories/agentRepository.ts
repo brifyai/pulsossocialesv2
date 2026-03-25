@@ -760,13 +760,57 @@ async function getRegionName(regionCode: string): Promise<string> {
   return territory?.region_name || regionCode; // Fallback al código si no se encuentra
 }
 
+// Diccionario de comunas cargado desde el JSON local
+let comunaNamesCache: Map<string, string> | null = null;
+
 /**
- * Obtiene el nombre de una comuna desde el caché
+ * Carga el diccionario de nombres de comunas desde el JSON local
+ * Usa la función loadLocalAgents que ya carga el JSON estáticamente
+ */
+async function loadComunaNamesFromLocalData(): Promise<Map<string, string>> {
+  if (comunaNamesCache) {
+    return comunaNamesCache;
+  }
+  
+  comunaNamesCache = new Map();
+  
+  try {
+    // Usar la función existente que carga el JSON estáticamente
+    const data = await loadLocalAgents();
+    
+    data.agents.forEach((agent) => {
+      if (agent.comuna_code && agent.comuna_name && !comunaNamesCache!.has(agent.comuna_code)) {
+        comunaNamesCache!.set(agent.comuna_code, agent.comuna_name);
+      }
+    });
+    console.log(`[🟢 AgentRepository] Diccionario de comunas cargado: ${comunaNamesCache.size} comunas`);
+  } catch (error) {
+    console.warn('[🟡 AgentRepository] Error cargando diccionario de comunas:', error);
+  }
+  
+  return comunaNamesCache;
+}
+
+/**
+ * Obtiene el nombre de una comuna desde el caché o del JSON local
  */
 async function getComunaName(comunaCode: string): Promise<string> {
+  // Primero intentar desde el caché de Supabase
   const cache = await loadTerritoryNamesCache();
   const territory = cache.get(comunaCode);
-  return territory?.comuna_name || comunaCode; // Fallback al código si no se encuentra
+  if (territory?.comuna_name && territory.comuna_name !== comunaCode) {
+    return territory.comuna_name;
+  }
+  
+  // Fallback al diccionario local
+  const localCache = await loadComunaNamesFromLocalData();
+  const localName = localCache.get(comunaCode);
+  if (localName) {
+    return localName;
+  }
+  
+  // Si no se encuentra, devolver el código
+  return comunaCode;
 }
 
 // ===========================================
