@@ -13,6 +13,7 @@ const AGENTS_CONFIG = {
   symbolLayerId: 'agents-symbol',
   circleLayerId: 'agents-circle', // Fallback layer
   extrusionLayerId: 'agents-extrusion', // 3D vertical bars
+  extrusionSourceId: 'agents-extrusion-source', // Separate source for polygons
   // Icon settings
   iconName: AGENT_ICON_NAMES.ARROW,
   iconSize: 0.4, // Small icon
@@ -125,12 +126,24 @@ export async function ensureAgentsLayer(map: Map): Promise<boolean> {
       console.log(`✅ Created agents fallback layer: ${AGENTS_CONFIG.circleLayerId}`);
     }
 
+    // Create separate source for extrusion (polygons)
+    if (!sourceExists(map, AGENTS_CONFIG.extrusionSourceId)) {
+      map.addSource(AGENTS_CONFIG.extrusionSourceId, {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: [],
+        },
+      });
+      console.log(`✅ Created agents extrusion source: ${AGENTS_CONFIG.extrusionSourceId}`);
+    }
+
     // Create 3D extrusion layer for vertical bars
     if (!layerExists(map, AGENTS_CONFIG.extrusionLayerId)) {
       map.addLayer({
         id: AGENTS_CONFIG.extrusionLayerId,
         type: 'fill-extrusion',
-        source: AGENTS_CONFIG.sourceId,
+        source: AGENTS_CONFIG.extrusionSourceId,
         paint: {
           // Height of the extrusion in meters - use 'height' property from GeoJSON
           // Height scales with zoom level for better visibility
@@ -172,6 +185,54 @@ export async function ensureAgentsLayer(map: Map): Promise<boolean> {
 }
 
 /**
+ * Convert Point features to Polygon features for extrusion
+ * Creates small squares around each point
+ */
+function convertPointsToPolygons(
+  data: AgentGeoJSON,
+  squareSizeMeters: number = 30
+): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
+  const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
+
+  for (const feature of data.features) {
+    if (feature.geometry.type !== 'Point') continue;
+
+    const [lng, lat] = feature.geometry.coordinates;
+    
+    // Calculate offset in degrees (approximate)
+    // 1 degree latitude ≈ 111km, 1 degree longitude varies by latitude
+    const latOffset = squareSizeMeters / 111000 / 2;
+    const lngOffset = squareSizeMeters / (111000 * Math.cos(lat * Math.PI / 180)) / 2;
+
+    // Create square polygon around the point
+    const polygon: GeoJSON.Feature<GeoJSON.Polygon> = {
+      type: 'Feature',
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [lng - lngOffset, lat - latOffset],
+          [lng + lngOffset, lat - latOffset],
+          [lng + lngOffset, lat + latOffset],
+          [lng - lngOffset, lat + latOffset],
+          [lng - lngOffset, lat - latOffset], // Close the polygon
+        ]],
+      },
+      properties: feature.properties,
+    };
+
+    features.push(polygon);
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features,
+  };
+}
+
+// Store polygon data for extrusion layer
+let polygonData: GeoJSON.FeatureCollection<GeoJSON.Polygon> | null = null;
+
+/**
  * Update agents GeoJSON data
  * Heading should be in degrees (0-360), where 0 = north/up
  */
@@ -187,7 +248,18 @@ export function updateAgentsGeoJSON(map: Map, data: AgentGeoJSON): boolean {
       return false;
     }
 
+    // Update symbol layer with Point data
     source.setData(data);
+
+    // Convert to polygons for extrusion layer
+    polygonData = convertPointsToPolygons(data);
+    
+    // Update extrusion source if it exists
+    const extrusionSource = map.getSource(AGENTS_CONFIG.extrusionSourceId) as GeoJSONSource;
+    if (extrusionSource) {
+      extrusionSource.setData(polygonData);
+    }
+
     return true;
   } catch (error) {
     console.error('Failed to update agents GeoJSON:', error);
