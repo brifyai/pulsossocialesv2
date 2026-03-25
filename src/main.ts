@@ -104,9 +104,27 @@ async function renderRoute(route: Route): Promise<void> {
   cleanupMapResources(route);
 
   // Handle public routes (landing, login, methodology-public)
+  // Special case: methodology shows with nav when authenticated, without when not
   if (isPublic) {
+    // For methodology page: show with nav if authenticated, without if not
+    if (route === 'methodology' && hasAuth) {
+      // Ensure app shell exists for authenticated users
+      if (!isAppShellCreated) {
+        createAppShell();
+      }
+      // Render methodology inside main content
+      const mainContent = document.getElementById('main-content');
+      if (mainContent) {
+        currentPage = createMethodologyPage();
+        if (currentPage) {
+          mainContent.appendChild(currentPage);
+        }
+      }
+      return;
+    }
+
     // Remove app shell if exists (for public routes we want clean layout)
-    if (isAppShellCreated && route !== 'methodology') {
+    if (isAppShellCreated) {
       removeAppShell();
     }
 
