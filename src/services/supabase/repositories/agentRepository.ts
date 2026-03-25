@@ -873,16 +873,17 @@ async function loadComunaNamesFromLocalData(): Promise<Map<string, string>> {
 /**
  * Carga el cache de comunas desde el JSON de coordenadas
  * Este archivo tiene los códigos oficiales de 5 dígitos
+ * CORREGIDO: Ahora también carga desde importación estática como fallback
  */
 async function loadComunaCoordinatesCache(): Promise<Map<string, { name: string; region: string }>> {
-  if (comunaCoordinatesCache) {
+  if (comunaCoordinatesCache && comunaCoordinatesCache.size > 0) {
     return comunaCoordinatesCache;
   }
   
   comunaCoordinatesCache = new Map();
   
   try {
-    // Cargar el JSON de comunas usando fetch
+    // Intentar cargar el JSON de comunas usando fetch
     console.log('[🟢 AgentRepository] Cargando comuna_coordinates.json...');
     const response = await fetch('/data/comuna_coordinates.json');
     if (!response.ok) {
@@ -900,16 +901,41 @@ async function loadComunaCoordinatesCache(): Promise<Map<string, { name: string;
         }
       });
     }
-    console.log(`[🟢 AgentRepository] Cache de coordenadas de comunas cargado: ${comunaCoordinatesCache.size} comunas`);
+    console.log(`[🟢 AgentRepository] Cache de coordenadas de comunas cargado vía fetch: ${comunaCoordinatesCache.size} comunas`);
+  } catch (error) {
+    console.warn('[🟡 AgentRepository] Error cargando coordenadas de comunas vía fetch:', error);
+    console.log('[🟢 AgentRepository] Intentando cargar desde importación estática...');
     
-    // Log de ejemplo para verificar
+    // Fallback: Cargar desde el JSON usando importación dinámica
+    try {
+      const comunasModule = await import('../../../../data/comuna_coordinates.json');
+      const comunas = comunasModule.default || comunasModule;
+      
+      if (Array.isArray(comunas)) {
+        comunas.forEach((comuna: any) => {
+          if (comuna.code && comuna.name) {
+            comunaCoordinatesCache!.set(comuna.code, {
+              name: comuna.name,
+              region: comuna.region || ''
+            });
+          }
+        });
+      }
+      console.log(`[🟢 AgentRepository] Cache de coordenadas de comunas cargado vía import: ${comunaCoordinatesCache.size} comunas`);
+    } catch (importError) {
+      console.error('[🔴 AgentRepository] Error cargando coordenadas de comunas vía import:', importError);
+    }
+  }
+  
+  // Log de ejemplo para verificar
+  if (comunaCoordinatesCache.size > 0) {
     const sampleCodes = ['09101', '9101', '13101', '01101'];
     sampleCodes.forEach(code => {
       const data = comunaCoordinatesCache!.get(code);
       console.log(`[🟢 AgentRepository] Ejemplo - Código ${code}: ${data ? data.name : 'NO ENCONTRADO'}`);
     });
-  } catch (error) {
-    console.warn('[🟡 AgentRepository] Error cargando coordenadas de comunas:', error);
+  } else {
+    console.error('[🔴 AgentRepository] No se pudo cargar ninguna comuna en el cache');
   }
   
   return comunaCoordinatesCache;
@@ -920,27 +946,35 @@ async function loadComunaCoordinatesCache(): Promise<Map<string, { name: string;
  * CORREGIDO: Maneja códigos de comuna de 4 dígitos (sin prefijo de región)
  * y códigos de 5 dígitos (con prefijo de región)
  * AHORA recibe el regionCode para construir el código completo correctamente
+ * MEJORADO: Agrega logging detallado para diagnóstico
  */
 async function getComunaName(comunaCode: string, regionCode?: string): Promise<string> {
+  console.log(`[🟢 getComunaName] Buscando comuna: ${comunaCode}, región: ${regionCode}`);
+  
   // Primero intentar desde el caché de Supabase
   const cache = await loadTerritoryNamesCache();
   const territory = cache.get(comunaCode);
   if (territory?.comuna_name && territory.comuna_name !== comunaCode) {
+    console.log(`[🟢 getComunaName] Encontrada en caché de Supabase: ${territory.comuna_name}`);
     return territory.comuna_name;
   }
   
   // Cargar cache de coordenadas de comunas
   const coordinatesCache = await loadComunaCoordinatesCache();
+  console.log(`[🟢 getComunaName] Cache de coordenadas tiene ${coordinatesCache.size} comunas`);
   
   // Intentar buscar directamente (código de 5 dígitos)
   const comunaData = coordinatesCache.get(comunaCode);
   if (comunaData) {
+    console.log(`[🟢 getComunaName] Encontrada directamente: ${comunaData.name}`);
     return comunaData.name;
   }
   
   // Si el código tiene 4 dígitos, intentar agregarle el prefijo de región
   // Los códigos de comuna en Chile tienen formato: XXYYY donde XX es la región y YYY es la comuna
   if (comunaCode.length === 4) {
+    console.log(`[🟡 getComunaName] Código de 4 dígitos, intentando con prefijos...`);
+    
     // Si tenemos el regionCode, usarlo para construir el código completo
     if (regionCode) {
       // Mapeo de códigos de región a prefijos numéricos
@@ -966,8 +1000,10 @@ async function getComunaName(comunaCode: string, regionCode?: string): Promise<s
       const prefix = regionToPrefix[regionCode];
       if (prefix) {
         const fullCode = prefix + comunaCode;
+        console.log(`[🟡 getComunaName] Intentando con prefijo de región ${regionCode}: ${fullCode}`);
         const comunaDataWithPrefix = coordinatesCache.get(fullCode);
         if (comunaDataWithPrefix) {
+          console.log(`[🟢 getComunaName] Encontrada con prefijo de región: ${comunaDataWithPrefix.name}`);
           return comunaDataWithPrefix.name;
         }
       }
@@ -975,8 +1011,10 @@ async function getComunaName(comunaCode: string, regionCode?: string): Promise<s
     
     // Fallback: intentar con prefijo 0 (para regiones 1-9)
     const withPrefix0 = '0' + comunaCode;
+    console.log(`[🟡 getComunaName] Intentando con prefijo 0: ${withPrefix0}`);
     const comunaData0 = coordinatesCache.get(withPrefix0);
     if (comunaData0) {
+      console.log(`[🟢 getComunaName] Encontrada con prefijo 0: ${comunaData0.name}`);
       return comunaData0.name;
     }
     
@@ -986,19 +1024,23 @@ async function getComunaName(comunaCode: string, regionCode?: string): Promise<s
       const fullCode = prefix + comunaCode;
       const comunaDataPrefix = coordinatesCache.get(fullCode);
       if (comunaDataPrefix) {
+        console.log(`[🟢 getComunaName] Encontrada con prefijo ${prefix}: ${comunaDataPrefix.name}`);
         return comunaDataPrefix.name;
       }
     }
   }
   
   // Fallback al diccionario local de agentes
+  console.log(`[🟡 getComunaName] Intentando con diccionario local...`);
   const localCache = await loadComunaNamesFromLocalData();
   const localName = localCache.get(comunaCode);
   if (localName) {
+    console.log(`[🟢 getComunaName] Encontrada en diccionario local: ${localName}`);
     return localName;
   }
   
   // Si no se encuentra, devolver el código
+  console.error(`[🔴 getComunaName] NO SE ENCONTRÓ la comuna ${comunaCode} (región: ${regionCode}). Devolviendo código.`);
   return comunaCode;
 }
 
