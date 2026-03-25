@@ -1,29 +1,30 @@
 /**
- * Generate Synthetic Agents - Chile Completo
- * 
- * Genera agentes sintéticos para TODAS las comunas de Chile (360 comunas)
- * usando las coordenadas GPS disponibles.
- * 
+ * Generate Synthetic Agents - Chile Completo (v2)
+ *
+ * DESCARGA los 25,000 agentes reales desde la tabla `synthetic_agents` en Supabase
+ * y les asigna coordenadas GPS basadas en su comuna_code.
+ *
  * INPUT:
+ *   - Tabla `synthetic_agents` en Supabase (25,000 agentes reales)
  *   - data/comuna_coordinates.json (coordenadas de todas las comunas)
- *   - data/processed/population_backbone.json
- * 
+ *
  * OUTPUT:
  *   - data/processed/synthetic_agents_chile_completo.json
- * 
- * ETAPA: Síntesis
+ *
+ * ETAPA: Síntesis desde datos reales de Supabase
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Paths
 const COMUNA_COORDINATES = path.join(process.cwd(), 'data/comuna_coordinates.json');
-const POPULATION_BACKBONE = path.join(process.cwd(), 'data/processed/population_backbone.json');
 const OUTPUT_PATH = path.join(process.cwd(), 'data/processed/synthetic_agents_chile_completo.json');
 
-// Configuración: Agentes por comuna (ajustable)
-const AGENTS_PER_COMMUNE = 5; // 5 agentes por comuna = ~1,800 agentes totales
+// Configuración de Supabase
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 
 // Mapeo de nombres de región a códigos
 const REGION_CODE_MAP: Record<string, string> = {
@@ -46,45 +47,70 @@ const REGION_CODE_MAP: Record<string, string> = {
 };
 
 /**
- * Schema: SyntheticAgentV1
+ * Schema: SyntheticAgentV2 (basado en la tabla real de Supabase)
  */
-export interface SyntheticAgentV1 {
+export interface SyntheticAgentV2 {
+  // Identificación
+  id: string;
   agent_id: string;
-  synthetic_batch_id: string;
-  source_version: string;
+  batch_id: string;
+  version: string;
   created_at: string;
-  
+  updated_at: string;
+
+  // Ubicación
   country_code: string;
   region_code: string;
-  region_name: string;
   comuna_code: string;
-  comuna_name: string;
-  lat: number;
-  lng: number;
+  province_code: string | null;
   urbanicity: 'urban' | 'rural' | 'periurban';
-  
+  location_lat: number | null;
+  location_lng: number | null;
+
+  // Demografía
   sex: 'male' | 'female' | 'other';
   age: number;
-  age_group: 'child' | 'youth' | 'adult' | 'middle_age' | 'senior';
-  
-  household_size: number;
-  household_type: 'single' | 'couple' | 'family' | 'extended' | 'group';
-  
-  income_decile: number | null;
-  poverty_status: 'extreme_poverty' | 'poverty' | 'vulnerable' | 'middle_class' | 'upper_middle' | 'upper_class' | null;
-  education_level: 'none' | 'primary' | 'secondary' | 'technical' | 'university' | 'postgraduate' | null;
-  occupation_status: 'employed' | 'unemployed' | 'self_employed' | 'student' | 'retired' | 'domestic' | 'inactive' | null;
+  age_group: string;
+
+  // Socioeconómico
+  household_type: string | null;
+  poverty_status: string | null;
+  education_level: string | null;
+  occupation_status: string | null;
   occupation_group: string | null;
-  socioeconomic_level: 'low' | 'medium_low' | 'medium' | 'medium_high' | 'high' | null;
-  
-  connectivity_level: 'none' | 'basic' | 'standard' | 'high' | 'very_high' | null;
-  digital_exposure_level: 'low' | 'medium' | 'high' | 'very_high' | null;
-  preferred_survey_channel: 'phone' | 'online' | 'in_person' | 'sms' | 'mixed' | null;
-  
-  agent_type: 'resident' | 'worker' | 'student' | 'retiree' | 'entrepreneur' | 'domestic' | 'migrant';
-  
-  backbone_key: string;
-  generation_notes: string;
+  socioeconomic_level: string | null;
+  income_decile: number | null;
+
+  // Digital
+  connectivity_level: string | null;
+  digital_exposure_level: string | null;
+  preferred_survey_channel: string | null;
+  has_smartphone: boolean | null;
+  has_computer: boolean | null;
+  internet_quality: string | null;
+
+  // Traceabilidad
+  backbone_key: string | null;
+  subtel_profile_key: string | null;
+  casen_profile_key: string | null;
+  synthesis_version: string | null;
+  generation_notes: string | null;
+  agent_type: string | null;
+
+  // Metadata
+  metadata: Record<string, unknown> | null;
+
+  // Campos de código Censo (agregados posteriormente)
+  sex_code: number | null;
+  age_group_code: number | null;
+  education_level_code: string | null;
+  occupation_status_code: number | null;
+  occupation_category_code: number | null;
+  ciuo_code: string | null;
+  caenes_code: string | null;
+  marital_status_code: number | null;
+  indigenous_people_code: number | null;
+  disability_status_code: number | null;
 }
 
 interface ComunaData {
@@ -98,286 +124,147 @@ interface ComunaData {
 /**
  * Cargar datos de comunas con coordenadas
  */
-function loadComunaCoordinates(): ComunaData[] {
+function loadComunaCoordinates(): Map<string, ComunaData> {
   if (!fs.existsSync(COMUNA_COORDINATES)) {
     throw new Error(`Archivo no encontrado: ${COMUNA_COORDINATES}`);
   }
-  return JSON.parse(fs.readFileSync(COMUNA_COORDINATES, 'utf-8'));
+  const data: ComunaData[] = JSON.parse(fs.readFileSync(COMUNA_COORDINATES, 'utf-8'));
+  const map = new Map<string, ComunaData>();
+  for (const comuna of data) {
+    map.set(comuna.code, comuna);
+  }
+  console.log(`📍 Cargadas ${map.size} comunas con coordenadas`);
+  return map;
 }
 
 /**
- * Utilidades de generación
+ * Inicializar cliente de Supabase
  */
-function generateAgentId(index: number, regionCode: string): string {
-  return `AGT-${regionCode}-${index.toString().padStart(6, '0')}`;
-}
-
-function getAgeGroup(age: number): SyntheticAgentV1['age_group'] {
-  if (age < 15) return 'child';
-  if (age < 25) return 'youth';
-  if (age < 45) return 'adult';
-  if (age < 65) return 'middle_age';
-  return 'senior';
-}
-
-function getHouseholdType(householdSize: number): SyntheticAgentV1['household_type'] {
-  if (householdSize === 1) return 'single';
-  if (householdSize === 2) return 'couple';
-  if (householdSize <= 4) return 'family';
-  if (householdSize <= 6) return 'extended';
-  return 'group';
-}
-
-function getAgentType(age: number, occupationStatus: string | null): SyntheticAgentV1['agent_type'] {
-  if (age >= 65) return 'retiree';
-  if (age < 25) return 'student';
-  if (occupationStatus === 'domestic') return 'domestic';
-  if (occupationStatus === 'self_employed') return 'entrepreneur';
-  return 'resident';
-}
-
-function getUrbanicity(communeName: string): SyntheticAgentV1['urbanicity'] {
-  const lower = communeName.toLowerCase();
-  const urbanKeywords = ['santiago', 'providencia', 'las condes', 'ñuñoa', 'viña', 'valparaíso', 
-    'concepción', 'temuco', 'antofagasta', 'iquique', 'arica', 'rancagua', 'talca', 'chillán',
-    'puerto montt', 'valdivia', 'la serena', 'coquimbo', 'copiapó', 'calama', 'osorno',
-    'punta arenas', 'coyhaique', 'puerto varas', 'castro', 'ancud', 'quillota', 'san antonio',
-    'quilpué', 'villa alemana', 'san bernardo', 'puente alto', 'maipú', 'la florida',
-    'peñalolén', 'recoleta', 'independencia', 'estación central', 'ñuñoa', 'macul', 'la reina',
-    'las condes', 'vitacura', 'lo barnechea', 'huechuraba', 'quilicura', 'pudahuel', 'cerro navia',
-    'lo prado', 'renca', 'quinta normal', 'lo espejo', 'pedro aguirre cerda', 'san miguel',
-    'san joaquín', 'la cisterna', 'el bosque', 'la granja', 'la pintana', 'san ramón'];
-  
-  if (urbanKeywords.some(k => lower.includes(k))) return 'urban';
-  if (lower.includes('rural') || lower.includes('campo')) return 'rural';
-  return 'periurban';
-}
-
-function getSocioeconomicLevel(incomeDecile: number | null): SyntheticAgentV1['socioeconomic_level'] {
-  if (incomeDecile === null) return null;
-  if (incomeDecile <= 2) return 'low';
-  if (incomeDecile <= 4) return 'medium_low';
-  if (incomeDecile <= 6) return 'medium';
-  if (incomeDecile <= 8) return 'medium_high';
-  return 'high';
+function createSupabaseClient(): SupabaseClient {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error(
+      'Variables de entorno SUPABASE_URL y SUPABASE_ANON_KEY son requeridas.\n' +
+      'Por favor configura el archivo .env con las credenciales de Supabase.'
+    );
+  }
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 }
 
 /**
- * Generar un agente individual
+ * Descargar agentes desde Supabase
  */
-function generateAgent(
-  index: number,
-  comuna: ComunaData,
-  batchId: string
-): SyntheticAgentV1 {
-  const regionCode = REGION_CODE_MAP[comuna.region] || 'XX';
-  
-  // Determinar sexo
-  const sex: SyntheticAgentV1['sex'] = Math.random() < 0.485 ? 'male' : 'female';
-  
-  // Generar edad (18-97 años)
-  const age = Math.floor(Math.random() * 80) + 18;
-  const ageGroup = getAgeGroup(age);
-  
-  // Tamaño de hogar
-  const householdSizes = [1, 2, 3, 4, 5, 6];
-  const householdWeights = [0.12, 0.22, 0.24, 0.22, 0.12, 0.08];
-  const rand = Math.random();
-  let cumWeight = 0;
-  let householdSize = 3;
-  for (let i = 0; i < householdSizes.length; i++) {
-    cumWeight += householdWeights[i];
-    if (rand < cumWeight) {
-      householdSize = householdSizes[i];
-      break;
+async function downloadAgentsFromSupabase(supabase: SupabaseClient): Promise<SyntheticAgentV2[]> {
+  console.log('🔄 Descargando agentes desde Supabase...');
+
+  const allAgents: SyntheticAgentV2[] = [];
+  let page = 0;
+  const pageSize = 1000;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('synthetic_agents')
+      .select('*')
+      .range(page * pageSize, (page + 1) * pageSize - 1);
+
+    if (error) {
+      throw new Error(`Error al descargar agentes: ${error.message}`);
+    }
+
+    if (!data || data.length === 0) {
+      hasMore = false;
+    } else {
+      allAgents.push(...data as SyntheticAgentV2[]);
+      page++;
+      console.log(`   Descargados ${allAgents.length} agentes...`);
+
+      if (data.length < pageSize) {
+        hasMore = false;
+      }
     }
   }
-  const householdType = getHouseholdType(householdSize);
-  
-  // Decil de ingreso
-  const incomeDecile = Math.floor(Math.random() * 10) + 1;
-  
-  // Status de pobreza
-  let povertyStatus: SyntheticAgentV1['poverty_status'];
-  if (incomeDecile <= 2) povertyStatus = Math.random() < 0.3 ? 'extreme_poverty' : 'poverty';
-  else if (incomeDecile <= 4) povertyStatus = 'vulnerable';
-  else if (incomeDecile <= 6) povertyStatus = 'middle_class';
-  else if (incomeDecile <= 8) povertyStatus = 'upper_middle';
-  else povertyStatus = 'upper_class';
-  
-  // Educación
-  const educationLevels: SyntheticAgentV1['education_level'][] = ['primary', 'secondary', 'technical', 'university'];
-  const educationWeights = age < 30 ? [0.05, 0.35, 0.25, 0.35] :
-                          age < 50 ? [0.10, 0.40, 0.25, 0.25] :
-                          [0.15, 0.45, 0.20, 0.20];
-  let eduRand = Math.random();
-  let educationLevel: SyntheticAgentV1['education_level'] = 'secondary';
-  cumWeight = 0;
-  for (let i = 0; i < educationLevels.length; i++) {
-    cumWeight += educationWeights[i];
-    if (eduRand < cumWeight) {
-      educationLevel = educationLevels[i];
-      break;
-    }
-  }
-  
-  // Estado ocupacional
-  const occupationStatuses: SyntheticAgentV1['occupation_status'][] = 
-    age >= 65 ? ['retired', 'inactive'] :
-    age < 25 ? ['student', 'employed', 'unemployed'] :
-    ['employed', 'self_employed', 'unemployed', 'student'];
-  const occupationStatus = occupationStatuses[Math.floor(Math.random() * occupationStatuses.length)];
-  
-  // Grupo ocupacional
-  const occupationGroups = ['tech', 'services', 'commerce', 'industry', 'construction', 'agriculture', 'health', 'education', 'administration'];
-  const occupationGroup = occupationStatus === 'employed' || occupationStatus === 'self_employed' 
-    ? occupationGroups[Math.floor(Math.random() * occupationGroups.length)]
-    : null;
-  
-  // Nivel socioeconómico
-  const socioeconomicLevel = getSocioeconomicLevel(incomeDecile);
-  
-  // Conectividad (basada en urbanicidad)
-  const urbanicity = getUrbanicity(comuna.name);
-  const connectivityWeights = {
-    urban: [0.02, 0.08, 0.20, 0.35, 0.35], // none, basic, standard, high, very_high
-    periurban: [0.05, 0.15, 0.30, 0.30, 0.20],
-    rural: [0.15, 0.25, 0.30, 0.20, 0.10]
-  };
-  const connWeights = connectivityWeights[urbanicity];
-  const connLevels: SyntheticAgentV1['connectivity_level'][] = ['none', 'basic', 'standard', 'high', 'very_high'];
-  let connRand = Math.random();
-  let connectivityLevel: SyntheticAgentV1['connectivity_level'] = 'standard';
-  cumWeight = 0;
-  for (let i = 0; i < connLevels.length; i++) {
-    cumWeight += connWeights[i];
-    if (connRand < cumWeight) {
-      connectivityLevel = connLevels[i];
-      break;
-    }
-  }
-  
-  // Exposición digital
-  let digitalExposureLevel: SyntheticAgentV1['digital_exposure_level'] = 'medium';
-  if (connectivityLevel === 'very_high' || connectivityLevel === 'high') {
-    digitalExposureLevel = educationLevel === 'university' || educationLevel === 'technical' ? 'very_high' : 'high';
-  } else if (connectivityLevel === 'standard') {
-    digitalExposureLevel = 'medium';
-  } else {
-    digitalExposureLevel = 'low';
-  }
-  
-  // Canal preferido
-  const surveyChannels: SyntheticAgentV1['preferred_survey_channel'][] = 
-    digitalExposureLevel === 'very_high' ? ['online', 'mixed'] :
-    digitalExposureLevel === 'high' ? ['phone', 'online', 'mixed'] :
-    ['phone', 'sms', 'in_person'];
-  const preferredSurveyChannel = surveyChannels[Math.floor(Math.random() * surveyChannels.length)];
-  
-  // Tipo de agente
-  const agentType = getAgentType(age, occupationStatus);
-  
-  return {
-    agent_id: generateAgentId(index, regionCode),
-    synthetic_batch_id: batchId,
-    source_version: '2.0.0',
-    created_at: new Date().toISOString(),
-    
-    country_code: 'CL',
-    region_code: regionCode,
-    region_name: comuna.region,
-    comuna_code: comuna.code,
-    comuna_name: comuna.name,
-    lat: comuna.lat,
-    lng: comuna.lng,
-    urbanicity,
-    
-    sex,
-    age,
-    age_group: ageGroup,
-    
-    household_size: householdSize,
-    household_type: householdType,
-    
-    income_decile: incomeDecile,
-    poverty_status: povertyStatus,
-    education_level: educationLevel,
-    occupation_status: occupationStatus,
-    occupation_group: occupationGroup,
-    socioeconomic_level: socioeconomicLevel,
-    
-    connectivity_level: connectivityLevel,
-    digital_exposure_level: digitalExposureLevel,
-    preferred_survey_channel: preferredSurveyChannel,
-    
-    agent_type: agentType,
-    
-    backbone_key: `${regionCode}-${comuna.code}`,
-    generation_notes: `Generated for all Chile communes using coordinates. Region: ${comuna.region}, Comuna: ${comuna.name}`,
-  };
+
+  console.log(`✅ Total de agentes descargados: ${allAgents.length}`);
+  return allAgents;
 }
 
 /**
- * Generar todos los agentes para todas las comunas
+ * Asignar coordenadas a los agentes basándose en su comuna_code
  */
-function generateSyntheticAgents(): SyntheticAgentV1[] {
-  console.log('🧬 Generando agentes sintéticos para TODO CHILE...');
-  
-  const comunas = loadComunaCoordinates();
-  console.log(`📍 Total comunas con coordenadas: ${comunas.length}`);
-  
-  // Batch ID
-  const batchId = `BATCH-CHILE-${Date.now()}`;
-  
-  const agents: SyntheticAgentV1[] = [];
-  let globalIndex = 0;
-  
-  // Generar agentes para cada comuna
-  for (const comuna of comunas) {
-    for (let i = 0; i < AGENTS_PER_COMMUNE; i++) {
-      const agent = generateAgent(globalIndex++, comuna, batchId);
-      agents.push(agent);
+function assignCoordinatesToAgents(
+  agents: SyntheticAgentV2[],
+  comunaMap: Map<string, ComunaData>
+): SyntheticAgentV2[] {
+  console.log('📍 Asignando coordenadas GPS a los agentes...');
+
+  let withCoordinates = 0;
+  let withoutCoordinates = 0;
+  const comunaStats = new Map<string, number>();
+
+  const updatedAgents = agents.map(agent => {
+    const comunaData = comunaMap.get(agent.comuna_code);
+
+    if (comunaData) {
+      // Agregar variación aleatoria para que no estén todos en el mismo punto
+      const latVariation = (Math.random() - 0.5) * 0.02; // ~1km de variación
+      const lngVariation = (Math.random() - 0.5) * 0.02;
+
+      agent.location_lat = comunaData.lat + latVariation;
+      agent.location_lng = comunaData.lng + lngVariation;
+      withCoordinates++;
+
+      // Estadísticas por comuna
+      comunaStats.set(agent.comuna_code, (comunaStats.get(agent.comuna_code) || 0) + 1);
+    } else {
+      console.warn(`⚠️  Comuna no encontrada: ${agent.comuna_code} (agente: ${agent.agent_id})`);
+      withoutCoordinates++;
     }
-  }
-  
-  return agents;
+
+    return agent;
+  });
+
+  console.log(`✅ Agentes con coordenadas: ${withCoordinates}`);
+  console.log(`⚠️  Agentes sin coordenadas: ${withoutCoordinates}`);
+  console.log(`📊 Comunas cubiertas: ${comunaStats.size}`);
+
+  return updatedAgents;
 }
 
 /**
  * Guardar resultado
  */
-function saveSyntheticAgents(agents: SyntheticAgentV1[]): void {
+function saveSyntheticAgents(agents: SyntheticAgentV2[]): void {
   const outputDir = path.dirname(OUTPUT_PATH);
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
-  
+
   // Agrupar por región para estadísticas
   const regionStats: Record<string, number> = {};
   const comunaStats: Record<string, number> = {};
-  
+
   for (const agent of agents) {
-    regionStats[agent.region_name] = (regionStats[agent.region_name] || 0) + 1;
+    regionStats[agent.region_code] = (regionStats[agent.region_code] || 0) + 1;
     comunaStats[agent.comuna_code] = (comunaStats[agent.comuna_code] || 0) + 1;
   }
-  
+
   const output = {
     metadata: {
-      version: '2.0.0',
-      batch_id: agents[0]?.synthetic_batch_id || 'unknown',
+      version: '2.1.0',
       total_agents: agents.length,
       total_communes: Object.keys(comunaStats).length,
       total_regions: Object.keys(regionStats).length,
-      agents_per_commune: AGENTS_PER_COMMUNE,
       generated_at: new Date().toISOString(),
       schema_version: 'SyntheticAgentV2',
       coverage: 'All Chile communes with GPS coordinates',
-      data_source: 'data/comuna_coordinates.json'
+      data_source: 'Supabase synthetic_agents table',
+      comuna_coordinates_source: 'data/comuna_coordinates.json'
     },
     region_distribution: regionStats,
+    comuna_distribution: comunaStats,
     agents
   };
-  
+
   fs.writeFileSync(OUTPUT_PATH, JSON.stringify(output, null, 2));
   console.log(`✅ Agentes sintéticos guardados en: ${OUTPUT_PATH}`);
 }
@@ -385,48 +272,74 @@ function saveSyntheticAgents(agents: SyntheticAgentV1[]): void {
 /**
  * Función principal
  */
-export function generateSyntheticAgentsChileCompleto(): void {
+export async function generateSyntheticAgentsChileCompleto(): Promise<void> {
   console.log('🚀 Iniciando generación de agentes para TODO CHILE...');
+  console.log('   Fuente: Tabla synthetic_agents en Supabase (25,000 agentes)');
   console.log('='.repeat(60));
-  
-  const agents = generateSyntheticAgents();
-  
-  console.log(`📊 Agentes generados: ${agents.length.toLocaleString()}`);
-  console.log(`📊 Regiones cubiertas: ${new Set(agents.map(a => a.region_code)).size}`);
-  console.log(`📊 Comunas cubiertas: ${new Set(agents.map(a => a.comuna_code)).size}`);
-  
-  // Estadísticas
-  const sexDist = { male: 0, female: 0, other: 0 };
-  const ageDist = { child: 0, youth: 0, adult: 0, middle_age: 0, senior: 0 };
-  const urbanicityDist = { urban: 0, rural: 0, periurban: 0 };
-  
-  for (const agent of agents) {
-    sexDist[agent.sex]++;
-    ageDist[agent.age_group]++;
-    urbanicityDist[agent.urbanicity]++;
+
+  try {
+    // 1. Cargar coordenadas de comunas
+    const comunaMap = loadComunaCoordinates();
+
+    // 2. Conectar a Supabase
+    const supabase = createSupabaseClient();
+
+    // 3. Descargar agentes desde Supabase
+    const agents = await downloadAgentsFromSupabase(supabase);
+
+    if (agents.length === 0) {
+      throw new Error('No se encontraron agentes en la base de datos');
+    }
+
+    console.log(`📊 Agentes descargados: ${agents.length.toLocaleString()}`);
+    console.log(`📊 Regiones en datos: ${new Set(agents.map(a => a.region_code)).size}`);
+    console.log(`📊 Comunas en datos: ${new Set(agents.map(a => a.comuna_code)).size}`);
+
+    // 4. Asignar coordenadas
+    const agentsWithCoords = assignCoordinatesToAgents(agents, comunaMap);
+
+    // 5. Estadísticas
+    const sexDist: Record<string, number> = { male: 0, female: 0, other: 0 };
+    const ageGroups: Record<string, number> = {};
+    const urbanicityDist: Record<string, number> = {};
+
+    for (const agent of agentsWithCoords) {
+      sexDist[agent.sex] = (sexDist[agent.sex] || 0) + 1;
+      ageGroups[agent.age_group] = (ageGroups[agent.age_group] || 0) + 1;
+      urbanicityDist[agent.urbanicity] = (urbanicityDist[agent.urbanicity] || 0) + 1;
+    }
+
+    console.log('\n📈 Distribución por sexo:');
+    for (const [sex, count] of Object.entries(sexDist)) {
+      console.log(`   ${sex}: ${count} (${(count / agents.length * 100).toFixed(1)}%)`);
+    }
+
+    console.log('\n📈 Distribución por grupo de edad:');
+    for (const [group, count] of Object.entries(ageGroups)) {
+      console.log(`   ${group}: ${count} (${(count / agents.length * 100).toFixed(1)}%)`);
+    }
+
+    console.log('\n📈 Distribución por urbanicidad:');
+    for (const [type, count] of Object.entries(urbanicityDist)) {
+      console.log(`   ${type}: ${count} (${(count / agents.length * 100).toFixed(1)}%)`);
+    }
+
+    // 6. Guardar resultado
+    saveSyntheticAgents(agentsWithCoords);
+
+    console.log('='.repeat(60));
+    console.log('✅ Generación completada - TODAS las comunas de Chile');
+    console.log(`   Total: ${agents.length.toLocaleString()} agentes con coordenadas GPS`);
+
+  } catch (error) {
+    console.error('❌ Error:', error);
+    process.exit(1);
   }
-  
-  console.log('\n📈 Distribución por sexo:');
-  console.log(`   Male: ${sexDist.male} (${(sexDist.male / agents.length * 100).toFixed(1)}%)`);
-  console.log(`   Female: ${sexDist.female} (${(sexDist.female / agents.length * 100).toFixed(1)}%)`);
-  
-  console.log('\n📈 Distribución por edad:');
-  for (const [group, count] of Object.entries(ageDist)) {
-    console.log(`   ${group}: ${count} (${(count / agents.length * 100).toFixed(1)}%)`);
-  }
-  
-  console.log('\n📈 Distribución por urbanicidad:');
-  for (const [type, count] of Object.entries(urbanicityDist)) {
-    console.log(`   ${type}: ${count} (${(count / agents.length * 100).toFixed(1)}%)`);
-  }
-  
-  saveSyntheticAgents(agents);
-  
-  console.log('='.repeat(60));
-  console.log('✅ Generación completada - TODAS las comunas de Chile');
 }
 
 // Ejecutar directamente
-generateSyntheticAgentsChileCompleto();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  generateSyntheticAgentsChileCompleto();
+}
 
 export default generateSyntheticAgentsChileCompleto;
