@@ -144,8 +144,12 @@ export function initRouter(): void {
   // Check authentication status
   state.isAuthenticated = isAuthenticated();
 
-  // Parse hash and query params
-  const hashPart = window.location.hash.slice(1) || 'landing';
+  // Get raw hash (without the #) - preserve empty string if no hash
+  const rawHash = window.location.hash.slice(1);
+  const hasExplicitHash = rawHash.length > 0;
+  
+  // Parse hash and query params (use 'landing' only as default, not replacement)
+  const hashPart = rawHash || 'landing';
   const [hash, queryString] = hashPart.split('?');
   const route = hash as Route;
 
@@ -172,9 +176,13 @@ export function initRouter(): void {
     state.currentRoute = 'landing';
   }
 
-  // Only redirect to home if explicitly on landing/login AND no specific route was requested
+  // Only redirect to home if:
+  // - User is authenticated AND
+  // - Current route is landing/login AND  
+  // - No explicit hash was in the URL (user visited root /)
   // This preserves the current route on page refresh
-  if (state.isAuthenticated && (state.currentRoute === 'landing' || state.currentRoute === 'login') && !hashPart) {
+  if (state.isAuthenticated && (state.currentRoute === 'landing' || state.currentRoute === 'login') && !hasExplicitHash) {
+    console.log('🏠 No explicit hash, redirecting authenticated user to home');
     state.currentRoute = 'home';
     state.params = {};
   }
