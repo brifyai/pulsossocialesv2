@@ -20,6 +20,13 @@ import {
 } from '../app/performance/qualityMode';
 import { toggleLabels } from '../app/layers/labels';
 
+// Global declaration for map instance access
+declare global {
+  interface Window {
+    _mapInstance?: Map;
+  }
+}
+
 let mapInstance: Map | null = null;
 let qualityModeUnsubscribe: (() => void) | null = null;
 
