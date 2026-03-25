@@ -23,7 +23,7 @@ import { recolorizeLabels } from './layers/labels';
 import { applyStyleTweaks } from './styleTweaks';
 import { ensureAgentsLayer, setupAgentClickHandler } from './layers/agents';
 import { initAgentsViewport } from './layers/agentsViewport';
-import { createPanel } from '../ui/panel';
+import { createPanel, setViewportLoading, setViewportLoaded, setViewportError } from '../ui/panel';
 
 /**
  * Initialize the map
@@ -87,9 +87,18 @@ export function initMap(): MapInstance {
 
     // Initialize agents viewport (Sprint 12C: 25,000 agents)
     initAgentsViewport(map, {
-      onLoading: () => console.log('🟡 Cargando agentes...'),
-      onLoaded: (count) => console.log(`✅ ${count} agentes renderizados`),
-      onError: (error) => console.error('🔴 Error cargando agentes:', error),
+      onLoading: () => {
+        console.log('🟡 Cargando agentes...');
+        setViewportLoading();
+      },
+      onLoaded: (count) => {
+        console.log(`✅ ${count} agentes renderizados`);
+        setViewportLoaded(count);
+      },
+      onError: (error) => {
+        console.error('🔴 Error cargando agentes:', error);
+        setViewportError(error.message || 'Error desconocido');
+      },
     });
 
     // Setup agent click handler for profile popup

@@ -463,6 +463,75 @@ export function getPanelState(): PanelState {
   return { ...state };
 }
 
+// Store callbacks for viewport updates
+let viewportCallbacks: {
+  onLoading?: () => void;
+  onLoaded?: (count: number) => void;
+  onError?: (error: string) => void;
+} = {};
+
+/**
+ * Set viewport callbacks to update panel status
+ */
+export function setViewportCallbacks(callbacks: {
+  onLoading?: () => void;
+  onLoaded?: (count: number) => void;
+  onError?: (error: string) => void;
+}): void {
+  viewportCallbacks = callbacks;
+}
+
+/**
+ * Update panel status from viewport loading state
+ */
+export function setViewportLoading(): void {
+  const statusText = document.querySelector('#status-text') as HTMLElement;
+  const statusDot = document.querySelector('#status-dot') as HTMLElement;
+  const agentCountDisplay = document.querySelector('#agent-count-display') as HTMLElement;
+  
+  if (statusText) statusText.textContent = 'Cargando agentes...';
+  if (statusDot) statusDot.classList.add('loading');
+  if (agentCountDisplay) agentCountDisplay.textContent = '...';
+  
+  viewportCallbacks.onLoading?.();
+}
+
+/**
+ * Update panel status when viewport agents are loaded
+ */
+export function setViewportLoaded(count: number): void {
+  const statusText = document.querySelector('#status-text') as HTMLElement;
+  const statusDot = document.querySelector('#status-dot') as HTMLElement;
+  const agentCountDisplay = document.querySelector('#agent-count-display') as HTMLElement;
+  
+  if (statusText) statusText.textContent = 'Agentes cargados';
+  if (statusDot) {
+    statusDot.classList.remove('loading');
+    statusDot.classList.add('active');
+  }
+  if (agentCountDisplay) agentCountDisplay.textContent = `${count} agente${count !== 1 ? 's' : ''}`;
+  
+  viewportCallbacks.onLoaded?.(count);
+}
+
+/**
+ * Update panel status when viewport has error
+ */
+export function setViewportError(error: string): void {
+  const statusText = document.querySelector('#status-text') as HTMLElement;
+  const statusDot = document.querySelector('#status-dot') as HTMLElement;
+  const agentCountDisplay = document.querySelector('#agent-count-display') as HTMLElement;
+  
+  if (statusText) statusText.textContent = 'Error al cargar';
+  if (statusDot) {
+    statusDot.classList.remove('loading', 'active');
+    statusDot.classList.add('error');
+  }
+  if (agentCountDisplay) agentCountDisplay.textContent = '0 agentes';
+  
+  viewportCallbacks.onError?.(error);
+}
+
 /**
  * Update region subtitle based on viewport center
  */

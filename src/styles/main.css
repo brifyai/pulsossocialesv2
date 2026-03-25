@@ -1095,6 +1095,22 @@ body {
   box-shadow: 0 0 8px var(--color-glow);
 }
 
+.status-dot.loading {
+  background: #ffaa00;
+  box-shadow: 0 0 8px rgba(255, 170, 0, 0.5);
+  animation: pulse-loading 1s ease-in-out infinite;
+}
+
+@keyframes pulse-loading {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.status-dot.error {
+  background: #ff4444;
+  box-shadow: 0 0 8px rgba(255, 68, 68, 0.5);
+}
+
 .status-text-sm {
   color: var(--color-text-secondary);
   flex: 1;
