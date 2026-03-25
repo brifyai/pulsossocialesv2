@@ -11,7 +11,6 @@
 
 import type { Map } from 'maplibre-gl';
 import { initMap } from '../app/initMap';
-import { initEngine, startSimulation, setAgentCount, setGlobalSpeed } from '../app/simulation/agentEngine';
 import {
   initQualityMode,
   onQualityModeChange,
@@ -27,6 +26,10 @@ let qualityModeUnsubscribe: (() => void) | null = null;
 /**
  * Create the Map View page
  * This wraps the existing scene without modifying its logic
+ * 
+ * NOTA: El sistema de agentes se inicializa en initMap.ts mediante initAgentsViewport()
+ * que carga los 25,000 agentes desde Supabase según el viewport del mapa.
+ * No se usa el agentEngine local que simula agentes en la red de El Golf.
  */
 export function createMapViewPage(): HTMLElement {
   const page = document.createElement('div');
@@ -53,6 +56,7 @@ export function createMapViewPage(): HTMLElement {
 /**
  * Initialize the map scene (preserves original logic)
  * Sprint 8A: Agregado Quality Mode
+ * Sprint 12C: Removido agentEngine local - ahora usa agentsViewport desde Supabase
  */
 function initializeMapScene(_container: HTMLElement, _page: HTMLElement): void {
   console.log('🗺️ MapView: Initializing map scene...');
@@ -61,7 +65,7 @@ function initializeMapScene(_container: HTMLElement, _page: HTMLElement): void {
     // Initialize quality mode system
     initQualityMode(true);
 
-    // Initialize map (same as original main.ts)
+    // Initialize map (initMap ya inicializa agentsViewport con 25,000 agentes desde Supabase)
     const map = initMap();
     mapInstance = map;
 
@@ -70,10 +74,7 @@ function initializeMapScene(_container: HTMLElement, _page: HTMLElement): void {
 
     // Wait for map to load
     map.once('load', () => {
-      console.log('🗺️ MapView: Map loaded, panel is created by initMap...');
-
-      // Initialize agent engine
-      initEngine(map);
+      console.log('🗺️ MapView: Map loaded, agents loaded from Supabase via viewport...');
 
       // Setup quality mode callback
       setupQualityModeCallback(map);
@@ -84,13 +85,7 @@ function initializeMapScene(_container: HTMLElement, _page: HTMLElement): void {
         // console.log(`📊 FPS: ${_metrics.fps}, Agents: ${_metrics.agentCount}`);
       });
 
-      // Auto-start simulation
-      setTimeout(() => {
-        startSimulation();
-        console.log('▶️ MapView: Simulation auto-started');
-      }, 500);
-
-      console.log('✅ MapView: Scene initialized successfully');
+      console.log('✅ MapView: Scene initialized successfully with Supabase agents');
     });
 
     // Expose for debugging
@@ -104,22 +99,14 @@ function initializeMapScene(_container: HTMLElement, _page: HTMLElement): void {
 /**
  * Setup quality mode change callback
  * Applies settings when mode changes
+ * 
+ * NOTA: Las funciones setAgentCount y setGlobalSpeed se removieron
+ * porque ahora usamos agentsViewport desde Supabase en lugar de agentEngine local.
+ * El control de agentes se hace a través del viewport del mapa.
  */
 function setupQualityModeCallback(map: Map): void {
   qualityModeUnsubscribe = onQualityModeChange((mode, config) => {
     console.log(`🎛️ MapView: Applying ${mode} mode settings`);
-
-    // Apply agent count limit
-    const currentAgentCount = parseInt(
-      (document.querySelector('#slider-agent-count') as HTMLInputElement)?.value || '50',
-      10
-    );
-    if (currentAgentCount > config.maxAgents) {
-      setAgentCount(config.maxAgents);
-    }
-
-    // Apply simulation speed
-    setGlobalSpeed(config.simulationSpeed);
 
     // Toggle labels
     if (!config.enableLabels) {
