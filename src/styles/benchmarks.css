@@ -61,10 +61,191 @@
 }
 
 /* ===========================================
+   Upload Section
+   =========================================== */
+
+.benchmarks-upload-section {
+  margin-bottom: 1rem;
+}
+
+.upload-card {
+  background: var(--color-bg-panel, rgba(10, 10, 15, 0.9));
+  border: 1px solid var(--color-border, rgba(0, 255, 255, 0.3));
+  border-radius: 12px;
+  padding: 1.5rem;
+  backdrop-filter: blur(10px);
+}
+
+.upload-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.upload-header .icon {
+  font-size: 1.5rem;
+  color: var(--color-accent-cyan, #00ffff);
+}
+
+.upload-header h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text-primary, #ffffff);
+}
+
+.upload-description {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #a0a0b0);
+  margin: 0 0 1.25rem 0;
+  line-height: 1.5;
+}
+
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-group label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-accent-cyan, #00ffff);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-input,
+.form-file-input {
+  padding: 0.75rem;
+  border: 1px solid var(--color-border, rgba(0, 255, 255, 0.3));
+  border-radius: 8px;
+  font-size: 0.875rem;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--color-text-primary, #ffffff);
+  transition: all 0.2s;
+}
+
+.form-input:focus,
+.form-file-input:focus {
+  outline: none;
+  border-color: var(--color-accent-cyan, #00ffff);
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+}
+
+.form-input::placeholder {
+  color: var(--color-text-secondary, #a0a0b0);
+  opacity: 0.6;
+}
+
+.form-file-input {
+  cursor: pointer;
+  padding: 0.5rem;
+}
+
+.form-file-input::-webkit-file-upload-button {
+  background: rgba(0, 255, 255, 0.1);
+  border: 1px solid var(--color-accent-cyan, #00ffff);
+  color: var(--color-text-primary, #ffffff);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-right: 1rem;
+  transition: all 0.2s;
+}
+
+.form-file-input::-webkit-file-upload-button:hover {
+  background: rgba(0, 255, 255, 0.2);
+}
+
+.upload-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1.5rem;
+  background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(255, 0, 255, 0.2));
+  border: 1px solid var(--color-accent-cyan, #00ffff);
+  color: var(--color-text-primary, #ffffff);
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  align-self: flex-start;
+}
+
+.upload-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(0, 255, 255, 0.3), rgba(255, 0, 255, 0.3));
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.upload-button:disabled {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--color-text-secondary, #a0a0b0);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.upload-button .icon {
+  font-size: 1.125rem;
+}
+
+.upload-status {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.upload-status.error {
+  background: rgba(255, 68, 68, 0.1);
+  border: 1px solid #ff4444;
+  color: #ff4444;
+}
+
+.upload-status.success {
+  background: rgba(0, 255, 0, 0.1);
+  border: 1px solid #00ff00;
+  color: #00ff00;
+}
+
+.upload-status.info {
+  background: rgba(0, 255, 255, 0.1);
+  border: 1px solid var(--color-accent-cyan, #00ffff);
+  color: var(--color-accent-cyan, #00ffff);
+}
+
+.upload-status .icon {
+  font-size: 1.25rem;
+}
+
+/* ===========================================
    Selector Section
    =========================================== */
 
 .benchmarks-selector {
+
   background: var(--color-bg-panel, rgba(10, 10, 15, 0.9));
   border: 1px solid var(--color-border, rgba(0, 255, 255, 0.3));
   border-radius: 12px;
@@ -653,6 +834,14 @@
 @media (max-width: 768px) {
   .benchmarks-page {
     padding: 1rem;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .upload-button {
+    width: 100%;
   }
 
   .selector-grid {

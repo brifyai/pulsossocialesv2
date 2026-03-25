@@ -14,6 +14,7 @@ import {
   getCategories
 } from '../app/benchmark/benchmarkService';
 import { getAllSurveys, getSurveyResults } from '../app/survey/surveyService';
+import { uploadBenchmarkPdf, createBenchmark, updateBenchmark } from '../services/supabase/repositories/benchmarkRepository';
 
 // ===========================================
 // State
@@ -56,6 +57,46 @@ function renderPage(): string {
       </header>
 
       <div class="benchmarks-content">
+        <!-- Upload PDF Section -->
+        <section class="benchmarks-upload-section">
+          <div class="upload-card">
+            <div class="upload-header">
+              <span class="icon material-symbols-outlined">upload_file</span>
+              <h3>Cargar Nuevo Benchmark</h3>
+            </div>
+            <p class="upload-description">
+              Sube un PDF con datos de encuesta (CASEN, CEP, etc.) para crear un nuevo benchmark de referencia.
+            </p>
+            <div class="upload-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="benchmark-name">Nombre del Benchmark</label>
+                  <input type="text" id="benchmark-name" placeholder="Ej: CASEN 2023" class="form-input">
+                </div>
+                <div class="form-group">
+                  <label for="benchmark-org">Organización</label>
+                  <input type="text" id="benchmark-org" placeholder="Ej: Ministerio de Desarrollo Social" class="form-input">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="benchmark-year">Año</label>
+                  <input type="number" id="benchmark-year" placeholder="2023" class="form-input" min="2000" max="2099">
+                </div>
+                <div class="form-group">
+                  <label for="benchmark-file">Archivo PDF</label>
+                  <input type="file" id="benchmark-file" accept=".pdf" class="form-file-input">
+                </div>
+              </div>
+              <button id="upload-btn" class="upload-button">
+                <span class="icon material-symbols-outlined">cloud_upload</span>
+                Subir y Procesar PDF
+              </button>
+            </div>
+            <div id="upload-status" class="upload-status" style="display: none;"></div>
+          </div>
+        </section>
+
         <!-- Selector Section -->
         <section class="benchmarks-selector">
           <div class="selector-grid">
@@ -163,6 +204,10 @@ async function initializePage(page: HTMLElement): Promise<void> {
 
     const compareBtn = page.querySelector('#compare-btn') as HTMLButtonElement;
     compareBtn.addEventListener('click', () => runComparison(page));
+
+    // Upload button listener
+    const uploadBtn = page.querySelector('#upload-btn') as HTMLButtonElement;
+    uploadBtn.addEventListener('click', () => handlePdfUpload(page));
     
   } catch (error) {
     console.error('[BenchmarksPage] Error initializing:', error);
@@ -346,8 +391,112 @@ function renderEmptyState(): string {
     <div class="benchmarks-empty-state">
       <span class="empty-icon material-symbols-outlined">help</span>
       <h3>No hay benchmarks disponibles</h3>
-      <p>Los benchmarks de referencia se cargan desde archivos de configuración.</p>
+      <p>Carga un PDF con datos de encuesta para crear tu primer benchmark.</p>
     </div>
+  `;
+}
+
+// ===========================================
+// PDF Upload Handler
+// ===========================================
+
+async function handlePdfUpload(page: HTMLElement): Promise<void> {
+  const nameInput = page.querySelector('#benchmark-name') as HTMLInputElement;
+  const orgInput = page.querySelector('#benchmark-org') as HTMLInputElement;
+  const yearInput = page.querySelector('#benchmark-year') as HTMLInputElement;
+  const fileInput = page.querySelector('#benchmark-file') as HTMLInputElement;
+  const statusDiv = page.querySelector('#upload-status') as HTMLElement;
+  const uploadBtn = page.querySelector('#upload-btn') as HTMLButtonElement;
+
+  // Validación
+  if (!nameInput.value.trim()) {
+    showUploadStatus(statusDiv, 'error', 'Por favor ingresa el nombre del benchmark');
+    return;
+  }
+  if (!orgInput.value.trim()) {
+    showUploadStatus(statusDiv, 'error', 'Por favor ingresa la organización');
+    return;
+  }
+  if (!yearInput.value || parseInt(yearInput.value) < 2000 || parseInt(yearInput.value) > 2099) {
+    showUploadStatus(statusDiv, 'error', 'Por favor ingresa un año válido (2000-2099)');
+    return;
+  }
+  if (!fileInput.files || fileInput.files.length === 0) {
+    showUploadStatus(statusDiv, 'error', 'Por favor selecciona un archivo PDF');
+    return;
+  }
+
+  const file = fileInput.files[0];
+  if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
+    showUploadStatus(statusDiv, 'error', 'El archivo debe ser un PDF');
+    return;
+  }
+
+  // Mostrar estado de carga
+  uploadBtn.disabled = true;
+  uploadBtn.innerHTML = '<span class="icon material-symbols-outlined">hourglass_empty</span> Subiendo...';
+  showUploadStatus(statusDiv, 'info', 'Subiendo PDF... Por favor espera.');
+
+  try {
+    // Crear el benchmark primero
+    const benchmark = await createBenchmark({
+      source_id: `benchmark_${Date.now()}`,
+      name: nameInput.value.trim(),
+      organization: orgInput.value.trim(),
+      year: parseInt(yearInput.value),
+      description: `Benchmark cargado desde PDF: ${file.name}`
+    });
+
+    // Subir el PDF
+    const pdfUrl = await uploadBenchmarkPdf(file, benchmark.id);
+
+    // Actualizar benchmark con URL del PDF
+    await updateBenchmark(benchmark.id, {
+      pdf_url: pdfUrl,
+      status: 'processing'
+    });
+
+    showUploadStatus(statusDiv, 'success', 
+      `✅ Benchmark "${benchmark.name}" creado exitosamente. El PDF está siendo procesado para extraer los indicadores.`);
+
+    // Limpiar formulario
+    nameInput.value = '';
+    orgInput.value = '';
+    yearInput.value = '';
+    fileInput.value = '';
+
+    // Recargar la lista de benchmarks
+    await renderBenchmarksList(page);
+    
+    // Actualizar el select de benchmarks
+    const benchmarks = await getAllBenchmarks();
+    const benchmarkSelect = page.querySelector('#benchmark-select') as HTMLSelectElement;
+    benchmarkSelect.innerHTML = '<option value="">Selecciona un benchmark...</option>';
+    benchmarks.forEach(b => {
+      const option = document.createElement('option');
+      option.value = b.id;
+      option.textContent = `${b.source.name} (${b.source.year})`;
+      benchmarkSelect.appendChild(option);
+    });
+
+  } catch (error) {
+    console.error('[BenchmarksPage] Error uploading PDF:', error);
+    showUploadStatus(statusDiv, 'error', 
+      `Error al subir el PDF: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+  } finally {
+    uploadBtn.disabled = false;
+    uploadBtn.innerHTML = '<span class="icon material-symbols-outlined">cloud_upload</span> Subir y Procesar PDF';
+  }
+}
+
+function showUploadStatus(container: HTMLElement, type: 'error' | 'success' | 'info', message: string): void {
+  container.style.display = 'block';
+  container.className = `upload-status ${type}`;
+  container.innerHTML = `
+    <span class="icon material-symbols-outlined">
+      ${type === 'error' ? 'error' : type === 'success' ? 'check_circle' : 'info'}
+    </span>
+    <span>${message}</span>
   `;
 }
 
