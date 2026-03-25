@@ -145,10 +145,12 @@ export function initRouter(): void {
   state.isAuthenticated = isAuthenticated();
 
   // Get raw hash (without the #) - preserve empty string if no hash
+  // Use setTimeout to ensure the hash is available after any redirects
   const rawHash = window.location.hash.slice(1);
   const hasExplicitHash = rawHash.length > 0;
   
   console.log('🔍 Router init - rawHash:', rawHash, 'hasExplicitHash:', hasExplicitHash);
+  console.log('🔍 Router init - window.location.href:', window.location.href);
   
   // Parse hash and query params (use 'landing' only as default, not replacement)
   const hashPart = rawHash || 'landing';
