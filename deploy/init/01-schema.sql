@@ -68,6 +68,7 @@ CREATE TRIGGER update_users_updated_at
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 
 -- Permitir lectura de usuarios activos (para login)
+DROP POLICY IF EXISTS "Allow read active users" ON users;
 CREATE POLICY "Allow read active users" ON users
     FOR SELECT USING (is_active = true);
 
@@ -494,24 +495,31 @@ ALTER TABLE benchmarks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE benchmark_comparisons ENABLE ROW LEVEL SECURITY;
 
 -- Política por defecto: permitir lectura anónima
+DROP POLICY IF EXISTS "Allow anonymous read" ON territories;
 CREATE POLICY "Allow anonymous read" ON territories
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Allow anonymous read" ON synthetic_agents;
 CREATE POLICY "Allow anonymous read" ON synthetic_agents
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Allow anonymous read" ON survey_definitions;
 CREATE POLICY "Allow anonymous read" ON survey_definitions
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Allow anonymous read" ON survey_runs;
 CREATE POLICY "Allow anonymous read" ON survey_runs
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Allow anonymous read" ON survey_responses;
 CREATE POLICY "Allow anonymous read" ON survey_responses
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Allow anonymous read" ON benchmarks;
 CREATE POLICY "Allow anonymous read" ON benchmarks
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Allow anonymous read" ON benchmark_comparisons;
 CREATE POLICY "Allow anonymous read" ON benchmark_comparisons
     FOR SELECT USING (true);
 
