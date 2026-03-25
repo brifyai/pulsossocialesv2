@@ -17,13 +17,13 @@ export const MAPTILER_STYLE_URL = `https://api.maptiler.com/maps/basic-v2/style.
 // - darkmatter (dark theme)
 // - positron (light)
 
-// Initial camera position - Chile overview
-// Shows all of Chile so agents are visible across the country
+// Initial camera position - Chile overview with 3D perspective
+// Shows a good portion of Chile while maintaining the 3D effect
 export const INITIAL_CAMERA: CameraOptions = {
-  center: [-71.5, -39.5], // Center of Chile
-  zoom: 4.5, // Zoomed out to see entire country
-  pitch: 0, // Top-down view for better overview
-  bearing: 0, // North-up orientation
+  center: [-70.5, -33.5], // Center on Santiago area but showing more of Chile
+  zoom: 6.5, // Zoomed out to see a large portion of Chile
+  pitch: 60, // Angled view for 3D effect (was 75, now 60 for better overview)
+  bearing: -20, // Slight rotation for better perspective
 };
 
 // Map configuration
