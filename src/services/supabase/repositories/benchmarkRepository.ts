@@ -212,9 +212,10 @@ export async function updateBenchmark(
   if (updates.pdf_url !== undefined) updateData.pdf_url = updates.pdf_url;
   if (updates.status !== undefined) updateData.status = updates.status;
 
-  const { data, error } = await client
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (client as any)
     .from('benchmarks')
-    .update(updateData as any)
+    .update(updateData)
     .eq('id', id)
     .select()
     .single();
@@ -236,9 +237,10 @@ export async function archiveBenchmark(id: string): Promise<void> {
     throw new Error('Supabase no disponible');
   }
 
-  const { error } = await client
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (client as any)
     .from('benchmarks')
-    .update({ status: 'archived', updated_at: new Date().toISOString() } as any)
+    .update({ status: 'archived', updated_at: new Date().toISOString() })
     .eq('id', id);
 
   if (error) {
@@ -391,9 +393,10 @@ export async function updatePdfExtractionStatus(
     updates.error_message = data.error_message;
   }
 
-  const { error } = await client
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (client as any)
     .from('benchmark_pdf_extractions')
-    .update(updates as any)
+    .update(updates)
     .eq('id', id);
 
   if (error) {
