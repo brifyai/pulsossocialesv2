@@ -186,11 +186,11 @@ export async function ensureAgentsLayer(map: Map): Promise<boolean> {
 
 /**
  * Convert Point features to Polygon features for extrusion
- * Creates small squares around each point
+ * Creates very thin vertical lines (3x3 meters) to avoid confusion with buildings
  */
 function convertPointsToPolygons(
   data: AgentGeoJSON,
-  squareSizeMeters: number = 30
+  squareSizeMeters: number = 3
 ): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
   const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
 
