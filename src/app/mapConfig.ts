@@ -17,13 +17,13 @@ export const MAPTILER_STYLE_URL = `https://api.maptiler.com/maps/basic-v2/style.
 // - darkmatter (dark theme)
 // - positron (light)
 
-// Initial camera position - El Golf / Tobalaba, Santiago
-// Heroic angle for dramatic skyline
+// Initial camera position - Chile overview
+// Shows all of Chile so agents are visible across the country
 export const INITIAL_CAMERA: CameraOptions = {
-  center: [-70.595, -33.415], // Slightly adjusted for better tower view
-  zoom: 16.2,
-  pitch: 75,
-  bearing: -40,
+  center: [-71.5, -39.5], // Center of Chile
+  zoom: 4.5, // Zoomed out to see entire country
+  pitch: 0, // Top-down view for better overview
+  bearing: 0, // North-up orientation
 };
 
 // Map configuration
