@@ -941,12 +941,72 @@ async function loadComunaCoordinatesCache(): Promise<Map<string, { name: string;
   return comunaCoordinatesCache;
 }
 
+// Mapeo de códigos de comuna de 4 dígitos a nombres (para casos especiales)
+const comunaCode4ToName: Record<string, string> = {
+  // Región de Aysén (11)
+  '1101': 'Coyhaique',
+  '1102': 'Lago Verde',
+  '1103': 'Aysén',
+  '1104': 'Cisnes',
+  '1105': 'Guaitecas',
+  '1106': 'Cochrane',
+  '1107': "O'Higgins",
+  '1108': 'Tortel',
+  '1109': 'Chile Chico',
+  '1110': 'Río Ibáñez',
+  // Región de Los Ríos (14)
+  '1401': 'Valdivia',
+  '1402': 'Corral',
+  '1403': 'Lanco',
+  '1404': 'Los Lagos',
+  '1405': 'Máfil',
+  '1406': 'Mariquina',
+  '1407': 'Paillaco',
+  '1408': 'Panguipulli',
+  '1409': 'La Unión',
+  '1410': 'Futrono',
+  '1411': 'Lago Ranco',
+  '1412': 'Río Bueno',
+  // Región de Los Lagos (10)
+  '1001': 'Puerto Montt',
+  '1002': 'Calbuco',
+  '1003': 'Cochamó',
+  '1004': 'Fresia',
+  '1005': 'Frutillar',
+  '1006': 'Los Muermos',
+  '1007': 'Llanquihue',
+  '1008': 'Maullín',
+  '1009': 'Puerto Varas',
+  '1010': 'Castro',
+  '1011': 'Ancud',
+  '1012': 'Chonchi',
+  '1013': 'Curaco de Vélez',
+  '1014': 'Dalcahue',
+  '1015': 'Puqueldón',
+  '1016': 'Queilén',
+  '1017': 'Quellón',
+  '1018': 'Quemchi',
+  '1019': 'Quinchao',
+  '1020': 'Osorno',
+  '1021': 'Puerto Octay',
+  '1022': 'Purranque',
+  '1023': 'Puyehue',
+  '1024': 'Río Negro',
+  '1025': 'San Juan de la Costa',
+  '1026': 'San Pablo',
+  '1027': 'Chaitén',
+  '1028': 'Futaleufú',
+  '1029': 'Hualaihué',
+  '1030': 'Palena',
+};
+
 /**
  * Obtiene el nombre de una comuna desde el caché o del JSON local
  * CORREGIDO: Maneja códigos de comuna de 4 dígitos (sin prefijo de región)
  * y códigos de 5 dígitos (con prefijo de región)
  * AHORA recibe el regionCode para construir el código completo correctamente
  * MEJORADO: Agrega logging detallado para diagnóstico
+ * AGREGADO: Mapeo directo para códigos de 4 dígitos problemáticos
  */
 async function getComunaName(comunaCode: string, regionCode?: string): Promise<string> {
   console.log(`[🟢 getComunaName] Buscando comuna: ${comunaCode}, región: ${regionCode}`);
@@ -974,6 +1034,13 @@ async function getComunaName(comunaCode: string, regionCode?: string): Promise<s
   // Los códigos de comuna en Chile tienen formato: XXYYY donde XX es la región y YYY es la comuna
   if (comunaCode.length === 4) {
     console.log(`[🟡 getComunaName] Código de 4 dígitos, intentando con prefijos...`);
+    
+    // NUEVO: Intentar mapeo directo primero
+    const directName = comunaCode4ToName[comunaCode];
+    if (directName) {
+      console.log(`[🟢 getComunaName] Encontrada en mapeo directo: ${directName}`);
+      return directName;
+    }
     
     // Si tenemos el regionCode, usarlo para construir el código completo
     if (regionCode) {
