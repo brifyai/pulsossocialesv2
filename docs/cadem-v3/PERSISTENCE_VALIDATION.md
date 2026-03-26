@@ -18,18 +18,19 @@ Validar que topic states y panel states:
 
 ### Flujo de Datos
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   runSurvey()   │────▶│ resolveAgentState│────▶│  Supabase (DB)  │
-│  (entrypoint)   │     │  (loader/seed)   │     │                 │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
-         │                       │                          │
-         │                       ▼                          │
-         │              ┌──────────────────┐               │
-         │              │  buildInitial*   │               │
-         │              │    (seed)        │               │
-         │              └──────────────────┘               │
-         │                       │                          │
-         ▼                       ▼                          ▼
+┌─────────────────┐     ┌──────────────────────────┐     ┌─────────────────┐
+│   runSurvey()   │────▶│ resolveTopicStates /     │────▶│  Supabase (DB)  │
+│  (entrypoint)   │     │ resolvePanelState        │     │                 │
+└─────────────────┘     │  (loader/seed)           │     └─────────────────┘
+         │              └──────────────────────────┘              │
+         │                       │                                 │
+         │                       ▼                                 │
+         │              ┌──────────────────┐                     │
+         │              │  buildInitial*   │                     │
+         │              │    (seed)        │                     │
+         │              └──────────────────┘                     │
+         │                       │                               │
+         ▼                       ▼                               ▼
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
 │ generateResponse│◀────│  Topic/Panel     │◀────│  opinionState   │
 │                 │     │     States       │     │  Repository     │
@@ -216,7 +217,7 @@ saveStatus: saved
 topic states cargados: 10 (desde DB)
 panel completions_30d: 2 (incrementado)
 panel fatigue previo: 0.08
-panel fatigue actual: 0.16 (doblado)
+panel fatigue actual: 0.16 (incremento respecto a 0.08 previo)
 cooldown_until: 2026-04-09T... (extendido)
 ```
 
@@ -258,6 +259,8 @@ cooldown_until: 2026-04-09T... (extendido)
 - El sistema cuenta con fallback de lectura/escritura definido, aunque la validación de fallos inducidos de base de datos queda pendiente.
 - El motor queda en condiciones de pasar a staging técnico y comparación controlada con el motor legacy.
 
+> **Nota importante**: La validación actual corresponde a entorno de desarrollo y no reemplaza aún validación bajo carga ni validación operativa en staging.
+
 **Decisión**:
 - [x] Persistencia funcional validada en entorno técnico
 - [ ] Persistencia validada bajo carga
@@ -280,6 +283,19 @@ cooldown_until: 2026-04-09T... (extendido)
 1. Machine learning para calibración de seeds
 2. Optimización de queries de persistencia
 3. Monitoreo en producción
+
+---
+
+## Definition of Done para pasar a staging
+
+- [x] Persistencia seed/persisted validada en entorno dev
+- [x] Metadata de persistencia presente
+- [x] `engineVersion` presente en respuestas
+- [x] Fallback de lectura/escritura implementado
+- [ ] Prueba de fallo inducido completada
+- [ ] Prueba batch 100+ agentes completada
+- [ ] Integración dual legacy/cadem habilitada en runner
+- [ ] Comparación lado a lado con motor legacy documentada
 
 ---
 
