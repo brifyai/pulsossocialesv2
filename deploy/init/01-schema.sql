@@ -212,6 +212,9 @@ CREATE TABLE IF NOT EXISTS survey_definitions (
     config JSONB DEFAULT '{}',
     -- Ejemplo: {"sample_size": 1000, "confidence_level": 0.95}
     
+    -- Muestra (tamaño de muestra objetivo)
+    sample_size INTEGER,
+    
     -- Estado
     status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'completed', 'archived')),
     
