@@ -217,6 +217,8 @@ export interface DbSyntheticAgentBatch {
  * Descripción: Definiciones de encuestas
  * Pipeline: Creado por usuarios/UI
  * Supabase: Sí
+ * 
+ * CADEM v1.1 - Añadido engine_mode y persist_state
  */
 export interface DbSurveyDefinition {
   id: string;                    // UUID primary key
@@ -244,6 +246,10 @@ export interface DbSurveyDefinition {
   // Configuración
   sample_size: number;
   status: DbSurveyStatus;
+  
+  // CADEM v1.1 - Engine configuration
+  engine_mode: 'legacy' | 'cadem' | null;  // Motor de ejecución
+  persist_state: boolean | null;            // Persistir estado de agentes
   
   // Autoría
   created_by: string | null;     // user_id si hay auth

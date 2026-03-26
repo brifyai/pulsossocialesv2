@@ -18,6 +18,9 @@ import type {
 } from '../../types/survey';
 import { filterAgents } from '../../data/syntheticAgents';
 import { generateSurveyResponses, calculateConfidenceStats } from './syntheticResponseEngine';
+// CADEM v1.1 - Import unified survey runner
+import { runSurvey as runUnifiedSurvey } from './surveyRunner';
+import type { CademAdapterAgent, CademSurveyDefinition } from './cademAdapter';
 import {
   createSurveyDefinition,
   getSurveyDefinitions,
@@ -248,8 +251,17 @@ export async function runSurvey(surveyId: string): Promise<SurveyRun> {
   }
   
   // 3. Generar respuestas sintéticas
-  console.log(`  🤖 Generating synthetic responses...`);
-  const responses = generateSurveyResponses(selectedAgents, survey.questions);
+  // CADEM v1.1 - Use unified survey runner when engineMode is 'cadem'
+  const useCademEngine = survey.engineMode === 'cadem';
+  let responses: AgentResponse[];
+  
+  if (useCademEngine) {
+    console.log(`  🤖 Generating responses with CADEM engine v1.1...`);
+    responses = await runCademSurveyWithAgents(survey, selectedAgents);
+  } else {
+    console.log(`  🤖 Generating synthetic responses with legacy engine...`);
+    responses = generateSurveyResponses(selectedAgents, survey.questions);
+  }
   
   // 4. Crear registro de ejecución local
   const localRun: SurveyRun = {
@@ -263,7 +275,11 @@ export async function runSurvey(surveyId: string): Promise<SurveyRun> {
       segmentMatched: matchedAgents.length,
       sampleSizeRequested: survey.sampleSize,
       sampleSizeActual: selectedAgents.length
-    }
+    },
+    // CADEM v1.1 - Engine metadata
+    engineMode: survey.engineMode || 'legacy',
+    engineVersion: useCademEngine ? 'cadem-v1.1' : 'legacy-v1',
+    persistState: survey.persistState || false
   };
   
   // 5. Intentar persistir en DB (Sprint 11B)
@@ -944,6 +960,104 @@ export function downloadFile(content: string, filename: string, mimeType: string
 }
 
 // ===========================================
+// CADEM v1.1 - Helper Functions
+// ===========================================
+
+/**
+ * Convierte SyntheticAgent a CademAdapterAgent
+ */
+function convertToCademAgent(agent: SyntheticAgent): CademAdapterAgent {
+  return {
+    agentId: agent.agent_id,
+    age: agent.age ?? undefined,
+    sex: agent.sex ?? undefined,
+    educationLevel: agent.education_level ?? undefined,
+    incomeDecile: agent.income_decile ?? undefined,
+    povertyStatus: agent.poverty_status ?? undefined,
+    regionCode: agent.region_code ?? undefined,
+    communeCode: agent.comuna_code ?? undefined,
+    connectivityLevel: agent.connectivity_level ?? undefined,
+    digitalExposure: undefined, // Not available in SyntheticAgent
+    preferredChannel: undefined, // Not available in SyntheticAgent
+    agentType: agent.agent_type ?? undefined,
+  };
+}
+
+/**
+ * Convierte SurveyQuestion a CademSurveyQuestion
+ */
+function convertToCademQuestion(question: SurveyQuestion): import('./cademAdapter').CademSurveyQuestion {
+  const baseQuestion = {
+    id: question.id,
+    text: question.text,
+    type: question.type,
+  };
+
+  if (question.type === 'single_choice' || question.type === 'multiple_choice') {
+    const q = question as { options: { label: string; value: string | number }[] };
+    return {
+      ...baseQuestion,
+      options: q.options.map(opt => String(opt.value)),
+    };
+  }
+
+  if (question.type === 'likert_scale') {
+    const q = question as { min: number; max: number };
+    // Generate options for likert scale
+    const options: string[] = [];
+    for (let i = q.min; i <= q.max; i++) {
+      options.push(String(i));
+    }
+    return {
+      ...baseQuestion,
+      options,
+    };
+  }
+
+  return baseQuestion;
+}
+
+/**
+ * Ejecuta encuesta con motor CADEM v1.1
+ * Convierte tipos y delega al surveyRunner unificado
+ */
+async function runCademSurveyWithAgents(
+  survey: SurveyDefinition,
+  agents: SyntheticAgent[]
+): Promise<AgentResponse[]> {
+  // Convertir agentes
+  const cademAgents = agents.map(convertToCademAgent);
+
+  // Convertir preguntas
+  const cademQuestions = survey.questions.map(convertToCademQuestion);
+
+  // Crear definición CADEM
+  const cademSurveyDef: CademSurveyDefinition = {
+    id: survey.id,
+    title: survey.name,
+    topic: survey.description,
+    questions: cademQuestions,
+  };
+
+  // Ejecutar con surveyRunner unificado
+  const result = await runUnifiedSurvey({
+    surveyDefinition: cademSurveyDef,
+    agents: cademAgents,
+    engineMode: 'cadem',
+    persistState: survey.persistState || false,
+  });
+
+  // Convertir respuestas al formato AgentResponse
+  return result.responses.map(r => ({
+    agentId: r.agentId,
+    questionId: r.questionId,
+    value: r.value,
+    confidence: r.confidence,
+    reasoning: r.reasoning ?? '', // Ensure string, not undefined
+  }));
+}
+
+// ===========================================
 // Sample Surveys
 // ===========================================
 
@@ -954,7 +1068,7 @@ export async function createSampleSurveys(): Promise<void> {
   const existingSurveys = await getAllSurveys();
   if (existingSurveys.length > 0) return; // Ya existen encuestas
   
-  // Encuesta 1: Satisfacción con servicios digitales
+  // Encuesta 1: Satisfacción con servicios digitales (legacy mode)
   await createSurvey({
     name: 'Satisfacción con Servicios Digitales',
     description: 'Medir la satisfacción de los ciudadanos con los servicios digitales públicos',
@@ -997,13 +1111,15 @@ export async function createSampleSurveys(): Promise<void> {
         minLabel: 'Muy difícil',
         maxLabel: 'Muy fácil'
       }
-    ]
+    ],
+    engineMode: 'legacy', // Default to legacy for sample surveys
+    persistState: false,
   });
   
-  // Encuesta 2: Preocupaciones económicas
+  // Encuesta 2: Preocupaciones económicas (CADEM mode)
   await createSurvey({
-    name: 'Preocupaciones Económicas',
-    description: 'Entender las preocupaciones económicas de diferentes segmentos',
+    name: 'Preocupaciones Económicas (CADEM)',
+    description: 'Entender las preocupaciones económicas usando el motor CADEM v1.1',
     sampleSize: 150,
     segment: {
       incomeDecile: 5
@@ -1040,8 +1156,10 @@ export async function createSampleSurveys(): Promise<void> {
         minLabel: 'Empeorará mucho',
         maxLabel: 'Mejorará mucho'
       }
-    ]
+    ],
+    engineMode: 'cadem', // Use CADEM engine
+    persistState: true,  // Persist agent state
   });
   
-  console.log('📋 Sample surveys created');
+  console.log('📋 Sample surveys created (including CADEM v1.1 example)');
 }

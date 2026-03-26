@@ -84,6 +84,9 @@ function toDbSurveyDefinition(def: Omit<SurveyDefinition, 'id' | 'createdAt'> & 
     questions,
     sample_size: def.sampleSize,
     status: 'active',
+    // CADEM v1.1 - Engine configuration
+    engine_mode: def.engineMode || 'legacy',
+    persist_state: def.persistState || false,
     created_by: null,
     updated_by: null,
     published_at: null,
@@ -148,6 +151,9 @@ function fromDbSurveyDefinition(db: DbSurveyDefinition): SurveyDefinition {
     sampleSize: db.sample_size,
     segment,
     questions,
+    // CADEM v1.1 - Engine configuration
+    engineMode: (db.engine_mode as 'legacy' | 'cadem') || 'legacy',
+    persistState: db.persist_state || false,
   };
 }
 

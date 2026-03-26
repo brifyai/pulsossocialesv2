@@ -77,6 +77,9 @@ export interface SurveyDefinition {
   sampleSize: number;
   segment: SurveySegment;
   questions: SurveyQuestion[];
+  // CADEM v1.1 - Engine Configuration
+  engineMode?: 'legacy' | 'cadem';
+  persistState?: boolean;
 }
 
 // ===========================================
@@ -105,6 +108,10 @@ export interface SurveyRun {
     sampleSizeRequested: number;
     sampleSizeActual: number;
   };
+  // CADEM v1.1 - Engine metadata for traceability
+  engineMode?: 'legacy' | 'cadem';
+  engineVersion?: string;
+  persistState?: boolean;
 }
 
 // ===========================================
