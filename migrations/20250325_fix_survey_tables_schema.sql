@@ -31,10 +31,16 @@ CREATE TRIGGER update_survey_runs_updated_at
     BEFORE UPDATE ON survey_runs
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Actualizar run_number para registros existentes
-UPDATE survey_runs 
-SET run_number = ROW_NUMBER() OVER (PARTITION BY survey_id ORDER BY created_at)
-WHERE run_number IS NULL OR run_number = 1;
+-- Actualizar run_number para registros existentes usando CTE
+WITH numbered_runs AS (
+    SELECT id, ROW_NUMBER() OVER (PARTITION BY survey_id ORDER BY created_at) as rn
+    FROM survey_runs
+    WHERE run_number IS NULL OR run_number = 1
+)
+UPDATE survey_runs sr
+SET run_number = nr.rn
+FROM numbered_runs nr
+WHERE sr.id = nr.id;
 
 -- =============================================================================
 -- 2. FIX survey_responses - Agregar columnas faltantes y cambiar tipos
