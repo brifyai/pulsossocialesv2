@@ -732,6 +732,73 @@ export interface Database {
         Insert: Omit<DbBenchmarkPdfExtraction, 'id' | 'created_at'> & { id?: string; created_at?: string };
         Update: Partial<Omit<DbBenchmarkPdfExtraction, 'id' | 'created_at'>>;
       };
+      agent_topic_state: {
+        Row: {
+          agent_id: string;
+          topic: string;
+          score: number;
+          confidence: number;
+          salience: number;
+          volatility: number;
+          updated_at: string;
+        };
+        Insert: {
+          agent_id: string;
+          topic: string;
+          score: number;
+          confidence?: number;
+          salience?: number;
+          volatility?: number;
+          updated_at?: string;
+        };
+        Update: Partial<{
+          score: number;
+          confidence: number;
+          salience: number;
+          volatility: number;
+          updated_at: string;
+        }>;
+      };
+      agent_panel_state: {
+        Row: {
+          agent_id: string;
+          eligible_web: boolean;
+          participation_propensity: number;
+          panel_fatigue: number;
+          quality_score: number;
+          cooldown_until: string | null;
+          invites_30d: number;
+          completions_30d: number;
+          last_invited_at: string | null;
+          last_completed_at: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          agent_id: string;
+          eligible_web?: boolean;
+          participation_propensity?: number;
+          panel_fatigue?: number;
+          quality_score?: number;
+          cooldown_until?: string | null;
+          invites_30d?: number;
+          completions_30d?: number;
+          last_invited_at?: string | null;
+          last_completed_at?: string | null;
+          updated_at?: string;
+        };
+        Update: Partial<{
+          eligible_web: boolean;
+          participation_propensity: number;
+          panel_fatigue: number;
+          quality_score: number;
+          cooldown_until: string | null;
+          invites_30d: number;
+          completions_30d: number;
+          last_invited_at: string | null;
+          last_completed_at: string | null;
+          updated_at: string;
+        }>;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
