@@ -1,0 +1,110 @@
+{
+  "title": "Tracking Político-Económico v1 - Legacy",
+  "description": "Encuesta de tracking político-económico usando motor legacy para comparación A/B",
+  "engineMode": "legacy",
+  "persistState": false,
+  "status": "draft",
+  "targetAudience": {
+    "segment": "nacional",
+    "ageRange": [18, 99],
+    "regions": ["all"],
+    "gender": ["M", "F"]
+  },
+  "sampleSize": 300,
+  "questions": [
+    {
+      "id": "q_approval",
+      "text": "Ahora. Independiente de su posición política, ¿Usted aprueba o desaprueba la forma cómo José Antonio Kast está conduciendo su Gobierno?",
+      "type": "single_choice",
+      "category": "political",
+      "options": [
+        { "id": "aprueba", "text": "Aprueba", "value": 1 },
+        { "id": "desaprueba", "text": "Desaprueba", "value": 2 },
+        { "id": "no_responde", "text": "No responde", "value": 99 }
+      ],
+      "required": true,
+      "order": 1
+    },
+    {
+      "id": "q_direction",
+      "text": "Ahora, pensando en todos los aspectos políticos, económicos y sociales, ¿Usted cree que el país va por un buen camino o por un mal camino?",
+      "type": "single_choice",
+      "category": "political",
+      "options": [
+        { "id": "buen_camino", "text": "Buen camino", "value": 1 },
+        { "id": "mal_camino", "text": "Mal camino", "value": 2 },
+        { "id": "no_responde", "text": "No responde", "value": 99 }
+      ],
+      "required": true,
+      "order": 2
+    },
+    {
+      "id": "q_optimism",
+      "text": "En general, ¿Cómo se siente usted acerca del futuro del país?",
+      "type": "single_choice",
+      "category": "political",
+      "options": [
+        { "id": "muy_optimista", "text": "Muy optimista", "value": 1 },
+        { "id": "optimista", "text": "Optimista", "value": 2 },
+        { "id": "pesimista", "text": "Pesimista", "value": 3 },
+        { "id": "muy_pesimista", "text": "Muy pesimista", "value": 4 },
+        { "id": "no_responde", "text": "No responde", "value": 99 }
+      ],
+      "required": true,
+      "order": 3
+    },
+    {
+      "id": "q_economy_national",
+      "text": "Usted cree que en el momento actual la economía chilena está...",
+      "type": "single_choice",
+      "category": "economic",
+      "options": [
+        { "id": "muy_buena", "text": "Muy buena", "value": 1 },
+        { "id": "buena", "text": "Buena", "value": 2 },
+        { "id": "mala", "text": "Mala", "value": 3 },
+        { "id": "muy_mala", "text": "Muy mala", "value": 4 },
+        { "id": "no_responde", "text": "No responde", "value": 99 }
+      ],
+      "required": true,
+      "order": 4
+    },
+    {
+      "id": "q_economy_personal",
+      "text": "¿Cómo calificaría usted la situación económica actual de usted y su familia?",
+      "type": "single_choice",
+      "category": "economic",
+      "options": [
+        { "id": "muy_buena", "text": "Muy buena", "value": 1 },
+        { "id": "buena", "text": "Buena", "value": 2 },
+        { "id": "mala", "text": "Mala", "value": 3 },
+        { "id": "muy_mala", "text": "Muy mala", "value": 4 },
+        { "id": "no_responde", "text": "No responde", "value": 99 }
+      ],
+      "required": true,
+      "order": 5
+    },
+    {
+      "id": "q_ideology",
+      "text": "En términos políticos, las personas se pueden sentir más cercanas o lejanas a la izquierda o a la derecha, ¿Usted con cuál de las siguientes posiciones se siente más cercano?",
+      "type": "single_choice",
+      "category": "political",
+      "options": [
+        { "id": "derecha", "text": "Derecha", "value": 1 },
+        { "id": "centro_derecha", "text": "Centro derecha", "value": 2 },
+        { "id": "centro", "text": "Centro", "value": 3 },
+        { "id": "centro_izquierda", "text": "Centro izquierda", "value": 4 },
+        { "id": "izquierda", "text": "Izquierda", "value": 5 },
+        { "id": "ninguna_independiente", "text": "Ninguna-Independiente", "value": 6 },
+        { "id": "no_responde", "text": "No responde", "value": 99 }
+      ],
+      "required": true,
+      "order": 6
+    }
+  ],
+  "metadata": {
+    "version": "1.0",
+    "createdFor": "A/B Test - Legacy Engine",
+    "comparisonGroup": "A",
+    "expectedDuration": "5-7 minutos"
+  }
+}
