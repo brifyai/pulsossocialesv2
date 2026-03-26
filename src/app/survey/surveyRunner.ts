@@ -1,7 +1,10 @@
 import { runCademSurvey } from './cademAdapter';
 import { runCademSurveyBatchAsync } from './cademAdapterAsync';
+import { generateSurveyResponses } from './syntheticResponseEngine';
 import type { CademAdapterAgent, CademSurveyDefinition } from './cademAdapter';
 import type { UnifiedSurveyResponse, EngineMode, AgentPersistenceMeta } from './unifiedResponseEngine';
+import type { SyntheticAgent } from '../../types/agent';
+import type { SurveyQuestion } from '../../types/survey';
 
 export interface SurveyRunnerInput {
   surveyDefinition: CademSurveyDefinition;
@@ -51,16 +54,66 @@ export async function runSurvey(input: SurveyRunnerInput): Promise<SurveyRunnerR
 
   // Modo legacy: motor heurístico original
   if (engineMode === 'legacy') {
-    console.warn('[SurveyRunner] Legacy mode no implementado todavía. Usar engineMode: cadem');
-    return {
-      responses: [],
+    // Convertir CademAdapterAgent a SyntheticAgent para el motor legacy
+    const legacyAgents = agents.map(agent => ({
+      agent_id: agent.agentId,
+      age: agent.age ?? 35,
+      sex: agent.sex ?? 'unknown',
+      education_level: agent.educationLevel ?? 'secondary',
+      income_decile: agent.incomeDecile ?? 5,
+      poverty_status: agent.povertyStatus ?? 'middle_class',
+      region_code: agent.regionCode ?? 'CL-RM',
+      connectivity_level: agent.connectivityLevel ?? 'medium',
+      urbanicity: agent.connectivityLevel === 'high' ? 'urban' : 'mixed',
+      occupation_status: agent.agentType === 'student' ? 'student' : agent.agentType === 'retired' ? 'retired' : 'employed',
+    })) as SyntheticAgent[];
+
+    // Convertir preguntas al formato legacy
+    const legacyQuestions = surveyDefinition.questions.map(q => {
+      if (q.options && q.options.length > 0) {
+        // Es single_choice
+        return {
+          id: q.id,
+          text: q.text,
+          type: 'single_choice',
+          options: q.options.map((opt, idx) => ({
+            id: `opt_${idx}`,
+            label: opt,
+            value: opt,
+          })),
+        } as unknown as SurveyQuestion;
+      }
+      // Es likert_scale por defecto
+      return {
+        id: q.id,
+        text: q.text,
+        type: 'likert_scale',
+        min: 1,
+        max: 5,
+        labels: ['Muy en desacuerdo', 'En desacuerdo', 'Neutral', 'De acuerdo', 'Muy de acuerdo'],
+        minLabel: 'Muy en desacuerdo',
+        maxLabel: 'Muy de acuerdo',
+        required: true,
+      } as unknown as SurveyQuestion;
+    });
+
+    const legacyResponses = generateSurveyResponses(legacyAgents, legacyQuestions);
+
+    responses = legacyResponses.map((r) => ({
+      surveyId: surveyDefinition.id,
+      questionId: r.questionId,
+      agentId: r.agentId,
+      value: r.value !== null && r.value !== undefined ? String(r.value) : null,
+      confidence: r.confidence,
+      reasoning: r.reasoning,
       engineMode: 'legacy',
       engineVersion: 'legacy-v1',
-      agentCount: agents.length,
-      questionCount: surveyDefinition.questions.length,
-      totalResponses: 0,
-      durationMs: Date.now() - startTime,
-    };
+      createdAt: new Date(),
+    }));
+
+    if (debug) {
+      console.log(`[SurveyRunner] Legacy mode: ${responses.length} respuestas generadas`);
+    }
   }
 
   // Modo cadem con persistencia (async)
@@ -141,7 +194,7 @@ export async function runSurvey(input: SurveyRunnerInput): Promise<SurveyRunnerR
   return {
     responses,
     engineMode,
-    engineVersion: 'cadem-v1.1',
+    engineVersion: engineMode === 'legacy' ? 'legacy-v1' : 'cadem-v1.1',
     agentCount: agents.length,
     questionCount: surveyDefinition.questions.length,
     totalResponses: responses.length,

@@ -1,6 +1,15 @@
+/**
+ * Comparación A/B Standalone - Legacy vs CADEM
+ * Versión con normalización canónica para comparación analíticamente válida
+ */
+
 import { createClient } from '@supabase/supabase-js';
-import { runSurvey } from '../../src/app/survey/surveyRunner';
-import type { CademAdapterAgent } from '../../src/app/survey/cademAdapter';
+import { generateSurveyResponses } from '../../src/app/survey/syntheticResponseEngine';
+import { runCademSurvey } from '../../src/app/survey/cademAdapter';
+import { calculateCanonicalDistribution } from '../../src/app/survey/canonicalDistribution';
+import type { SyntheticAgent } from '../../src/types/agent';
+import type { SurveyQuestion } from '../../src/types/survey';
+import type { CademAdapterAgent, CademSurveyDefinition } from '../../src/app/survey/cademAdapter';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
@@ -94,10 +103,10 @@ function normalizeQuestionOptions(options: SurveyFromDB['questions'][number]['op
   return (options as Array<{ id: string; text: string; value: number }>).map((o) => o.text);
 }
 
-function normalizeSurveyDefinition(survey: SurveyFromDB) {
+function normalizeSurveyDefinition(survey: SurveyFromDB): CademSurveyDefinition {
   return {
     id: survey.id,
-    title: survey.title,
+    title: survey.title || 'Sin título',
     topic: (survey.metadata?.topic as string) || 'politics',
     questions: survey.questions.map((q) => ({
       id: q.id,
@@ -106,28 +115,143 @@ function normalizeSurveyDefinition(survey: SurveyFromDB) {
       options: normalizeQuestionOptions(q.options),
       periodicity: q.periodicity || 'permanent',
     })),
-    engineMode: survey.engine_mode ?? 'legacy',
-    persistState: survey.persist_state ?? false,
   };
 }
 
-function calculateDistribution(responses: any[], questionId: string): Record<string, number> {
-  const questionResponses = responses.filter((r) => r.questionId === questionId);
-  const total = questionResponses.length;
-  if (total === 0) return {};
+interface SurveyResult {
+  responses: Array<{
+    surveyId: string;
+    questionId: string;
+    agentId: string;
+    value: string | null;
+    confidence: number;
+    reasoning: string;
+    engineMode: string;
+    engineVersion: string;
+  }>;
+  durationMs: number;
+  totalResponses: number;
+}
 
-  const counts: Record<string, number> = {};
-  for (const r of questionResponses) {
-    const value = r.value !== null && r.value !== undefined ? String(r.value) : 'no_response';
-    counts[value] = (counts[value] || 0) + 1;
+function runLegacySurvey(
+  surveyDefinition: CademSurveyDefinition,
+  agents: CademAdapterAgent[]
+): SurveyResult {
+  const startTime = Date.now();
+
+  // Convertir CademAdapterAgent a SyntheticAgent para el motor legacy
+  const legacyAgents: SyntheticAgent[] = agents.map(agent => ({
+    agent_id: agent.agentId,
+    age: agent.age ?? 35,
+    sex: agent.sex ?? 'unknown',
+    education_level: agent.educationLevel ?? 'secondary',
+    income_decile: agent.incomeDecile ?? 5,
+    poverty_status: agent.povertyStatus ?? 'middle_class',
+    region_code: agent.regionCode ?? 'CL-RM',
+    connectivity_level: agent.connectivityLevel ?? 'medium',
+    urbanicity: agent.connectivityLevel === 'high' ? 'urban' : 'mixed',
+    occupation_status: agent.agentType === 'student' ? 'student' : agent.agentType === 'retired' ? 'retired' : 'employed',
+  } as SyntheticAgent));
+
+  // Convertir preguntas al formato legacy
+  const legacyQuestions: SurveyQuestion[] = surveyDefinition.questions.map(q => {
+    if (q.options && q.options.length > 0) {
+      return {
+        id: q.id,
+        text: q.text,
+        type: 'single_choice',
+        options: q.options.map((opt, idx) => ({
+          id: `opt_${idx}`,
+          label: opt,
+          value: opt,
+        })),
+      } as SurveyQuestion;
+    }
+    return {
+      id: q.id,
+      text: q.text,
+      type: 'likert_scale',
+      min: 1,
+      max: 5,
+      labels: ['Muy en desacuerdo', 'En desacuerdo', 'Neutral', 'De acuerdo', 'Muy de acuerdo'],
+      minLabel: 'Muy en desacuerdo',
+      maxLabel: 'Muy de acuerdo',
+      required: true,
+    } as SurveyQuestion;
+  });
+
+  const legacyResponses = generateSurveyResponses(legacyAgents, legacyQuestions);
+
+  const responses = legacyResponses.map((r) => ({
+    surveyId: surveyDefinition.id,
+    questionId: r.questionId,
+    agentId: r.agentId,
+    value: r.value !== null && r.value !== undefined ? String(r.value) : null,
+    confidence: r.confidence,
+    reasoning: r.reasoning,
+    engineMode: 'legacy',
+    engineVersion: 'legacy-v1',
+  }));
+
+  return {
+    responses,
+    durationMs: Date.now() - startTime,
+    totalResponses: responses.length,
+  };
+}
+
+function runCademSurveyWrapper(
+  surveyDefinition: CademSurveyDefinition,
+  agents: CademAdapterAgent[]
+): SurveyResult {
+  const startTime = Date.now();
+
+  const rawResponses = runCademSurvey({
+    surveyDefinition,
+    agents,
+    weekKey: '2026-W13',
+    mode: 'cawi',
+  });
+
+  const responses = rawResponses.map((r) => ({
+    surveyId: r.surveyId,
+    questionId: r.questionId,
+    agentId: r.agentId,
+    value: r.value !== null && r.value !== undefined ? String(r.value) : null,
+    confidence: r.confidence,
+    reasoning: r.reasoning,
+    engineMode: 'cadem',
+    engineVersion: r.engineVersion,
+  }));
+
+  return {
+    responses,
+    durationMs: Date.now() - startTime,
+    totalResponses: responses.length,
+  };
+}
+
+function expectedOptionsForQuestion(questionId: string): string[] {
+  switch (questionId) {
+    case 'q_approval':
+      return ['approve', 'disapprove', 'no_response'];
+
+    case 'q_direction':
+      return ['good_path', 'bad_path', 'no_response'];
+
+    case 'q_optimism':
+      return ['very_optimistic', 'optimistic', 'pessimistic', 'very_pessimistic', 'no_response'];
+
+    case 'q_economy_national':
+    case 'q_economy_personal':
+      return ['very_good', 'good', 'bad', 'very_bad', 'no_response'];
+
+    case 'q_ideology':
+      return ['right', 'center_right', 'center', 'center_left', 'left', 'independent', 'no_response'];
+
+    default:
+      return ['unknown'];
   }
-
-  const distribution: Record<string, number> = {};
-  for (const [key, count] of Object.entries(counts)) {
-    distribution[key] = Math.round((count / total) * 100);
-  }
-
-  return distribution;
 }
 
 function averageConfidence(responses: any[]): string {
@@ -139,16 +263,18 @@ function averageConfidence(responses: any[]): string {
 }
 
 function generateComparisonReport(
-  surveyA: ReturnType<typeof normalizeSurveyDefinition>,
-  surveyB: ReturnType<typeof normalizeSurveyDefinition>,
-  resultA: Awaited<ReturnType<typeof runSurvey>>,
-  resultB: Awaited<ReturnType<typeof runSurvey>>,
+  surveyA: CademSurveyDefinition,
+  surveyB: CademSurveyDefinition,
+  resultA: SurveyResult,
+  resultB: SurveyResult,
 ): string {
   const lines: string[] = [];
 
-  lines.push('# Reporte Comparativo A/B - Legacy vs CADEM');
+  lines.push('# Reporte Comparativo A/B - Legacy vs CADEM (NORMALIZADO)');
   lines.push('');
   lines.push(`Fecha: ${new Date().toISOString()}`);
+  lines.push('');
+  lines.push('> **Nota:** Las respuestas de ambos motores fueron normalizadas a una taxonomía canónica común antes de calcular distribuciones y diferencias.');
   lines.push('');
   lines.push('## Resumen Ejecutivo');
   lines.push('');
@@ -159,27 +285,38 @@ function generateComparisonReport(
   lines.push(`| Confidence promedio | ${averageConfidence(resultA.responses)} | ${averageConfidence(resultB.responses)} |`);
   lines.push('');
 
-  lines.push('## Resultados por Pregunta');
+  lines.push('## Resultados por Pregunta (Valores Canónicos)');
   lines.push('');
 
   for (const question of surveyA.questions) {
     lines.push(`### ${question.id}: ${question.text.substring(0, 60)}...`);
     lines.push('');
 
-    const distA = calculateDistribution(resultA.responses, question.id);
-    const distB = calculateDistribution(resultB.responses, question.id);
+    // Usar distribución canónica en lugar de raw
+    const distA = calculateCanonicalDistribution(resultA.responses, question.id);
+    const distB = calculateCanonicalDistribution(resultB.responses, question.id);
 
-    const allOptions = Array.from(new Set([...Object.keys(distA), ...Object.keys(distB)]));
+    // Usar opciones esperadas canónicas en lugar de todas las opciones raw
+    const allOptions = expectedOptionsForQuestion(question.id);
 
     lines.push('| Opción | A (%) | B (%) | Diferencia (pp) |');
     lines.push('|--------|-------|-------|-----------------|');
 
     for (const option of allOptions) {
-      const pctA = distA[option] || 0;
-      const pctB = distB[option] || 0;
+      const pctA = distA[option as keyof typeof distA] || 0;
+      const pctB = distB[option as keyof typeof distB] || 0;
       const diff = pctB - pctA;
       const diffStr = diff > 0 ? `+${diff}` : `${diff}`;
       lines.push(`| ${option} | ${pctA}% | ${pctB}% | ${diffStr} |`);
+    }
+
+    // Mostrar unknown si existe
+    const unknownA = distA['unknown'] || 0;
+    const unknownB = distB['unknown'] || 0;
+    if (unknownA > 0 || unknownB > 0) {
+      const diff = unknownB - unknownA;
+      const diffStr = diff > 0 ? `+${diff}` : `${diff}`;
+      lines.push(`| unknown | ${unknownA}% | ${unknownB}% | ${diffStr} |`);
     }
 
     lines.push('');
@@ -198,7 +335,7 @@ function generateComparisonReport(
 
 async function main() {
   console.log('╔══════════════════════════════════════════════════════════════╗');
-  console.log('║      Comparación A/B REAL - Legacy vs CADEM v1.1            ║');
+  console.log('║      Comparación A/B CANÓNICA - Legacy vs CADEM v1.1        ║');
   console.log('╚══════════════════════════════════════════════════════════════╝');
   console.log('');
 
@@ -212,40 +349,28 @@ async function main() {
   const surveyA = normalizeSurveyDefinition(surveyARaw);
   const surveyB = normalizeSurveyDefinition(surveyBRaw);
 
-  console.log(`✅ Encuesta A: ${surveyA.title} [${surveyA.engineMode}]`);
-  console.log(`✅ Encuesta B: ${surveyB.title} [${surveyB.engineMode}]`);
+  console.log(`✅ Encuesta A: ${surveyA.title} [Legacy]`);
+  console.log(`✅ Encuesta B: ${surveyB.title} [CADEM]`);
 
   const agents = await loadRandomAgents(SAMPLE_SIZE);
   console.log(`✅ ${agents.length} agentes cargados`);
 
   console.log('\n🔄 Ejecutando Encuesta A con motor LEGACY...');
-  const resultA = await runSurvey({
-    surveyDefinition: surveyA,
-    agents,
-    engineMode: 'legacy',
-    persistState: false,
-    debug: true,
-  });
+  const resultA = runLegacySurvey(surveyA, agents);
   console.log(`   ✅ Completado: ${resultA.totalResponses} respuestas en ${resultA.durationMs}ms`);
 
   console.log('\n🔄 Ejecutando Encuesta B con motor CADEM...');
-  const resultB = await runSurvey({
-    surveyDefinition: surveyB,
-    agents,
-    engineMode: 'cadem',
-    persistState: false,
-    debug: true,
-  });
+  const resultB = runCademSurveyWrapper(surveyB, agents);
   console.log(`   ✅ Completado: ${resultB.totalResponses} respuestas en ${resultB.durationMs}ms`);
 
   const report = generateComparisonReport(surveyA, surveyB, resultA, resultB);
 
   const fs = await import('fs');
   const path = await import('path');
-  const outputPath = path.join(process.cwd(), 'docs', 'cadem-v3', 'AB_COMPARISON_RESULTS.md');
+  const outputPath = path.join(process.cwd(), 'docs', 'cadem-v3', 'AB_COMPARISON_RESULTS_CANONICAL.md');
   fs.writeFileSync(outputPath, report);
 
-  console.log(`\n✅ Reporte guardado en: ${outputPath}`);
+  console.log(`\n✅ Reporte CANÓNICO guardado en: ${outputPath}`);
   console.log('\n📊 Resumen:');
   console.log(`   Legacy: ${resultA.durationMs}ms, confidence: ${averageConfidence(resultA.responses)}`);
   console.log(`   CADEM:  ${resultB.durationMs}ms, confidence: ${averageConfidence(resultB.responses)}`);
