@@ -46,6 +46,10 @@ WHERE sr.id = nr.id;
 -- 2. FIX survey_responses - Agregar columnas faltantes y cambiar tipos
 -- =============================================================================
 
+-- Eliminar foreign key constraint antes de cambiar el tipo
+ALTER TABLE survey_responses 
+DROP CONSTRAINT IF EXISTS survey_responses_run_id_fkey;
+
 -- Cambiar run_id de UUID a TEXT para soportar IDs generados como 'run_1774486958233_e9phi10je'
 ALTER TABLE survey_responses 
 ALTER COLUMN run_id TYPE TEXT USING run_id::TEXT;
@@ -53,6 +57,10 @@ ALTER COLUMN run_id TYPE TEXT USING run_id::TEXT;
 -- Cambiar agent_id de UUID a TEXT para soportar IDs como 'AGENT-CL13-000001'
 ALTER TABLE survey_responses 
 ALTER COLUMN agent_id TYPE TEXT USING agent_id::TEXT;
+
+-- Eliminar foreign key constraint de agent_id si existe
+ALTER TABLE survey_responses 
+DROP CONSTRAINT IF EXISTS survey_responses_agent_id_fkey;
 
 -- Agregar columnas que faltan en survey_responses
 ALTER TABLE survey_responses 
