@@ -38,6 +38,17 @@ export interface CademResponseResult {
 }
 
 /**
+ * Metadata de persistencia del estado del agente.
+ */
+export interface AsyncAgentPersistenceMeta {
+  agentId: string;
+  topicStateSource: 'persisted' | 'seeded';
+  panelStateSource: 'persisted' | 'seeded';
+  saveStatus: 'saved' | 'failed';
+  timestamp: Date;
+}
+
+/**
  * Result of a complete survey run for an agent.
  */
 export interface CademSurveyResult {
@@ -46,6 +57,8 @@ export interface CademSurveyResult {
   finalTopicStates: TopicState[];
   finalPanelState: PanelState;
   completedAt: Date;
+  engineVersion: string;
+  persistenceMeta: AsyncAgentPersistenceMeta;
 }
 
 /**
@@ -136,8 +149,15 @@ export async function runCademSurveyAsync(
   const responses: CademResponseResult[] = [];
   const previousResponses: Array<{ questionId: string; value: OpinionResponseValue }> = [];
 
-  // Resolve initial state
-  let { topicStates, panelState } = await resolveAgentState(agent);
+  // Resolve initial state (from DB or seed)
+  const { topicStates, panelState, source: stateSource } = await resolveAgentState(agent);
+
+  // Track if states were loaded from DB or seeded
+  const topicStateSource: 'persisted' | 'seeded' = stateSource.topic === 'db' ? 'persisted' : 'seeded';
+  const panelStateSource: 'persisted' | 'seeded' = stateSource.panel === 'db' ? 'persisted' : 'seeded';
+
+  let currentTopicStates = topicStates;
+  let currentPanelState = panelState;
 
   for (let i = 0; i < questions.length; i++) {
     const question = questions[i];
@@ -159,26 +179,39 @@ export async function runCademSurveyAsync(
     });
 
     // Update states for next question
-    panelState = result.updatedPanelState;
+    currentPanelState = result.updatedPanelState;
   }
 
   // Persist final states
+  let saveStatus: 'saved' | 'failed' = 'saved';
   try {
     await Promise.all([
-      opinionStateRepository.saveTopicStates(agent.agentId, topicStates),
-      opinionStateRepository.savePanelState(panelState),
+      opinionStateRepository.saveTopicStates(agent.agentId, currentTopicStates),
+      opinionStateRepository.savePanelState(currentPanelState),
     ]);
+    console.log(`[CademAdapterAsync] States persisted for ${agent.agentId}`);
   } catch (error) {
     console.warn(`[CademAdapterAsync] Failed to persist states for ${agent.agentId}:`, error);
+    saveStatus = 'failed';
     // Continue without persisting - survey is still valid
   }
+
+  const persistenceMeta: AsyncAgentPersistenceMeta = {
+    agentId: agent.agentId,
+    topicStateSource,
+    panelStateSource,
+    saveStatus,
+    timestamp: new Date(),
+  };
 
   return {
     agentId: agent.agentId,
     responses,
-    finalTopicStates: topicStates,
-    finalPanelState: panelState,
+    finalTopicStates: currentTopicStates,
+    finalPanelState: currentPanelState,
     completedAt: new Date(),
+    engineVersion: 'cadem-v1.1',
+    persistenceMeta,
   };
 }
 

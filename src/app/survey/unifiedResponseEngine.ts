@@ -18,9 +18,26 @@ export interface UnifiedSurveyResponse {
   confidence: number;
   reasoning?: string;
   engineMode: EngineMode;
+  engineVersion: string;
   factors?: OpinionatedResponse['factors'];
   processingTime?: number;
   createdAt: Date;
+  /**
+   * Metadata de persistencia del estado del agente.
+   * Solo presente cuando engineMode === 'cadem' y persistState === true.
+   */
+  persistenceMeta?: AgentPersistenceMeta;
+}
+
+/**
+ * Metadata de persistencia del estado del agente.
+ */
+export interface AgentPersistenceMeta {
+  agentId: string;
+  topicStateSource: 'persisted' | 'seeded';
+  panelStateSource: 'persisted' | 'seeded';
+  saveStatus: 'saved' | 'failed';
+  timestamp: Date;
 }
 
 /**

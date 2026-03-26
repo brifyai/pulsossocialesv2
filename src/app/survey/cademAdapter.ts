@@ -48,6 +48,7 @@ export interface AdaptedSurveyResponse {
   processingTime: number;
   createdAt: Date;
   engineMode: 'cadem' | 'legacy';
+  engineVersion: string;
 }
 
 export interface AgentStateBundle {
@@ -119,6 +120,7 @@ export function runCademSurvey(
         processingTime: result.processingTime,
         createdAt: new Date(),
         engineMode: 'cadem',
+        engineVersion: 'cadem-v1.1',
       });
     }
   }
