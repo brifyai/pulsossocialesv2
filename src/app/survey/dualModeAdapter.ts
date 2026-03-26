@@ -12,7 +12,7 @@
 import { generateCademResponseAsync } from './cademAdapterAsync';
 import { generateQuickResponse } from '../opinionEngine/opinionEngine';
 import { interpretQuestion } from '../opinionEngine/questionInterpreter';
-import { buildInitialTopicStates } from '../opinionEngine/topicStateSeed';
+// buildInitialTopicStates se usa en executeLegacyMode a través de generateQuickResponse
 
 import type { OpinionatedResponse } from '../opinionEngine/types';
 import type { CademSurveyQuestion } from './cademAdapter';
@@ -113,7 +113,7 @@ export async function generateDualModeResponse(
 async function executeLegacyMode(
   agent: CademAgentAsync,
   question: CademSurveyQuestion,
-  context?: { questionIndex: number; totalQuestions: number; previousResponses?: Array<{ questionId: string; value: OpinionResponseValue }> },
+  _context?: { questionIndex: number; totalQuestions: number; previousResponses?: Array<{ questionId: string; value: OpinionResponseValue }> },
   startTime?: number,
 ): Promise<DualModeResult> {
   // Usar generateQuickResponse como aproximación del motor legacy
@@ -238,7 +238,6 @@ export async function runDualModeSurvey(
   config: DualModeConfig = DEFAULT_CONFIG,
   surveyContext?: { surveyId?: string; surveyTopic?: string },
 ): Promise<DualModeSurveyResult> {
-  const startTime = Date.now();
   const results: DualModeResult[] = [];
 
   // En modo hybrid, dividir agentes según hybridSplit
@@ -295,7 +294,8 @@ export async function runDualModeSurvey(
     }
   }
 
-  const totalTime = Date.now() - startTime;
+  // totalTime se calcula pero no se usa directamente (podría usarse para logging)
+  // const totalTime = Date.now() - startTime;
 
   // Calcular estadísticas
   const legacyCount = results.filter(r => r.primarySource === 'legacy').length;

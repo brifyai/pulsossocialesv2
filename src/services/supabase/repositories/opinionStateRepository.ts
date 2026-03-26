@@ -185,7 +185,8 @@ export class OpinionStateRepository {
       .eq('agent_id', agentId);
 
     if (topicError) {
-      console.warn(`Error deleting topic states: ${topicError.message}`);
+      // Error al eliminar topic states - loguear pero no fallar
+      console.warn('Error deleting topic states:', topicError.message);
     }
 
     const { error: panelError } = await client
@@ -194,7 +195,8 @@ export class OpinionStateRepository {
       .eq('agent_id', agentId);
 
     if (panelError) {
-      console.warn(`Error deleting panel state: ${panelError.message}`);
+      // Error al eliminar panel state - loguear pero no fallar
+      console.warn('Error deleting panel state:', panelError.message);
     }
   }
 
@@ -211,16 +213,16 @@ export class OpinionStateRepository {
       return { totalTopicStates: 0, totalPanelStates: 0, uniqueAgents: 0 };
     }
 
-    const { count: topicCount, error: topicError } = await client
+    const { count: topicCount } = await client
       .from('agent_topic_state')
       .select('*', { count: 'exact', head: true });
 
-    const { count: panelCount, error: panelError } = await client
+    const { count: panelCount } = await client
       .from('agent_panel_state')
       .select('*', { count: 'exact', head: true });
 
     // Get unique agents
-    const { data: uniqueAgents, error: uniqueError } = await client
+    const { data: uniqueAgents } = await client
       .from('agent_topic_state')
       .select('agent_id');
 

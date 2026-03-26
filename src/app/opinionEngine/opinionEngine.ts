@@ -67,7 +67,7 @@ function adjustConfidenceForPanel(
 function buildResponseFactors(
   topicStates: TopicState[],
   interpretedQuestion: InterpretedQuestion,
-  panelState: PanelState | undefined,
+  _panelState: PanelState | undefined,
   fatigueFactor: number,
 ): ResponseFactor[] {
   const factors: ResponseFactor[] = [];
@@ -125,7 +125,7 @@ export function generateOpinionatedResponse(
 ): OpinionatedResponse {
   const startTime = Date.now();
 
-  const { agent, interpretedQuestion, topicStates, panelState, context } = input;
+  const { agent, interpretedQuestion, topicStates, context } = input;
 
   // Asegurar que tenemos topic states (si no, crearlos - en producción vendrían de BD)
   let currentTopicStates = topicStates;
@@ -142,7 +142,7 @@ export function generateOpinionatedResponse(
   // Ajustar confianza por efectos de panel
   const finalConfidence = adjustConfidenceForPanel(
     resolved.confidence,
-    panelState,
+    input.panelState,
     fatigueFactor,
   );
 
@@ -150,7 +150,7 @@ export function generateOpinionatedResponse(
   const factors = buildResponseFactors(
     currentTopicStates,
     interpretedQuestion,
-    panelState,
+    input.panelState,
     fatigueFactor,
   );
 
