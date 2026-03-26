@@ -174,58 +174,114 @@ Esto permite:
 - Comparación entre versiones
 - Migraciones de datos
 
-## Checklist de Validación Completa
+## Matriz Implementado vs Validado
 
-### Persistencia
-- [x] Migraciones aplicadas en Supabase
-- [x] `agent_topic_state` existe y recibe upserts
-- [x] `agent_panel_state` existe y recibe upserts
-- [x] Se puede leer lo persistido en segunda corrida
+| Componente | Implementado | Validado en Dev | Notas |
+|-----------|--------------|-----------------|-------|
+| Migración `agent_topic_state` | Sí | Sí | Tabla creada, upserts funcionan |
+| Migración `agent_panel_state` | Sí | Sí | Tabla creada, upserts funcionan |
+| Seed fallback (lectura) | Sí | Sí | Si no hay datos en DB, usa seed |
+| Seed fallback (escritura) | Sí | Sí | Si falla guardado, continúa encuesta |
+| Persistencia async | Sí | Sí | `runCademSurveyAsync` persiste estados |
+| `engineVersion` en respuestas | Sí | Sí | Todas las respuestas incluyen versión |
+| Metadata de persistencia | Sí | Sí | `persistenceMeta` disponible en resultados |
+| Segunda corrida carga persisted | Sí | Sí | `topicStateSource` cambia a 'persisted' |
+| Panel fatigue evoluciona | Sí | Sí | Aumenta entre corridas |
+| `completions_30d` incrementa | Sí | Sí | Contador aumenta correctamente |
+| Fallback ante fallo DB real | Sí | **No** | Implementado, pendiente prueba inducida |
+| Persistencia bajo carga | Sí | **No** | No validado con batches grandes |
+| Consistencia longitudinal | Parcial | **No** | Falta validar múltiples olas con eventos |
+| Integración dual legacy | En progreso | **No** | Falta comparación lado a lado |
 
-### Longitudinalidad
-- [x] Segunda ejecución carga estados persistidos
-- [x] Panel fatigue cambia entre corridas
-- [x] Completions aumenta
-- [x] Cooldown se actualiza
+## Evidencia Observada
 
-### Integración
-- [x] `surveyRunner` define entrypoint oficial
-- [x] `engineMode` soporta legacy/cadem
-- [x] `persistState` controla sync vs async
-- [x] Ruta clara: sync (in-memory) vs async (persistencia)
+### Corrida 1 (Agente sin estados previos)
+```
+agentId: test-agent-001
+topicStateSource: seeded
+panelStateSource: seeded
+saveStatus: saved
+topic states persistidos: 10
+panel completions_30d: 1
+panel fatigue: 0.08
+cooldown_until: 2026-04-02T...
+```
 
-### Observabilidad
-- [x] `engineVersion` agregado a respuestas
-- [x] Logs de carga/seed/persistencia
-- [x] Manejo de fallos DB definido
-- [x] Metadata de persistencia disponible
+### Corrida 2 (Mismo agente, estados existentes)
+```
+agentId: test-agent-001
+topicStateSource: persisted
+panelStateSource: persisted
+saveStatus: saved
+topic states cargados: 10 (desde DB)
+panel completions_30d: 2 (incrementado)
+panel fatigue previo: 0.08
+panel fatigue actual: 0.16 (doblado)
+cooldown_until: 2026-04-09T... (extendido)
+```
 
-### Validación
-- [x] `testOpinionStatePersistence.ts` compila
-- [x] `runCademSurvey.ts` sigue funcionando
-- [x] Benchmark evaluator compila
-- [x] Tipos consistentes entre archivos
+### Compilación y Tipos
+- `testOpinionStatePersistence.ts`: ✅ Compila
+- `runCademSurvey.ts`: ✅ Compila
+- `surveyRunner.ts`: ✅ Compila
+- Tipos consistentes entre archivos: ✅ Verificado
+
+## Riesgos Abiertos
+
+1. **Fallback ante fallo real de base de datos**
+   - Estado: implementado
+   - Validación: pendiente prueba explícita con error inducido
+   - Mitigación: código de fallback presente, logs configurados
+
+2. **Persistencia bajo carga**
+   - Estado: no validado aún
+   - Riesgo: batches grandes podrían requerir ajustes de concurrencia
+   - Mitigación: diseño permite batching, no probado a escala
+
+3. **Consistencia longitudinal de topic states**
+   - Estado: validación inicial
+   - Riesgo: falta medir evolución en múltiples olas con eventos
+   - Mitigación: arquitectura soporta eventos, no implementados aún
+
+4. **Integración dual con motor legacy**
+   - Estado: en progreso
+   - Riesgo: falta comparación lado a lado en runs reales
+   - Mitigación: `engineMode` permite switching, no comparado
 
 ## Resultado
 
-**Estado**: ✅ Validado
+**Estado**: Validación técnica interna completada
 
-**Observaciones**:
-- Sistema de persistencia implementado y probado
-- Estados longitudinales funcionan correctamente
-- Fallback robusto ante fallos de DB
-- Versionado explícito para trazabilidad
+**Conclusión**:
+- La persistencia de `topic states` y `panel states` está implementada y validada en entorno de desarrollo.
+- La segunda corrida reutiliza estados persistidos en lugar de regenerarlos desde seed.
+- El sistema cuenta con fallback de lectura/escritura definido, aunque la validación de fallos inducidos de base de datos queda pendiente.
+- El motor queda en condiciones de pasar a staging técnico y comparación controlada con el motor legacy.
 
 **Decisión**:
-- [x] Persistencia validada
-- [ ] Persistencia requiere ajustes
+- [x] Persistencia funcional validada en entorno técnico
+- [ ] Persistencia validada bajo carga
+- [ ] Persistencia validada ante fallos inducidos de base de datos
+- [ ] Persistencia validada en integración dual con producción
 
 ## Próximos Pasos
 
-1. **v1.2**: Eventos externos que modifiquen topic states
-2. **v1.3**: Sincronización batch para grandes volúmenes
-3. **v2.0**: Machine learning para calibración de seeds
+### Inmediatos (v1.1.x)
+1. Prueba explícita de fallo de DB (desconectar Supabase temporalmente)
+2. Validación con batch de 100+ agentes
+3. Documentar métricas de performance
+
+### Corto plazo (v1.2)
+1. Eventos externos que modifiquen topic states
+2. Sincronización batch para grandes volúmenes
+3. Métricas de calidad de persistencia
+
+### Mediano plazo (v1.3)
+1. Machine learning para calibración de seeds
+2. Optimización de queries de persistencia
+3. Monitoreo en producción
 
 ---
 
 *Documento generado como parte del cierre profesional de CADEM Opinion Engine v1.1*
+*Última actualización: 2026-03-26*
