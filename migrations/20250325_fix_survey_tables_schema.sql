@@ -81,9 +81,12 @@ WHERE question_type IS NULL OR question_type = 'single_choice';
 -- 3. FIX survey_results - Cambiar run_id de UUID a TEXT
 -- =============================================================================
 
--- Eliminar foreign key constraint si existe
+-- Eliminar foreign key constraints si existen
 ALTER TABLE survey_results 
 DROP CONSTRAINT IF EXISTS fk_survey_results_run;
+
+ALTER TABLE survey_results 
+DROP CONSTRAINT IF EXISTS survey_results_run_id_fkey;
 
 -- Cambiar run_id de UUID a TEXT para soportar IDs generados como 'run_1774486958233_e9phi10je'
 ALTER TABLE survey_results 
