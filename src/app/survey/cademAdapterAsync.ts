@@ -11,7 +11,7 @@
 import { interpretQuestion } from '../opinionEngine/questionInterpreter';
 import { generateOpinionatedResponse } from '../opinionEngine/opinionEngine';
 import { resolveAgentState } from '../opinionEngine/opinionStateLoader';
-import { saveTopicStates, savePanelState } from '../../services/supabase/repositories/opinionStateRepository';
+import { opinionStateRepository } from '../../services/supabase/repositories/opinionStateRepository';
 
 import type { OpinionatedResponse, QuestionContext } from '../opinionEngine/types';
 import type { PanelState } from '../panel/types';
@@ -165,8 +165,8 @@ export async function runCademSurveyAsync(
   // Persist final states
   try {
     await Promise.all([
-      saveTopicStates(agent.agentId, topicStates),
-      savePanelState(panelState),
+      opinionStateRepository.saveTopicStates(agent.agentId, topicStates),
+      opinionStateRepository.savePanelState(panelState),
     ]);
   } catch (error) {
     console.warn(`[CademAdapterAsync] Failed to persist states for ${agent.agentId}:`, error);

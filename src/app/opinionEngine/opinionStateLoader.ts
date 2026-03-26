@@ -1,5 +1,6 @@
 /**
  * Opinion State Loader
+ * CADEM Opinion Engine v1.1
  *
  * Resolves topic states and panel states for agents.
  * Returns persisted state if available, otherwise generates from seeds.
@@ -8,7 +9,7 @@
 
 import { buildInitialTopicStates } from './topicStateSeed';
 import { buildInitialPanelState } from '../panel/panelStateManager';
-import { getTopicStates, getPanelState } from '../../services/supabase/repositories/opinionStateRepository';
+import { opinionStateRepository } from '../../services/supabase/repositories/opinionStateRepository';
 
 import type { TopicState } from './types';
 import type { PanelState } from '../panel/types';
@@ -23,7 +24,7 @@ import type { TopicStateSeedAgent } from './topicStateSeed';
  */
 export async function resolveTopicStates(agent: TopicStateSeedAgent & { agentId: string }): Promise<TopicState[]> {
   try {
-    const persisted = await getTopicStates(agent.agentId);
+    const persisted = await opinionStateRepository.getTopicStates(agent.agentId);
     if (persisted.length > 0) {
       return persisted;
     }
@@ -45,7 +46,7 @@ export async function resolveTopicStates(agent: TopicStateSeedAgent & { agentId:
  */
 export async function resolvePanelState(agent: { agentId: string }): Promise<PanelState> {
   try {
-    const persisted = await getPanelState(agent.agentId);
+    const persisted = await opinionStateRepository.getPanelState(agent.agentId);
     if (persisted) {
       return persisted;
     }

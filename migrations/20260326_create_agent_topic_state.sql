@@ -1,34 +1,43 @@
--- Migration: Create agent_topic_state table for CADEM Opinion Engine v1.1
--- Purpose: Persist topic states per agent for longitudinal tracking
+-- Migration: Create agent_topic_state table
+-- CADEM Opinion Engine v1.1 - Persistencia de estados de topic
 
 CREATE TABLE IF NOT EXISTS agent_topic_state (
-  agent_id TEXT NOT NULL REFERENCES synthetic_agents(agent_id) ON DELETE CASCADE,
+  agent_id TEXT NOT NULL,
   topic TEXT NOT NULL,
   score FLOAT NOT NULL,
   confidence FLOAT NOT NULL DEFAULT 0.5,
   salience FLOAT NOT NULL DEFAULT 0.5,
   volatility FLOAT NOT NULL DEFAULT 0.3,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
   PRIMARY KEY (agent_id, topic),
-  CONSTRAINT chk_agent_topic_state_score CHECK (score >= -1 AND score <= 1),
-  CONSTRAINT chk_agent_topic_state_confidence CHECK (confidence >= 0 AND confidence <= 1),
-  CONSTRAINT chk_agent_topic_state_salience CHECK (salience >= 0 AND salience <= 1),
-  CONSTRAINT chk_agent_topic_state_volatility CHECK (volatility >= 0 AND volatility <= 1)
+
+  -- Constraints
+  CONSTRAINT chk_score CHECK (score >= -1 AND score <= 1),
+  CONSTRAINT chk_confidence CHECK (confidence >= 0 AND confidence <= 1),
+  CONSTRAINT chk_salience CHECK (salience >= 0 AND salience <= 1),
+  CONSTRAINT chk_volatility CHECK (volatility >= 0 AND volatility <= 1)
 );
 
--- Indexes for efficient queries
-CREATE INDEX IF NOT EXISTS idx_agent_topic_state_agent_id
-  ON agent_topic_state(agent_id);
+-- Indexes for common queries
+CREATE INDEX IF NOT EXISTS idx_agent_topic_agent ON agent_topic_state(agent_id);
+CREATE INDEX IF NOT EXISTS idx_agent_topic_topic ON agent_topic_state(topic);
+CREATE INDEX IF NOT EXISTS idx_agent_topic_updated ON agent_topic_state(updated_at);
 
-CREATE INDEX IF NOT EXISTS idx_agent_topic_state_topic
-  ON agent_topic_state(topic);
+-- Enable RLS
+ALTER TABLE agent_topic_state ENABLE ROW LEVEL SECURITY;
 
-CREATE INDEX IF NOT EXISTS idx_agent_topic_state_updated_at
-  ON agent_topic_state(updated_at);
+-- Policy: Allow all operations for authenticated users
+CREATE POLICY "Allow all operations for authenticated users"
+  ON agent_topic_state
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
 
--- Add comment for documentation
-COMMENT ON TABLE agent_topic_state IS 'Stores persistent topic states for each synthetic agent in the CADEM Opinion Engine';
-COMMENT ON COLUMN agent_topic_state.score IS 'Opinion score from -1 (negative) to 1 (positive)';
-COMMENT ON COLUMN agent_topic_state.confidence IS 'Confidence in the opinion (0-1)';
-COMMENT ON COLUMN agent_topic_state.salience IS 'How salient/important this topic is to the agent (0-1)';
-COMMENT ON COLUMN agent_topic_state.volatility IS 'How volatile/prone to change the opinion is (0-1)';
+-- Policy: Allow read for anonymous users
+CREATE POLICY "Allow read for anonymous users"
+  ON agent_topic_state
+  FOR SELECT
+  TO anon
+  USING (true);
