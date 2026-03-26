@@ -63,7 +63,7 @@ function renderContent(container: HTMLElement): void {
   const header = document.createElement('div');
   header.className = 'surveys-header';
   header.innerHTML = `
-    <h1 class="page-title">📊 Encuestas Sintéticas</h1>
+    <h1 class="page-title"><span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 8px;">assignment</span>Encuestas Sintéticas</h1>
     <p class="page-subtitle">Diseña, ejecuta y analiza encuestas sobre agentes sintéticos</p>
   `;
   container.appendChild(header);
@@ -172,16 +172,16 @@ async function renderSurveyList(container: HTMLElement): Promise<void> {
             <span class="survey-date">${formatDate(survey.createdAt)}</span>
           </div>
           <div class="survey-badges">
-            ${hasRuns ? `<span class="badge badge-success">✓ Ejecutada</span>` : '<span class="badge badge-pending">⏳ Pendiente</span>'}
+            ${hasRuns ? `<span class="badge badge-success"><span class="material-symbols-outlined" style="font-size: 12px; vertical-align: middle;">check_circle</span> Ejecutada</span>` : '<span class="badge badge-pending"><span class="material-symbols-outlined" style="font-size: 12px; vertical-align: middle;">schedule</span> Pendiente</span>'}
           </div>
         </div>
         <p class="survey-description">${escapeHtml(survey.description || 'Sin descripción')}</p>
         
         <div class="survey-meta">
           <span class="meta-item" title="Preguntas"><span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">assignment</span> ${survey.questions.length} preguntas</span>
-          <span class="meta-item" title="Tamaño de muestra">👥 Muestra: ${survey.sampleSize}</span>
-          <span class="meta-item" title="Segmento">🎯 ${formatSegment(survey.segment)}</span>
-          ${hasRuns ? `<span class="meta-item" title="Ejecuciones">🔄 ${runs.length} ejecución${runs.length > 1 ? 'es' : ''}</span>` : ''}
+          <span class="meta-item" title="Tamaño de muestra"><span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">groups</span> Muestra: ${survey.sampleSize}</span>
+          <span class="meta-item" title="Segmento"><span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">filter_alt</span> ${formatSegment(survey.segment)}</span>
+          ${hasRuns ? `<span class="meta-item" title="Ejecuciones"><span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">replay</span> ${runs.length} ejecución${runs.length > 1 ? 'es' : ''}</span>` : ''}
         </div>
         
         ${hasRuns && lastRun ? `
@@ -194,22 +194,22 @@ async function renderSurveyList(container: HTMLElement): Promise<void> {
         
         <div class="survey-actions">
           <button class="btn btn-primary btn-run" data-id="${survey.id}">
-            <span class="btn-icon">▶</span> Ejecutar
+            <span class="btn-icon material-symbols-outlined">play_arrow</span> Ejecutar
           </button>
           ${hasRuns ? `
             <button class="btn btn-secondary btn-view-results" data-id="${survey.id}">
               <span class="btn-icon material-symbols-outlined">bar_chart</span> Ver Resultados
             </button>
             <button class="btn btn-secondary btn-view-runs" data-id="${survey.id}">
-              <span class="btn-icon">🔄</span> Historial
+              <span class="btn-icon material-symbols-outlined">history</span> Historial
             </button>
           ` : `
             <button class="btn btn-secondary btn-view" data-id="${survey.id}">
-              <span class="btn-icon">👁</span> Ver
+              <span class="btn-icon material-symbols-outlined">visibility</span> Ver
             </button>
           `}
           <button class="btn btn-danger btn-delete" data-id="${survey.id}">
-            <span class="btn-icon">🗑</span> Eliminar
+            <span class="btn-icon material-symbols-outlined">delete</span> Eliminar
           </button>
         </div>
       `;
@@ -224,7 +224,7 @@ async function renderSurveyList(container: HTMLElement): Promise<void> {
   } catch (error) {
     container.innerHTML = '';
     container.appendChild(createErrorStateElement(
-      '❌',
+      '<span class="material-symbols-outlined" style="font-size: 48px; color: #ef4444;">error</span>',
       'Error al cargar encuestas',
       'No se pudieron cargar las encuestas. Intenta recargar la página.',
       () => refreshPage()
@@ -274,7 +274,7 @@ function attachSurveyListListeners(list: HTMLElement): void {
           await deleteSurvey(id);
           refreshPage();
         } catch (error) {
-          alert('❌ Error al eliminar la encuesta');
+          alert('Error al eliminar la encuesta');
         }
       }
     });
@@ -424,7 +424,7 @@ function renderCreateForm(container: HTMLElement): void {
 async function renderResults(container: HTMLElement): Promise<void> {
   if (!currentSurvey) {
     container.appendChild(createErrorStateElement(
-      '⚠️',
+      '<span class="material-symbols-outlined" style="font-size: 48px; color: #f59e0b;">warning</span>',
       'No hay encuesta seleccionada',
       'Selecciona una encuesta para ver sus resultados',
       () => {
@@ -450,7 +450,7 @@ async function renderResults(container: HTMLElement): Promise<void> {
     
     if (surveyRuns.length === 0) {
       container.appendChild(createEmptyStateElement(
-        '📊',
+        '<span class="material-symbols-outlined" style="font-size: 48px; color: #6b7280;">bar_chart</span>',
         'Sin ejecuciones',
         `La encuesta "${escapeHtml(currentSurvey.name)}" no tiene ejecuciones registradas. Ejecuta la encuesta para ver resultados.`,
         'Ejecutar Encuesta',
@@ -481,7 +481,7 @@ async function renderResults(container: HTMLElement): Promise<void> {
     
     if (!selectedResults) {
       container.appendChild(createErrorStateElement(
-        '⚠️',
+        '<span class="material-symbols-outlined" style="font-size: 48px; color: #f59e0b;">warning</span>',
         'Resultados no disponibles',
         'No se encontraron resultados para esta ejecución',
         () => refreshPage()
@@ -500,10 +500,10 @@ async function renderResults(container: HTMLElement): Promise<void> {
         </div>
         <div class="results-actions">
           <button class="btn btn-secondary btn-export-json" title="Exportar JSON">
-            <span class="btn-icon">📄</span> JSON
+            <span class="btn-icon material-symbols-outlined">description</span> JSON
           </button>
           <button class="btn btn-secondary btn-export-csv" title="Exportar CSV">
-            <span class="btn-icon">📊</span> CSV
+            <span class="btn-icon material-symbols-outlined">table</span> CSV
           </button>
         </div>
       </div>
@@ -568,7 +568,7 @@ async function renderResults(container: HTMLElement): Promise<void> {
   } catch (error) {
     container.innerHTML = '';
     container.appendChild(createErrorStateElement(
-      '❌',
+      '<span class="material-symbols-outlined" style="font-size: 48px; color: #ef4444;">error</span>',
       'Error al cargar resultados',
       'No se pudieron cargar los resultados. Intenta nuevamente.',
       () => refreshPage()
@@ -974,7 +974,7 @@ async function handleFormSubmit(e: Event): Promise<void> {
     
   } catch (err) {
     console.error('Error creating survey:', err);
-    alert('❌ Error al crear la encuesta');
+    alert('Error al crear la encuesta');
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
@@ -986,7 +986,7 @@ async function handleFormSubmit(e: Event): Promise<void> {
 async function executeSurvey(surveyId: string): Promise<void> {
   const btn = document.querySelector(`[data-id="${surveyId}"].btn-run`);
   if (btn) {
-    btn.innerHTML = '<span class="btn-icon">⏳</span> Ejecutando...';
+    btn.innerHTML = '<span class="btn-icon material-symbols-outlined">hourglass_empty</span> Ejecutando...';
     (btn as HTMLButtonElement).disabled = true;
   }
   
@@ -999,9 +999,9 @@ async function executeSurvey(surveyId: string): Promise<void> {
     
   } catch (error) {
     console.error('Error ejecutando encuesta:', error);
-    alert('❌ Error al ejecutar la encuesta');
+    alert('Error al ejecutar la encuesta');
     if (btn) {
-      btn.innerHTML = '<span class="btn-icon">▶</span> Ejecutar';
+      btn.innerHTML = '<span class="btn-icon material-symbols-outlined">play_arrow</span> Ejecutar';
       (btn as HTMLButtonElement).disabled = false;
     }
   }
@@ -1089,5 +1089,5 @@ export function cleanupSurveysPage(): void {
   currentResults = null;
   currentRunId = null;
   surveyRuns = [];
-  console.log('🧹 Surveys page cleaned up');
+  console.log('Surveys page cleaned up');
 }
