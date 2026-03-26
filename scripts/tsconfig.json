@@ -11,10 +11,15 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "outDir": "../dist/scripts",
-    "rootDir": "."
+    "rootDir": "..",
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
   "include": [
-    "./**/*.ts"
+    "./**/*.ts",
+    "../src/**/*.ts"
   ],
   "exclude": [
     "node_modules"
