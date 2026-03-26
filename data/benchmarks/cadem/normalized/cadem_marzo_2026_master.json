@@ -206,6 +206,9 @@
     "total_sample": 4047,
     "questions": {
       "q_approval": {
+        "questionLabel": "Aprobación presidencial",
+        "distributionType": "full_distribution",
+        "expectedCalibrationTarget": "strict",
         "weighted_average": {
           "approve": 52.9,
           "disapprove": 40.3,
@@ -215,6 +218,9 @@
         "trend_note": "Aprobación disminuyó de 57% a 47% durante el período"
       },
       "q_direction": {
+        "questionLabel": "Dirección del país",
+        "distributionType": "partial_distribution",
+        "expectedCalibrationTarget": "soft",
         "weighted_average": {
           "good_path": 49.2,
           "bad_path": 35.0
@@ -223,6 +229,9 @@
         "trend_note": "Dirección del país se mantuvo estable"
       },
       "q_optimism": {
+        "questionLabel": "Optimismo sobre el futuro",
+        "distributionType": "grouped_distribution",
+        "expectedCalibrationTarget": "soft",
         "weighted_average": {
           "optimistic_total": 60.5,
           "pessimistic_total": 35.5
@@ -231,6 +240,9 @@
         "trend_note": "Optimismo se mantuvo estable alrededor de 60%"
       },
       "q_economy_national": {
+        "questionLabel": "Percepción economía nacional",
+        "distributionType": "grouped_distribution",
+        "expectedCalibrationTarget": "soft",
         "weighted_average": {
           "positive_total": 34.8,
           "negative_total": 62.8
@@ -239,6 +251,9 @@
         "trend_note": "Percepción económica nacional estable en ~35% positivo"
       },
       "q_economy_personal": {
+        "questionLabel": "Percepción economía personal",
+        "distributionType": "grouped_distribution",
+        "expectedCalibrationTarget": "soft",
         "weighted_average": {
           "positive_total": 52.0,
           "negative_total": 44.0

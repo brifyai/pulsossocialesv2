@@ -1,0 +1,157 @@
+{
+  "metadata": {
+    "benchmarkSource": "Plaza Pública Cadem",
+    "benchmarkPeriod": "Marzo 2026",
+    "totalSample": 4047,
+    "syntheticSample": 300,
+    "comparisonDate": "2026-03-26T23:56:02.125Z"
+  },
+  "questions": [
+    {
+      "questionId": "q_approval",
+      "questionText": "Aprobación presidencial",
+      "labels": {
+        "approve": "approve",
+        "disapprove": "disapprove",
+        "no_response": "no response"
+      },
+      "calibrationTarget": "strict",
+      "benchmarkDistribution": {
+        "approve": 52.9,
+        "disapprove": 40.3,
+        "no_response": 6.8
+      },
+      "syntheticDistribution": {
+        "disapprove": 35,
+        "approve": 57.3,
+        "no_response": 7.7
+      },
+      "differences": {
+        "approve": 4.399999999999999,
+        "disapprove": -5.299999999999997,
+        "no_response": 0.9000000000000004
+      },
+      "mae": 3.533333333333332,
+      "maxDeviation": 5.299999999999997,
+      "isCalibrated": false
+    },
+    {
+      "questionId": "q_direction",
+      "questionText": "Dirección del país",
+      "labels": {
+        "good_path": "good path",
+        "bad_path": "bad path"
+      },
+      "calibrationTarget": "soft",
+      "benchmarkDistribution": {
+        "good_path": 49.2,
+        "bad_path": 35
+      },
+      "syntheticDistribution": {
+        "bad_path": 38,
+        "good_path": 56.7,
+        "no_response": 5.3
+      },
+      "differences": {
+        "good_path": 7.5,
+        "bad_path": 3,
+        "no_response": 5.3
+      },
+      "mae": 5.266666666666667,
+      "maxDeviation": 7.5,
+      "isCalibrated": false
+    },
+    {
+      "questionId": "q_optimism",
+      "questionText": "Optimismo sobre el futuro",
+      "labels": {
+        "optimistic_total": "optimistic total",
+        "pessimistic_total": "pessimistic total"
+      },
+      "calibrationTarget": "soft",
+      "benchmarkDistribution": {
+        "optimistic_total": 60.5,
+        "pessimistic_total": 35.5
+      },
+      "syntheticDistribution": {
+        "pessimistic": 36.7,
+        "optimistic": 51,
+        "no_response": 12.3
+      },
+      "differences": {
+        "optimistic_total": -60.5,
+        "pessimistic_total": -35.5,
+        "pessimistic": 36.7,
+        "optimistic": 51,
+        "no_response": 12.3
+      },
+      "mae": 39.2,
+      "maxDeviation": 60.5,
+      "isCalibrated": false
+    },
+    {
+      "questionId": "q_economy_national",
+      "questionText": "Percepción economía nacional",
+      "labels": {
+        "positive_total": "positive total",
+        "negative_total": "negative total"
+      },
+      "calibrationTarget": "soft",
+      "benchmarkDistribution": {
+        "positive_total": 34.8,
+        "negative_total": 62.8
+      },
+      "syntheticDistribution": {
+        "positive": 60,
+        "negative": 38.3,
+        "no_response": 1.7
+      },
+      "differences": {
+        "positive_total": -34.8,
+        "negative_total": -62.8,
+        "positive": 60,
+        "negative": 38.3,
+        "no_response": 1.7
+      },
+      "mae": 39.519999999999996,
+      "maxDeviation": 62.8,
+      "isCalibrated": false
+    },
+    {
+      "questionId": "q_economy_personal",
+      "questionText": "Percepción economía personal",
+      "labels": {
+        "positive_total": "positive total",
+        "negative_total": "negative total"
+      },
+      "calibrationTarget": "soft",
+      "benchmarkDistribution": {
+        "positive_total": 52,
+        "negative_total": 44
+      },
+      "syntheticDistribution": {
+        "positive": 75.7,
+        "negative": 24,
+        "no_response": 0.3
+      },
+      "differences": {
+        "positive_total": -52,
+        "negative_total": -44,
+        "positive": 75.7,
+        "negative": 24,
+        "no_response": 0.3
+      },
+      "mae": 39.2,
+      "maxDeviation": 75.7,
+      "isCalibrated": false
+    }
+  ],
+  "overallMAE": 25.344,
+  "summary": {
+    "totalQuestions": 5,
+    "calibratedQuestions": 0,
+    "lowDivergence": 0,
+    "mediumDivergence": 2,
+    "highDivergence": 3
+  }
+}
