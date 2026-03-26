@@ -130,6 +130,18 @@
 
 ---
 
+## Decisión tomada
+
+| Campo | Valor |
+|-------|-------|
+| **Fecha** | |
+| **Responsable** | |
+| **Decisión** | |
+| **Justificación breve** | |
+| **Próxima revisión** | |
+
+---
+
 ## Próximos pasos
 
 ### Si B es comparable o mejor:
