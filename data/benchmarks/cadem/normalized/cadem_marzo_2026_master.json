@@ -1,0 +1,264 @@
+{
+  "metadata": {
+    "source": "Plaza Pública Cadem",
+    "period": "Marzo 2026",
+    "waves_count": 4,
+    "total_sample": 4047,
+    "created_at": "2026-03-26T20:40:00Z",
+    "version": "1.0.0"
+  },
+  "waves": [
+    {
+      "wave_id": 637,
+      "date": "2026-03-13",
+      "day": "Viernes",
+      "sample_size": 1000,
+      "questions": {
+        "q_approval": {
+          "completeness": "full",
+          "values": {
+            "approve": 57,
+            "disapprove": 34,
+            "no_response": 9
+          }
+        },
+        "q_direction": {
+          "completeness": "partial",
+          "note": "residual omitido en fuente",
+          "values": {
+            "good_path": 49,
+            "bad_path": 35
+          }
+        },
+        "q_optimism": {
+          "completeness": "grouped",
+          "note": "categorías agrupadas",
+          "values": {
+            "optimistic_total": 62,
+            "pessimistic_total": 34
+          }
+        },
+        "q_economy_national": {
+          "completeness": "grouped",
+          "note": "serie agrupada",
+          "values": {
+            "positive_total": 36,
+            "negative_total": 62
+          }
+        },
+        "q_economy_personal": {
+          "completeness": "grouped",
+          "note": "serie agrupada",
+          "values": {
+            "positive_total": 52,
+            "negative_total": 44
+          }
+        }
+      }
+    },
+    {
+      "wave_id": 638,
+      "date": "2026-03-17",
+      "day": "Martes",
+      "sample_size": 1017,
+      "questions": {
+        "q_approval": {
+          "completeness": "full",
+          "values": {
+            "approve": 57,
+            "disapprove": 36,
+            "no_response": 7
+          }
+        },
+        "q_direction": {
+          "completeness": "partial",
+          "note": "residual omitido en fuente",
+          "values": {
+            "good_path": 49,
+            "bad_path": 35
+          }
+        },
+        "q_optimism": {
+          "completeness": "grouped",
+          "note": "categorías agrupadas",
+          "values": {
+            "optimistic_total": 60,
+            "pessimistic_total": 36
+          }
+        },
+        "q_economy_national": {
+          "completeness": "grouped",
+          "note": "serie agrupada",
+          "values": {
+            "positive_total": 35,
+            "negative_total": 63
+          }
+        },
+        "q_economy_personal": {
+          "completeness": "grouped",
+          "note": "serie agrupada",
+          "values": {
+            "positive_total": 52,
+            "negative_total": 44
+          }
+        }
+      }
+    },
+    {
+      "wave_id": 639,
+      "date": "2026-03-20",
+      "day": "Viernes",
+      "sample_size": 1005,
+      "questions": {
+        "q_approval": {
+          "completeness": "full",
+          "values": {
+            "approve": 51,
+            "disapprove": 42,
+            "no_response": 7
+          }
+        },
+        "q_direction": {
+          "completeness": "partial",
+          "note": "residual omitido en fuente",
+          "values": {
+            "good_path": 50,
+            "bad_path": 35
+          }
+        },
+        "q_optimism": {
+          "completeness": "grouped",
+          "note": "categorías agrupadas",
+          "values": {
+            "optimistic_total": 60,
+            "pessimistic_total": 36
+          }
+        },
+        "q_economy_national": {
+          "completeness": "grouped",
+          "note": "serie agrupada",
+          "values": {
+            "positive_total": 34,
+            "negative_total": 63
+          }
+        },
+        "q_economy_personal": {
+          "completeness": "grouped",
+          "note": "serie agrupada",
+          "values": {
+            "positive_total": 52,
+            "negative_total": 44
+          }
+        }
+      }
+    },
+    {
+      "wave_id": 640,
+      "date": "2026-03-24",
+      "day": "Martes",
+      "sample_size": 1025,
+      "questions": {
+        "q_approval": {
+          "completeness": "full",
+          "values": {
+            "approve": 47,
+            "disapprove": 49,
+            "no_response": 4
+          }
+        },
+        "q_direction": {
+          "completeness": "partial",
+          "note": "residual omitido en fuente",
+          "values": {
+            "good_path": 49,
+            "bad_path": 35
+          }
+        },
+        "q_optimism": {
+          "completeness": "grouped",
+          "note": "categorías agrupadas",
+          "values": {
+            "optimistic_total": 60,
+            "pessimistic_total": 36
+          }
+        },
+        "q_economy_national": {
+          "completeness": "grouped",
+          "note": "serie agrupada",
+          "values": {
+            "positive_total": 34,
+            "negative_total": 63
+          }
+        },
+        "q_economy_personal": {
+          "completeness": "grouped",
+          "note": "serie agrupada",
+          "values": {
+            "positive_total": 52,
+            "negative_total": 44
+          }
+        }
+      }
+    }
+  ],
+  "consolidated": {
+    "period": "2026-03-13 to 2026-03-24",
+    "total_sample": 4047,
+    "questions": {
+      "q_approval": {
+        "weighted_average": {
+          "approve": 52.9,
+          "disapprove": 40.3,
+          "no_response": 6.8
+        },
+        "trend": "decreasing",
+        "trend_note": "Aprobación disminuyó de 57% a 47% durante el período"
+      },
+      "q_direction": {
+        "weighted_average": {
+          "good_path": 49.2,
+          "bad_path": 35.0
+        },
+        "trend": "stable",
+        "trend_note": "Dirección del país se mantuvo estable"
+      },
+      "q_optimism": {
+        "weighted_average": {
+          "optimistic_total": 60.5,
+          "pessimistic_total": 35.5
+        },
+        "trend": "stable",
+        "trend_note": "Optimismo se mantuvo estable alrededor de 60%"
+      },
+      "q_economy_national": {
+        "weighted_average": {
+          "positive_total": 34.8,
+          "negative_total": 62.8
+        },
+        "trend": "stable",
+        "trend_note": "Percepción económica nacional estable en ~35% positivo"
+      },
+      "q_economy_personal": {
+        "weighted_average": {
+          "positive_total": 52.0,
+          "negative_total": 44.0
+        },
+        "trend": "stable",
+        "trend_note": "Percepción económica personal estable en 52% positivo"
+      }
+    }
+  },
+  "data_quality": {
+    "completeness_summary": {
+      "full": ["q_approval"],
+      "partial": ["q_direction"],
+      "grouped": ["q_optimism", "q_economy_national", "q_economy_personal"]
+    },
+    "notes": [
+      "q_direction: residual omitido en fuente original",
+      "q_optimism: categorías agrupadas (optimista/pesimista)",
+      "q_economy_national: categorías agrupadas (positivo/negativo)",
+      "q_economy_personal: categorías agrupadas (positivo/negativo)"
+    ]
+  }
+}
