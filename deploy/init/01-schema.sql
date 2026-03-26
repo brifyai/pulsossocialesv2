@@ -223,6 +223,7 @@ CREATE TABLE IF NOT EXISTS survey_definitions (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     published_at TIMESTAMPTZ,  -- Fecha de publicación (null si está en draft)
     created_by UUID,  -- Referencia a auth.users si se usa auth
+    updated_by UUID,  -- Referencia a auth.users si se usa auth
     
     -- Metadatos
     metadata JSONB DEFAULT '{}'
