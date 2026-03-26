@@ -166,12 +166,13 @@ function estimateEconomyNational(
   economyPersonal: number,
   politicalIdentity: number,
 ): number {
-  // Desacoplado: menos dependencia de economía personal, más ruido
+  // Más desacoplado: menos dependencia de economía personal, más independencia
   const base =
-    economyPersonal * 0.25 +
-    politicalIdentity * 0.15 +
-    components.income * 0.15 +
-    components.noiseEconomyNational * 1.3;
+    economyPersonal * 0.15 + // Reducido de 0.25
+    politicalIdentity * 0.12 + // Reducido de 0.15
+    components.income * 0.18 + // Aumentado de 0.15
+    components.education * 0.08 + // Nuevo componente
+    components.noiseEconomyNational * 1.5; // Aumentado de 1.3
 
   return safeScore(base);
 }

@@ -139,6 +139,7 @@ function inferFamilyAndTopic(
 
   if (
     normalizedText.includes('izquierda o a la derecha') ||
+    normalizedText.includes('izquierda o de derecha') ||
     normalizedText.includes('posicion politica') ||
     normalizedText.includes('cual de las siguientes posiciones')
   ) {

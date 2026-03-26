@@ -223,8 +223,10 @@ export function resolveIdeologyQuestion(
 
   let value: PoliticalIdentityAnswer;
 
-  // Thresholds más estrechos para reducir colapso al centro
-  if (score >= 0.55) {
+  // Independent: score muy cercano a 0 con baja confianza
+  if (Math.abs(score) < 0.10 && state.confidence < 0.65) {
+    value = 'independent';
+  } else if (score >= 0.55) {
     value = 'right';
   } else if (score >= 0.18) {
     value = 'center_right';
@@ -240,7 +242,9 @@ export function resolveIdeologyQuestion(
   return {
     value,
     confidence: confidenceFromScore(score, state.confidence),
-    reasoning: 'La respuesta representa la ubicación ideológica persistente del agente.',
+    reasoning: value === 'independent'
+      ? 'El agente se identifica como independiente, sin adhesión partidaria clara.'
+      : 'La respuesta representa la ubicación ideológica persistente del agente.',
   };
 }
 

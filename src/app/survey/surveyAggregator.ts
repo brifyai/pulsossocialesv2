@@ -1,4 +1,8 @@
 import type { UnifiedSurveyResponse } from './unifiedResponseEngine';
+import type { AdaptedSurveyResponse } from './cademAdapter';
+
+// Union type to accept both response types
+type SurveyResponse = UnifiedSurveyResponse | AdaptedSurveyResponse;
 
 export interface QuestionDistribution {
   questionId: string;
@@ -19,7 +23,7 @@ export interface SurveyAggregatedResult {
  * Agrega respuestas individuales en distribuciones por pregunta.
  */
 export function aggregateSurveyResponses(
-  responses: UnifiedSurveyResponse[],
+  responses: SurveyResponse[],
 ): SurveyAggregatedResult {
   if (responses.length === 0) {
     return {

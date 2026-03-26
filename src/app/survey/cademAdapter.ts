@@ -47,6 +47,7 @@ export interface AdaptedSurveyResponse {
   factors: OpinionatedResponse['factors'];
   processingTime: number;
   createdAt: Date;
+  engineMode: 'cadem' | 'legacy';
 }
 
 export interface AgentStateBundle {
@@ -117,6 +118,7 @@ export function runCademSurvey(
         factors: result.factors,
         processingTime: result.processingTime,
         createdAt: new Date(),
+        engineMode: 'cadem',
       });
     }
   }
