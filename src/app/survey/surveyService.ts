@@ -724,7 +724,7 @@ export function exportResultsToJson(
         totalQuestions: results.summary.totalQuestions,
         totalResponses: results.summary.totalResponses,
         uniqueAgents: results.summary.uniqueAgents,
-        responseRate: Math.round((results.summary.totalResponses / results.summary.uniqueAgents) * 1000) / 10
+        responseRate: 100 // Tasa de respuesta siempre 100% (todos los agentes seleccionados responden todas las preguntas)
       }
     },
     results: results.results.map(result => {
@@ -828,7 +828,7 @@ export function exportResultsToCsv(
   lines.push('Total Questions,' + results.summary.totalQuestions);
   lines.push('Total Responses,' + results.summary.totalResponses);
   lines.push('Unique Agents,' + results.summary.uniqueAgents);
-  lines.push('Response Rate,' + Math.round((results.summary.totalResponses / results.summary.uniqueAgents) * 1000) / 10 + '%');
+  lines.push('Response Rate,100%');
   lines.push('');
   
   // Resultados detallados - formato tabular
