@@ -22,6 +22,7 @@ ADD COLUMN IF NOT EXISTS run_number INTEGER DEFAULT 1,
 ADD COLUMN IF NOT EXISTS name VARCHAR(200),
 ADD COLUMN IF NOT EXISTS segment_applied JSONB DEFAULT '{}',
 ADD COLUMN IF NOT EXISTS agents_matched INTEGER DEFAULT 0,
+ADD COLUMN IF NOT EXISTS current_agent_index INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS error_details JSONB,
 ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
@@ -77,31 +78,22 @@ END
 WHERE question_type IS NULL OR question_type = 'single_choice';
 
 -- =============================================================================
--- 3. CREATE survey_results - Tabla faltante para resultados agregados
+-- 3. FIX survey_results - Cambiar run_id de UUID a TEXT
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS survey_results (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    
-    -- Referencias (run_id como TEXT para soportar IDs generados por la app)
-    survey_id UUID NOT NULL REFERENCES survey_definitions(id) ON DELETE CASCADE,
-    run_id TEXT NOT NULL,  -- Cambiado de UUID a TEXT para soportar 'run_1774486958233_e9phi10je'
-    
-    -- Resumen
-    summary JSONB NOT NULL DEFAULT '{}',
-    -- Ejemplo: {"totalQuestions": 5, "totalResponses": 1000, "uniqueAgents": 1000}
-    
-    -- Resultados por pregunta
-    results JSONB NOT NULL DEFAULT '[]',
-    -- Ejemplo: [{"questionId": "q1", "questionType": "single_choice", ...}]
-    
-    -- Metadata
-    generated_at TIMESTAMPTZ DEFAULT NOW(),
-    
-    -- Timestamps
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- Eliminar foreign key constraint si existe
+ALTER TABLE survey_results 
+DROP CONSTRAINT IF EXISTS fk_survey_results_run;
+
+-- Cambiar run_id de UUID a TEXT para soportar IDs generados como 'run_1774486958233_e9phi10je'
+ALTER TABLE survey_results 
+ALTER COLUMN run_id TYPE TEXT USING run_id::TEXT;
+
+-- Agregar columnas que faltan
+ALTER TABLE survey_results 
+ADD COLUMN IF NOT EXISTS summary JSONB DEFAULT '{}',
+ADD COLUMN IF NOT EXISTS results JSONB DEFAULT '[]',
+ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ DEFAULT NOW();
 
 -- Índices para survey_results
 CREATE INDEX IF NOT EXISTS idx_survey_results_survey ON survey_results(survey_id);
