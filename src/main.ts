@@ -72,8 +72,14 @@ async function initApp(): Promise<void> {
   // Render initial route
   await renderRoute(getCurrentRoute());
 
-  // Subscribe to route changes
+  // Subscribe to route changes (only for actual changes, not initial)
+  let isFirstRouteChange = true;
   onRouteChange(async (route) => {
+    // Skip the first route change as it's already rendered by initRouter
+    if (isFirstRouteChange) {
+      isFirstRouteChange = false;
+      return;
+    }
     await renderRoute(route);
   });
 
