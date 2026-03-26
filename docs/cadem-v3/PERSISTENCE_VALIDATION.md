@@ -49,7 +49,7 @@ Validar que topic states y panel states:
 **Condición**: Agente sin estados previos en la base de datos
 
 **Flujo esperado**:
-1. `resolveAgentState()` no encuentra estados en DB
+1. `resolveTopicStates()` / `resolvePanelState()` no encuentran estados en DB
 2. Genera estados desde seed (`buildInitialTopicStates`, `buildInitialPanelState`)
 3. `topicStateSource = 'seeded'`, `panelStateSource = 'seeded'`
 4. Encuesta se completa normalmente
@@ -66,7 +66,7 @@ Validar que topic states y panel states:
 **Condición**: Agente con estados previos en la base de datos
 
 **Flujo esperado**:
-1. `resolveAgentState()` carga estados desde DB
+1. `resolveTopicStates()` / `resolvePanelState()` cargan estados desde DB
 2. `topicStateSource = 'persisted'`, `panelStateSource = 'persisted'`
 3. Encuesta usa estados cargados (no seed)
 4. Panel fatigue aumenta respecto a corrida anterior
@@ -78,10 +78,10 @@ Validar que topic states y panel states:
 **Verificaciones**:
 - [ ] `persistenceMeta.topicStateSource === 'persisted'`
 - [ ] `persistenceMeta.panelStateSource === 'persisted'`
-- [ ] `panelState.fatigue` > `fatigue` anterior
-- [ ] `panelState.completions_30d` > `completions_30d` anterior
-- [ ] `panelState.cooldown_until` está definido
-- [ ] `updated_at` > `updated_at` anterior
+- [ ] `panelFatigue` > `panelFatigue` anterior
+- [ ] `completions_30d` > `completions_30d` anterior
+- [ ] `cooldownUntil` está definido
+- [ ] `updatedAt` > `updatedAt` anterior
 
 ### Escenario C: Fallo de Persistencia
 **Condición**: Error de conexión a Supabase durante guardado
@@ -128,8 +128,8 @@ const result2 = await runCademSurveyAsync(agent, questions);
 // Verificar
 assert(result2.persistenceMeta.topicStateSource === 'persisted');
 assert(result2.persistenceMeta.panelStateSource === 'persisted');
-assert(result2.finalPanelState.fatigue > result1.finalPanelState.fatigue);
-assert(result2.finalPanelState.completions_30d > result1.finalPanelState.completions_30d);
+assert(result2.finalPanelState.panelFatigue > result1.finalPanelState.panelFatigue);
+assert(result2.finalPanelState.completions30d > result1.finalPanelState.completions30d);
 ```
 
 #### Test 3: Metadata Completa
