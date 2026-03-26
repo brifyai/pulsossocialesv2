@@ -76,10 +76,10 @@ function renderContent(container: HTMLElement): void {
       <span class="tab-icon material-symbols-outlined">assignment</span> Mis Encuestas
     </button>
     <button class="tab-btn ${currentView === 'create' ? 'active' : ''}" data-view="create">
-      <span class="tab-icon">➕</span> Crear Nueva
+      <span class="tab-icon material-symbols-outlined">add</span> Crear Nueva
     </button>
     ${currentResults ? `<button class="tab-btn ${currentView === 'results' ? 'active' : ''}" data-view="results">
-      <span class="tab-icon">📈</span> Resultados
+      <span class="tab-icon material-symbols-outlined">bar_chart</span> Resultados
     </button>` : ''}
   `;
   container.appendChild(tabs);
@@ -198,7 +198,7 @@ async function renderSurveyList(container: HTMLElement): Promise<void> {
           </button>
           ${hasRuns ? `
             <button class="btn btn-secondary btn-view-results" data-id="${survey.id}">
-              <span class="btn-icon">📈</span> Ver Resultados
+              <span class="btn-icon material-symbols-outlined">bar_chart</span> Ver Resultados
             </button>
             <button class="btn btn-secondary btn-view-runs" data-id="${survey.id}">
               <span class="btn-icon">🔄</span> Historial
@@ -495,7 +495,7 @@ async function renderResults(container: HTMLElement): Promise<void> {
     header.innerHTML = `
       <div class="results-header-top">
         <div class="results-title-section">
-          <h2 class="results-title">📈 Resultados: ${escapeHtml(currentSurvey.name)}</h2>
+          <h2 class="results-title"><span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 8px;">bar_chart</span>Resultados: ${escapeHtml(currentSurvey.name)}</h2>
           <p class="results-subtitle">${escapeHtml(currentSurvey.description || '')}</p>
         </div>
         <div class="results-actions">
