@@ -157,10 +157,17 @@ function estimatePoliticalIdentity(components: BaseComponents): number {
 
 /** Estimación de percepción económica personal */
 function estimateEconomyPersonal(components: BaseComponents): number {
-  // CALIBRACIÓN v3.2: Ajuste agresivo para verificar que el cambio se aplica
-  // Cambio: sesgo base de +0.18 a +0.30 (+0.12 total desde v2.8)
-  // Esto debería mover ~15-20% de agentes de negativo a positivo
-  const base = components.income * 0.40 + 0.30 + components.noiseEconomyPersonal * 0.9;
+  // CALIBRACIÓN v4.0: Desacople estructural de economy_national
+  // Objetivo: score promedio cercano a +0.10 (para ~52% positivo en benchmark)
+  // Estrategia: fuerte dependencia de ingreso + sesgo positivo moderado
+  const base =
+    components.income * 0.55 +      // Mayor peso al ingreso personal (era 0.40)
+    components.connectivity * 0.15 + // Conectividad como proxy de estabilidad
+    components.digital * 0.08 +      // Exposición digital
+    components.age * 0.05 +          // Edad tiene ligero efecto
+    0.12 +                           // Sesgo base positivo moderado (era 0.30)
+    components.noiseEconomyPersonal * 1.0; // Ruido independiente
+
   return safeScore(base);
 }
 
@@ -170,17 +177,17 @@ function estimateEconomyNational(
   economyPersonal: number,
   politicalIdentity: number,
 ): number {
-  // CALIBRACIÓN v3.1: Ajuste mínimo para bajar positive de 46.4% a ~35%
-  // Cambio: sesgo negativo de -0.05 a -0.10 (-0.05)
-  // Esto debería mover ~5-6% de agentes de positivo a negativo
-  // Manteniendo desacople con economy_personal
+  // CALIBRACIÓN v4.0: Desacople estructural de economy_personal
+  // Objetivo: score promedio cercano a -0.25 (para ~35% positivo en benchmark)
+  // Estrategia: menor dependencia de ingreso personal, más sesgo macro negativo
   const base =
-    economyPersonal * 0.25 + // Mantener dependencia
-    politicalIdentity * 0.05 +
-    components.income * 0.10 +
-    components.education * 0.02 +
-    -0.10 + // Sesgo más negativo (-0.05 adicional)
-    components.noiseEconomyNational * 0.9;
+    economyPersonal * 0.12 +        // REDUCIDO: dependencia de economía personal (era 0.25)
+    politicalIdentity * 0.08 +      // AUMENTADO: ideología influye más en visión macro
+    components.income * 0.05 +      // REDUCIDO: ingreso personal influye menos (era 0.10)
+    components.education * 0.10 +   // AUMENTADO: educación influye en perspectiva macro
+    components.connectivity * 0.05 + // Conectividad tiene efecto menor
+    -0.28 +                          // Sesgo base más negativo (era -0.10)
+    components.noiseEconomyNational * 1.1; // Ruido independiente ligeramente mayor
 
   return safeScore(base);
 }
