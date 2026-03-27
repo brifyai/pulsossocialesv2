@@ -157,15 +157,16 @@ function estimatePoliticalIdentity(components: BaseComponents): number {
 
 /** Estimación de percepción económica personal */
 function estimateEconomyPersonal(components: BaseComponents): number {
-  // CALIBRACIÓN v4.0: Desacople estructural de economy_national
-  // Objetivo: score promedio cercano a +0.10 (para ~52% positivo en benchmark)
-  // Estrategia: fuerte dependencia de ingreso + sesgo positivo moderado
+  // CALIBRACIÓN v4.7: Ajuste mínimo conjunto - bajar ambas economías
+  // Objetivo: mantener separación personal > nacional pero bajar nivel general
+  // Ajuste: sesgo de +0.02 a -0.03 para bajar de 64.6% hacia ~52%
+  // Resultado previo: 64.6% positivos (alto), target: ~52%
   const base =
-    components.income * 0.55 +      // Mayor peso al ingreso personal (era 0.40)
+    components.income * 0.40 +      // Mantenido en 0.40
     components.connectivity * 0.15 + // Conectividad como proxy de estabilidad
     components.digital * 0.08 +      // Exposición digital
     components.age * 0.05 +          // Edad tiene ligero efecto
-    0.12 +                           // Sesgo base positivo moderado (era 0.30)
+    -0.03 +                          // Sesgo base ajustado (era +0.02)
     components.noiseEconomyPersonal * 1.0; // Ruido independiente
 
   return safeScore(base);
@@ -177,17 +178,18 @@ function estimateEconomyNational(
   economyPersonal: number,
   politicalIdentity: number,
 ): number {
-  // CALIBRACIÓN v4.0: Desacople estructural de economy_personal
-  // Objetivo: score promedio cercano a -0.25 (para ~35% positivo en benchmark)
-  // Estrategia: menor dependencia de ingreso personal, más sesgo macro negativo
+  // CALIBRACIÓN v4.8: Ajuste fino - subir ligeramente economy_national
+  // Objetivo: acercar a target de ~36% sin afectar economy_personal
+  // Ajuste: de -0.08 a -0.05 para subir de 26.3% hacia ~36%
+  // Resultado previo: 26.3% positivos (bajo), target: ~36%
   const base =
-    economyPersonal * 0.12 +        // REDUCIDO: dependencia de economía personal (era 0.25)
-    politicalIdentity * 0.08 +      // AUMENTADO: ideología influye más en visión macro
-    components.income * 0.05 +      // REDUCIDO: ingreso personal influye menos (era 0.10)
-    components.education * 0.10 +   // AUMENTADO: educación influye en perspectiva macro
+    economyPersonal * 0.12 +        // Dependencia de economía personal
+    politicalIdentity * 0.08 +      // Ideología influye en visión macro
+    components.income * 0.05 +      // Ingreso personal influye menos
+    components.education * 0.10 +   // Educación influye en perspectiva macro
     components.connectivity * 0.05 + // Conectividad tiene efecto menor
-    -0.28 +                          // Sesgo base más negativo (era -0.10)
-    components.noiseEconomyNational * 1.1; // Ruido independiente ligeramente mayor
+    -0.05 +                          // Sesgo base ajustado (era -0.08)
+    components.noiseEconomyNational * 1.1; // Ruido independiente
 
   return safeScore(base);
 }
@@ -247,13 +249,19 @@ function estimateCountryOptimism(
   securityPerception: number,
   economyPersonal: number,
 ): number {
-  // Reducida cascada: menos dependencia de economía, más ruido independiente
+  // CALIBRACIÓN v4.10: Ajustar optimismo - reducir bias
+  // Objetivo: bajar de 79.7% hacia ~60-62%
+  // Problema: v4.9 se pasó (79.7% vs target 62%)
+  // Cambios:
+  // - Reducir bias base de +0.15 a +0.06 (mitad aprox)
+  // - Mantener pesos ajustados de v4.9
   const base =
-    economyNational * 0.25 +
-    economyPersonal * 0.15 +
-    securityPerception * 0.1 +
-    components.income * 0.1 +
-    components.noiseOptimism * 1.4;
+    economyNational * 0.15 +        // Mantenido de v4.9
+    economyPersonal * 0.25 +        // Mantenido de v4.9
+    securityPerception * 0.05 +     // Mantenido de v4.9
+    components.income * 0.1 +       // Mantenido
+    0.06 +                          // AJUSTADO: bias base reducido (era 0.15)
+    components.noiseOptimism * 1.4; // Mantenido
 
   return safeScore(base);
 }
