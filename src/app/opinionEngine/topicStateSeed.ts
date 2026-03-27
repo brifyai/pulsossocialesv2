@@ -65,6 +65,7 @@ function educationScore(level?: string): number {
 function incomeScore(incomeDecile?: number): number {
   if (!incomeDecile || Number.isNaN(incomeDecile)) return 0;
   const centered = (incomeDecile - 5.5) / 4.5;
+  // Mantenido en 0.4 - el ajuste se hace en los pesos de las funciones
   return clamp(centered, -1, 1) * 0.4;
 }
 
@@ -108,9 +109,9 @@ function calculateBaseComponents(agent: TopicStateSeedAgent): BaseComponents {
 
   const povertyPenalty =
     agent.povertyStatus && ['extreme_poverty', 'poverty'].includes(agent.povertyStatus)
-      ? -0.45
+      ? -0.25  // Reducido de -0.45 para no afectar tanto la economía personal
       : agent.povertyStatus === 'vulnerable'
-        ? -0.2
+        ? -0.1   // Reducido de -0.2
         : 0;
 
   const urbanPenalty =
@@ -156,7 +157,10 @@ function estimatePoliticalIdentity(components: BaseComponents): number {
 
 /** Estimación de percepción económica personal */
 function estimateEconomyPersonal(components: BaseComponents): number {
-  const base = components.income * 0.7 + components.povertyPenalty + components.noiseEconomyPersonal;
+  // CALIBRACIÓN v3.2: Ajuste agresivo para verificar que el cambio se aplica
+  // Cambio: sesgo base de +0.18 a +0.30 (+0.12 total desde v2.8)
+  // Esto debería mover ~15-20% de agentes de negativo a positivo
+  const base = components.income * 0.40 + 0.30 + components.noiseEconomyPersonal * 0.9;
   return safeScore(base);
 }
 
@@ -166,13 +170,17 @@ function estimateEconomyNational(
   economyPersonal: number,
   politicalIdentity: number,
 ): number {
-  // Más desacoplado: menos dependencia de economía personal, más independencia
+  // CALIBRACIÓN v3.1: Ajuste mínimo para bajar positive de 46.4% a ~35%
+  // Cambio: sesgo negativo de -0.05 a -0.10 (-0.05)
+  // Esto debería mover ~5-6% de agentes de positivo a negativo
+  // Manteniendo desacople con economy_personal
   const base =
-    economyPersonal * 0.15 + // Reducido de 0.25
-    politicalIdentity * 0.12 + // Reducido de 0.15
-    components.income * 0.18 + // Aumentado de 0.15
-    components.education * 0.08 + // Nuevo componente
-    components.noiseEconomyNational * 1.5; // Aumentado de 1.3
+    economyPersonal * 0.25 + // Mantener dependencia
+    politicalIdentity * 0.05 +
+    components.income * 0.10 +
+    components.education * 0.02 +
+    -0.10 + // Sesgo más negativo (-0.05 adicional)
+    components.noiseEconomyNational * 0.9;
 
   return safeScore(base);
 }

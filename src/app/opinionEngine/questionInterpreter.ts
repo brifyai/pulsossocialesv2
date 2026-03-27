@@ -76,7 +76,18 @@ function inferFamilyAndTopic(
     };
   }
 
-  if (normalizedText.includes('buen camino') || normalizedText.includes('mal camino')) {
+  // Direction: reconoce múltiples variantes de wording
+  if (
+    normalizedText.includes('buen camino') ||
+    normalizedText.includes('mal camino') ||
+    normalizedText.includes('camino correcto') ||
+    normalizedText.includes('camino equivocado') ||
+    normalizedText.includes('direccion correcta') ||
+    normalizedText.includes('direccion equivocada') ||
+    normalizedText.includes('va por buen camino') ||
+    normalizedText.includes('va por mal camino') ||
+    (normalizedText.includes('pais va') && normalizedText.includes('camino'))
+  ) {
     return {
       family: 'direction',
       topic: 'country_direction',
@@ -84,10 +95,18 @@ function inferFamilyAndTopic(
     };
   }
 
+  // Optimism: reconoce múltiples variantes de wording
   if (
     normalizedText.includes('futuro del pais') ||
     normalizedText.includes('muy optimista') ||
-    normalizedText.includes('muy pesimista')
+    normalizedText.includes('muy pesimista') ||
+    normalizedText.includes('como se siente') ||
+    normalizedText.includes('acerca del futuro') ||
+    (normalizedText.includes('dentro de un ano') || normalizedText.includes('dentro de 1 ano')) ||
+    (normalizedText.includes('situacion del pais') &&
+      (normalizedText.includes('mejor') ||
+        normalizedText.includes('igual') ||
+        normalizedText.includes('peor')))
   ) {
     return {
       family: 'optimism',
@@ -96,6 +115,25 @@ function inferFamilyAndTopic(
     };
   }
 
+  // Economy personal: reconoce múltiples variantes de wording
+  // IMPORTANTE: debe ir ANTES de economy_national porque es más específica
+  if (
+    normalizedText.includes('usted y su familia') ||
+    normalizedText.includes('economica actual de usted y su familia') ||
+    normalizedText.includes('situacion economica personal') ||
+    normalizedText.includes('situacion economica de usted') ||
+    (normalizedText.includes('situacion economica') &&
+      normalizedText.includes('usted') &&
+      normalizedText.includes('familia'))
+  ) {
+    return {
+      family: 'economic_perception',
+      topic: 'economy_personal',
+      responseFormat: 'ordinal_4_nr',
+    };
+  }
+
+  // Economy national: reconoce economía del país
   if (
     normalizedText.includes('economia chilena esta') ||
     normalizedText.includes('situacion economica')
@@ -103,17 +141,6 @@ function inferFamilyAndTopic(
     return {
       family: 'economic_perception',
       topic: 'economy_national',
-      responseFormat: 'ordinal_4_nr',
-    };
-  }
-
-  if (
-    normalizedText.includes('usted y su familia') ||
-    normalizedText.includes('economica actual de usted y su familia')
-  ) {
-    return {
-      family: 'economic_perception',
-      topic: 'economy_personal',
       responseFormat: 'ordinal_4_nr',
     };
   }

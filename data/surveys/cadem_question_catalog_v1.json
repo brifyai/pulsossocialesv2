@@ -1,0 +1,72 @@
+{
+  "version": "1.0.0",
+  "description": "Catálogo canónico de preguntas CADEM para benchmark y calibración. Usar siempre estos textos oficiales.",
+  "questions": [
+    {
+      "id": "q_approval",
+      "text": "Ahora. Independiente de su posición política, ¿Usted aprueba o desaprueba la forma cómo José Antonio Kast está conduciendo su Gobierno?",
+      "type": "single_choice",
+      "options": ["Aprueba", "Desaprueba", "No responde"],
+      "periodicity": "monthly",
+      "metadata": {
+        "family": "approval",
+        "topic": "government_approval",
+        "targetEntity": "jose_antonio_kast",
+        "responseFormat": "binary_nr"
+      }
+    },
+    {
+      "id": "q_direction",
+      "text": "Ahora, pensando en todos los aspectos políticos, económicos y sociales, ¿Usted cree que el país va por un buen camino o por un mal camino?",
+      "type": "single_choice",
+      "options": ["Buen camino", "Mal camino", "No responde"],
+      "periodicity": "monthly",
+      "metadata": {
+        "family": "direction",
+        "topic": "country_direction",
+        "responseFormat": "binary_nr"
+      }
+    },
+    {
+      "id": "q_optimism",
+      "text": "En general, ¿Cómo se siente usted acerca del futuro del país?",
+      "type": "single_choice",
+      "options": ["Muy optimista", "Optimista", "Pesimista", "Muy pesimista", "No responde"],
+      "periodicity": "monthly",
+      "metadata": {
+        "family": "optimism",
+        "topic": "country_optimism",
+        "responseFormat": "ordinal_4_nr"
+      }
+    },
+    {
+      "id": "q_economy_national",
+      "text": "Usted cree que en el momento actual la economía chilena está...",
+      "type": "single_choice",
+      "options": ["Muy buena", "Buena", "Mala", "Muy mala", "No responde"],
+      "periodicity": "monthly",
+      "metadata": {
+        "family": "economic_perception",
+        "topic": "economy_national",
+        "responseFormat": "ordinal_4_nr"
+      }
+    },
+    {
+      "id": "q_economy_personal",
+      "text": "¿Cómo calificaría usted la situación económica actual de usted y su familia?",
+      "type": "single_choice",
+      "options": ["Muy buena", "Buena", "Mala", "Muy mala", "No responde"],
+      "periodicity": "monthly",
+      "metadata": {
+        "family": "economic_perception",
+        "topic": "economy_personal",
+        "responseFormat": "ordinal_4_nr"
+      }
+    }
+  ],
+  "usage": {
+    "note": "Este catálogo debe usarse en scripts de benchmark/calibración para garantizar wording consistente",
+    "importExample": "const catalog = JSON.parse(fs.readFileSync('data/surveys/cadem_question_catalog_v1.json', 'utf8'));",
+    "lastUpdated": "2026-03-27"
+  }
+}

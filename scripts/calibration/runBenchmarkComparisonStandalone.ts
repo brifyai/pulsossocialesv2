@@ -400,49 +400,42 @@ function generateSyntheticAgents(count: number): CademAdapterAgent[] {
   return agents;
 }
 
+// Importar el motor real de opinionEngine
+import { buildInitialTopicStates } from '../../src/app/opinionEngine/topicStateSeed';
+import { resolveQuestionByFamily } from '../../src/app/opinionEngine/questionResolver';
+import { interpretQuestion } from '../../src/app/opinionEngine/questionInterpreter';
+
 function generateResponse(agent: CademAdapterAgent, question: CademSurveyQuestion): string {
-  // Motor de respuesta simplificado basado en demografía
-  const rand = Math.random();
+  // Usar el motor real de opinionEngine
+  const topicStates = buildInitialTopicStates({
+    age: agent.age,
+    sex: agent.sex,
+    educationLevel: agent.educationLevel,
+    incomeDecile: agent.incomeDecile,
+    regionCode: agent.regionCode,
+    agentType: agent.agentType,
+    connectivityLevel: agent.connectivityLevel,
+    povertyStatus: agent.povertyStatus,
+    digitalExposure: agent.digitalExposure,
+    preferredChannel: agent.preferredChannel,
+  });
 
-  switch (question.id) {
-    case 'q_approval':
-      // Aprobación: correlaciona con ingreso y educación
-      const approvalProb = 0.25 + (agent.incomeDecile / 20) + (agent.educationLevel === 'university' ? 0.1 : 0);
-      if (rand < approvalProb) return 'approve';
-      if (rand < approvalProb + 0.5) return 'disapprove';
-      return 'no_response';
+    // Interpretar la pregunta
+    const interpretedQuestion = interpretQuestion({
+      id: question.id,
+      text: question.text,
+      type: question.type,
+      options: question.options,
+      periodicity: question.periodicity as 'permanent' | 'monthly' | 'lower_frequency' | 'ad_hoc',
+    });
 
-    case 'q_direction':
-      // Dirección del país: similar a aprobación
-      const directionProb = 0.30 + (agent.incomeDecile / 20);
-      if (rand < directionProb) return 'good_path';
-      if (rand < directionProb + 0.45) return 'bad_path';
-      return 'no_response';
-
-    case 'q_optimism':
-      // Optimismo: jóvenes más optimistas
-      const optimismProb = 0.35 + ((80 - agent.age) / 200);
-      if (rand < optimismProb) return 'optimistic';
-      if (rand < optimismProb + 0.40) return 'pessimistic';
-      return 'no_response';
-
-    case 'q_economy_national':
-      // Economía nacional: correlaciona con ingreso
-      const econNatProb = 0.20 + (agent.incomeDecile / 15);
-      if (rand < econNatProb) return 'positive';
-      if (rand < econNatProb + 0.6) return 'negative';
-      return 'no_response';
-
-    case 'q_economy_personal':
-      // Economía personal: más correlacionada con ingreso
-      const econPerProb = 0.30 + (agent.incomeDecile / 12);
-      if (rand < econPerProb) return 'positive';
-      if (rand < econPerProb + 0.5) return 'negative';
-      return 'no_response';
-
-    default:
-      return question.options[Math.floor(Math.random() * question.options.length)];
+  if (!interpretedQuestion) {
+    return 'no_response';
   }
+
+  // Resolver usando el motor real
+  const result = resolveQuestionByFamily(interpretedQuestion, topicStates);
+  return result.value;
 }
 
 async function runSurvey(params: {
@@ -514,7 +507,7 @@ function aggregateSurveyResponses(responses: SurveyResponse[]): {
 // ============================================================================
 
 const CONFIG = {
-  AGENT_COUNT: 300,
+  AGENT_COUNT: 1000,  // Aumentado de 300 a 1000 para reducir ruido muestral
   BENCHMARK_PATH: 'data/benchmarks/cadem/normalized/cadem_marzo_2026_master.json',
   OUTPUT_PATH: 'data/benchmarks/cadem/comparison_results.json',
   ENGINE_MODE: 'cadem' as const,
@@ -541,23 +534,23 @@ const SURVEY_DEFINITION: CademSurveyDefinition = {
     },
     {
       id: 'q_optimism',
-      text: '¿Cómo cree que estará el país dentro de un año?',
+      text: '¿Cómo cree que estará el futuro del país?',
       type: 'single_choice',
-      options: ['optimistic', 'pessimistic', 'no_response'],
+      options: ['very_optimistic', 'optimistic', 'pessimistic', 'very_pessimistic', 'no_response'],
       periodicity: 'permanent',
     },
     {
       id: 'q_economy_national',
       text: '¿Cómo evalúa la situación económica actual del país?',
       type: 'single_choice',
-      options: ['positive', 'negative', 'no_response'],
+      options: ['very_good', 'good', 'bad', 'very_bad', 'no_response'],
       periodicity: 'permanent',
     },
     {
       id: 'q_economy_personal',
       text: '¿Cómo evalúa su situación económica personal actual?',
       type: 'single_choice',
-      options: ['positive', 'negative', 'no_response'],
+      options: ['very_good', 'good', 'bad', 'very_bad', 'no_response'],
       periodicity: 'permanent',
     },
   ],
