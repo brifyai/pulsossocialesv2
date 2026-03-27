@@ -135,6 +135,58 @@ function calculateMaxDeviation(differences: Record<string, number>): number {
   return Math.max(...values.map(Math.abs));
 }
 
+// Mapeo de opciones individuales a categorías agrupadas del benchmark
+const OPTION_GROUPING: Record<string, Record<string, string[]>> = {
+  q_optimism: {
+    optimistic_total: ['optimistic', 'very_optimistic'],
+    pessimistic_total: ['pessimistic', 'very_pessimistic'],
+  },
+  q_economy_national: {
+    positive_total: ['positive', 'very_good', 'good'],
+    negative_total: ['negative', 'very_bad', 'bad'],
+  },
+  q_economy_personal: {
+    positive_total: ['positive', 'very_good', 'good'],
+    negative_total: ['negative', 'very_bad', 'bad'],
+  },
+};
+
+function groupSyntheticDistribution(
+  questionId: string,
+  syntheticDistribution: Record<string, number>
+): Record<string, number> {
+  const grouping = OPTION_GROUPING[questionId];
+  if (!grouping) {
+    // Sin agrupación definida, retornar distribución original
+    return { ...syntheticDistribution };
+  }
+
+  const grouped: Record<string, number> = {};
+
+  // Inicializar grupos en 0
+  for (const groupKey of Object.keys(grouping)) {
+    grouped[groupKey] = 0;
+  }
+
+  // Sumar opciones individuales a sus grupos
+  for (const [option, value] of Object.entries(syntheticDistribution)) {
+    let assigned = false;
+    for (const [groupKey, individualOptions] of Object.entries(grouping)) {
+      if (individualOptions.includes(option)) {
+        grouped[groupKey] = (grouped[groupKey] ?? 0) + value;
+        assigned = true;
+        break;
+      }
+    }
+    // Si no se asignó a ningún grupo (ej: no_response), mantenerlo
+    if (!assigned) {
+      grouped[option] = value;
+    }
+  }
+
+  return grouped;
+}
+
 function compareSyntheticVsBenchmark(
   syntheticResults: SyntheticResult[],
   benchmark: BenchmarkData
@@ -152,21 +204,40 @@ function compareSyntheticVsBenchmark(
       continue;
     }
 
+    // Agrupar distribución sintética según el tipo de pregunta
+    const groupedSyntheticDistribution = groupSyntheticDistribution(
+      questionId,
+      syntheticResult.distribution
+    );
+
+    // Para q_direction con completeness=partial, ignorar no_response en el cálculo de error
+    const isPartial = benchmarkQuestion.distributionType === 'partial_distribution';
+
     // Calcular diferencias por opción
     const differences: Record<string, number> = {};
     const allOptions = new Set([
       ...Object.keys(benchmarkQuestion.weighted_average),
-      ...Object.keys(syntheticResult.distribution),
+      ...Object.keys(groupedSyntheticDistribution),
     ]);
 
     for (const option of allOptions) {
       const benchmarkValue = benchmarkQuestion.weighted_average[option] ?? 0;
-      const syntheticValue = syntheticResult.distribution[option] ?? 0;
+      const syntheticValue = groupedSyntheticDistribution[option] ?? 0;
       differences[option] = syntheticValue - benchmarkValue;
     }
 
-    const mae = calculateMAE(differences);
-    const maxDeviation = calculateMaxDeviation(differences);
+    // Calcular MAE y maxDeviation solo con opciones relevantes
+    const relevantDifferences: Record<string, number> = {};
+    for (const [option, diff] of Object.entries(differences)) {
+      // Para partial_distribution, ignorar no_response en el cálculo de error principal
+      if (isPartial && option === 'no_response') {
+        continue;
+      }
+      relevantDifferences[option] = diff;
+    }
+
+    const mae = calculateMAE(relevantDifferences);
+    const maxDeviation = calculateMaxDeviation(relevantDifferences);
 
     // Crear labels a partir de las claves del weighted_average
     const labels: Record<string, string> = {};
@@ -180,7 +251,7 @@ function compareSyntheticVsBenchmark(
       labels,
       calibrationTarget: benchmarkQuestion.expectedCalibrationTarget,
       benchmarkDistribution: benchmarkQuestion.weighted_average,
-      syntheticDistribution: syntheticResult.distribution,
+      syntheticDistribution: groupedSyntheticDistribution,
       differences,
       mae,
       maxDeviation,

@@ -4,7 +4,7 @@
     "benchmarkPeriod": "Marzo 2026",
     "totalSample": 4047,
     "syntheticSample": 300,
-    "comparisonDate": "2026-03-26T23:56:02.125Z"
+    "comparisonDate": "2026-03-27T00:14:07.011Z"
   },
   "questions": [
     {
@@ -22,18 +22,18 @@
         "no_response": 6.8
       },
       "syntheticDistribution": {
-        "disapprove": 35,
-        "approve": 57.3,
-        "no_response": 7.7
+        "approve": 54,
+        "disapprove": 42.3,
+        "no_response": 3.7
       },
       "differences": {
-        "approve": 4.399999999999999,
-        "disapprove": -5.299999999999997,
-        "no_response": 0.9000000000000004
+        "approve": 1.1000000000000014,
+        "disapprove": 2,
+        "no_response": -3.0999999999999996
       },
-      "mae": 3.533333333333332,
-      "maxDeviation": 5.299999999999997,
-      "isCalibrated": false
+      "mae": 2.066666666666667,
+      "maxDeviation": 3.0999999999999996,
+      "isCalibrated": true
     },
     {
       "questionId": "q_direction",
@@ -48,17 +48,17 @@
         "bad_path": 35
       },
       "syntheticDistribution": {
-        "bad_path": 38,
-        "good_path": 56.7,
-        "no_response": 5.3
+        "good_path": 55,
+        "bad_path": 41,
+        "no_response": 4
       },
       "differences": {
-        "good_path": 7.5,
-        "bad_path": 3,
-        "no_response": 5.3
+        "good_path": 5.799999999999997,
+        "bad_path": 6,
+        "no_response": 4
       },
-      "mae": 5.266666666666667,
-      "maxDeviation": 7.5,
+      "mae": 5.899999999999999,
+      "maxDeviation": 6,
       "isCalibrated": false
     },
     {
@@ -74,19 +74,17 @@
         "pessimistic_total": 35.5
       },
       "syntheticDistribution": {
-        "pessimistic": 36.7,
-        "optimistic": 51,
-        "no_response": 12.3
+        "optimistic_total": 51.3,
+        "pessimistic_total": 39.7,
+        "no_response": 9
       },
       "differences": {
-        "optimistic_total": -60.5,
-        "pessimistic_total": -35.5,
-        "pessimistic": 36.7,
-        "optimistic": 51,
-        "no_response": 12.3
+        "optimistic_total": -9.200000000000003,
+        "pessimistic_total": 4.200000000000003,
+        "no_response": 9
       },
-      "mae": 39.2,
-      "maxDeviation": 60.5,
+      "mae": 7.466666666666669,
+      "maxDeviation": 9.200000000000003,
       "isCalibrated": false
     },
     {
@@ -102,19 +100,17 @@
         "negative_total": 62.8
       },
       "syntheticDistribution": {
-        "positive": 60,
-        "negative": 38.3,
-        "no_response": 1.7
+        "positive_total": 56.3,
+        "negative_total": 41.3,
+        "no_response": 2.3
       },
       "differences": {
-        "positive_total": -34.8,
-        "negative_total": -62.8,
-        "positive": 60,
-        "negative": 38.3,
-        "no_response": 1.7
+        "positive_total": 21.5,
+        "negative_total": -21.5,
+        "no_response": 2.3
       },
-      "mae": 39.519999999999996,
-      "maxDeviation": 62.8,
+      "mae": 15.1,
+      "maxDeviation": 21.5,
       "isCalibrated": false
     },
     {
@@ -130,28 +126,26 @@
         "negative_total": 44
       },
       "syntheticDistribution": {
-        "positive": 75.7,
-        "negative": 24,
-        "no_response": 0.3
+        "positive_total": 72.7,
+        "negative_total": 26.3,
+        "no_response": 1
       },
       "differences": {
-        "positive_total": -52,
-        "negative_total": -44,
-        "positive": 75.7,
-        "negative": 24,
-        "no_response": 0.3
+        "positive_total": 20.700000000000003,
+        "negative_total": -17.7,
+        "no_response": 1
       },
-      "mae": 39.2,
-      "maxDeviation": 75.7,
+      "mae": 13.133333333333335,
+      "maxDeviation": 20.700000000000003,
       "isCalibrated": false
     }
   ],
-  "overallMAE": 25.344,
+  "overallMAE": 8.733333333333333,
   "summary": {
     "totalQuestions": 5,
-    "calibratedQuestions": 0,
-    "lowDivergence": 0,
+    "calibratedQuestions": 1,
+    "lowDivergence": 1,
     "mediumDivergence": 2,
-    "highDivergence": 3
+    "highDivergence": 2
   }
 }
