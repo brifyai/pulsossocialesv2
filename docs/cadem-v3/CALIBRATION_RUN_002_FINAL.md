@@ -112,10 +112,10 @@ const base =
 2. **q_economy_national** (36.8% vs 36%, diff +0.8%)
 3. **q_economy_personal** (49.7% vs 52%, diff -2.3%)
 
-### 🟡 Variables ALINEADAS / ACEPTABLES (diferencia < 3%)
+### 🟡 Variables ALINEADAS / ACEPTABLES (cercanas al benchmark y operativamente utilizables)
 
-1. **q_approval** (54.4% vs 57%, diff -2.6%)
-2. **q_direction** (51.5% vs 49%, diff +2.5%)
+1. **q_approval** (54.4% vs 57%, diff -2.6%, MAE 5.5%)
+2. **q_direction** (51.5% vs 49%, diff +2.5%, MAE 6.4%)
 
 ---
 
