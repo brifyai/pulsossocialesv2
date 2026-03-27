@@ -2,6 +2,7 @@
 
 **Fecha:** 27 de marzo de 2026  
 **Versión:** v4.10 (baseline congelada)  
+**Engine:** CADEM Opinion Engine v1.1  
 **Estado:** ✅ CALIBRADO Y CONGELADO
 
 ---
@@ -111,7 +112,7 @@ const base =
 2. **q_economy_national** (36.8% vs 36%, diff +0.8%)
 3. **q_economy_personal** (49.7% vs 52%, diff -2.3%)
 
-### 🟡 Variables ACEPTABLES (diferencia 3-5%)
+### 🟡 Variables ALINEADAS / ACEPTABLES (diferencia < 3%)
 
 1. **q_approval** (54.4% vs 57%, diff -2.6%)
 2. **q_direction** (51.5% vs 49%, diff +2.5%)
@@ -181,8 +182,8 @@ const base =
 ### Fase 1: Documentación (inmediato)
 
 - [x] Crear este documento de cierre
-- [ ] Tag de Git: `cadem-calibrated-v4.10`
-- [ ] Commit explícito de freeze
+- [x] Tag de Git: `cadem-calibrated-v4.10`
+- [x] Commit explícito de freeze
 
 ### Fase 2: Validación A/B (siguiente)
 
@@ -237,7 +238,9 @@ const base =
 
 ### Estado Final
 
-**El motor CADEM Opinion Engine v1.1 está oficialmente calibrado y listo para producción de encuestas sintéticas con validación A/B.**
+**El motor CADEM Opinion Engine v1.1 queda calibrado para esta batería de benchmark y listo para validación A/B y despliegue controlado en staging.**
+
+**Alcance de la calibración:** esta calibración se considera válida para la batería actual de 5 preguntas troncales de marzo 2026 y no debe extrapolarse automáticamente a otros módulos temáticos sin validación adicional.
 
 ---
 
