@@ -9,7 +9,7 @@
 
 ## Resumen Ejecutivo
 
-El motor CADEM Opinion Engine v1.1 ha sido calibrado profesionalmente contra el benchmark Plaza Pública Cadem marzo 2026, alcanzando un **MAE promedio de 3.4%** con todas las variables principales dentro de rangos aceptables.
+El motor CADEM Opinion Engine v1.1 ha sido calibrado profesionalmente contra el benchmark Plaza Pública Cadem marzo 2026, utilizando **agentes reales desde Supabase**, alcanzando un **MAE promedio de 3.3%** con todas las variables principales dentro de rangos aceptables.
 
 **Decisión:** Esta versión queda congelada como baseline estable. No se realizarán más ajustes de parámetros sobre esta batería de preguntas.
 
@@ -27,7 +27,7 @@ El motor CADEM Opinion Engine v1.1 ha sido calibrado profesionalmente contra el 
 
 ---
 
-## Fuente de Agentes
+## Fuente de Agentes (Validación Definitiva)
 
 | Campo | Valor |
 |-------|-------|
@@ -35,6 +35,8 @@ El motor CADEM Opinion Engine v1.1 ha sido calibrado profesionalmente contra el 
 | **Tabla** | `synthetic_agents` |
 | **Agentes utilizados** | 1,000 (muestra representativa) |
 | **Perfil** | Agentes sintéticos chilenos con datos demográficos reales (CASEN 2022, CENSO 2024) |
+
+**Nota importante:** La validación final y definitiva se realizó con agentes reales desde Supabase, no con agentes generados en memoria. Esto proporciona un nivel de confianza significativamente mayor en la calibración.
 
 ---
 
@@ -61,7 +63,7 @@ El motor CADEM Opinion Engine v1.1 ha sido calibrado profesionalmente contra el 
 | v4.7 | Ajuste conjunto economías | 5.8% |
 | v4.8 | Ajuste economy_national (-0.05) | 5.8% |
 | v4.9 | Calibración optimism (bias +0.15) | 6.1% |
-| **v4.10** | **Ajuste optimism (bias +0.06)** | **3.4%** ✅ |
+| **v4.10** | **Ajuste optimism (bias +0.06)** | **3.3%** ✅ |
 
 ### Cambio Clave Final (v4.10)
 
@@ -81,24 +83,24 @@ const base =
 
 ---
 
-## Resultados Finales
+## Resultados Finales (Desde Supabase)
 
 ### Comparación por Pregunta
 
 | Pregunta | Target | Simulación | Diferencia | MAE | Estado |
 |----------|--------|------------|------------|-----|--------|
-| **q_approval** | 57% approve | 54.4% | -2.6% | 5.5% | 🟡 Aceptable |
-| **q_direction** | 49% good_path | 51.5% | +2.5% | 6.4% | 🟡 Aceptable |
-| **q_optimism** | 62% optimistic | 59.9% | -2.1% | 1.9% | ✅ Cerrada |
-| **q_economy_national** | 36% positive | 36.8% | +0.8% | 1.1% | ✅ Cerrada |
-| **q_economy_personal** | 52% positive | 49.7% | -2.3% | 2.1% | ✅ Cerrada |
+| **q_approval** | 57% approve | 53.6% | -3.4% | 5.9% | 🟡 Aceptable |
+| **q_direction** | 49% good_path | 50.9% | +1.9% | 6.5% | 🟡 Aceptable |
+| **q_optimism** | 62% optimistic | 61.4% | -0.6% | 0.7% | ✅ Cerrada |
+| **q_economy_national** | 36% positive | 38.3% | +2.3% | 2.6% | ✅ Cerrada |
+| **q_economy_personal** | 52% positive | 52.2% | +0.2% | 0.6% | ✅ Cerrada |
 
 ### Métricas Globales
 
 | Métrica | Valor | Benchmark |
 |---------|-------|-----------|
-| **MAE promedio** | **3.4%** | < 5% ✅ |
-| **Máxima diferencia** | 10.2% | < 15% ✅ |
+| **MAE promedio** | **3.3%** | < 5% ✅ |
+| **Máxima diferencia** | 11.1% | < 15% ✅ |
 | **Variables cerradas** | 3/5 | 60% |
 | **Variables aceptables** | 2/5 | 40% |
 
@@ -106,16 +108,23 @@ const base =
 
 ## Variables Cerradas vs Aceptables
 
-### ✅ Variables CERRADAS (diferencia < 3%)
+### ✅ Variables CERRADAS (MAE < 3%)
 
-1. **q_optimism** (59.9% vs 62%, diff -2.1%)
-2. **q_economy_national** (36.8% vs 36%, diff +0.8%)
-3. **q_economy_personal** (49.7% vs 52%, diff -2.3%)
+1. **q_optimism** (61.4% vs 62%, MAE 0.7%)
+2. **q_economy_national** (38.3% vs 36%, MAE 2.6%)
+3. **q_economy_personal** (52.2% vs 52%, MAE 0.6%)
 
-### 🟡 Variables ALINEADAS / ACEPTABLES (cercanas al benchmark y operativamente utilizables)
+### 🟡 Variables ACEPTABLES (operativamente utilizables)
 
-1. **q_approval** (54.4% vs 57%, diff -2.6%, MAE 5.5%)
-2. **q_direction** (51.5% vs 49%, diff +2.5%, MAE 6.4%)
+1. **q_approval** (53.6% vs 57%, MAE 5.9%)
+   - Subestima `approve` ligeramente
+   - Sobrestima `disapprove` (8.9% diff)
+   - Sugiere mayor polarización sintética que benchmark
+
+2. **q_direction** (50.9% vs 49%, MAE 6.5%)
+   - `good_path` casi perfecto (+1.9%)
+   - `bad_path` alto (+11.1%)
+   - Posible efecto de estructura residual del benchmark Cadem
 
 ---
 
@@ -125,15 +134,16 @@ const base =
 
 **Fecha de congelación:** 27 de marzo de 2026  
 **Versión congelada:** v4.10  
-**Commit recomendado:** `feat(cadem): freeze calibrated benchmark baseline v4.10`
+**Commit:** `e7437f2`  
+**Tag:** `cadem-calibrated-v4.10`
 
 ### Rationale
 
-- El MAE promedio de 3.4% está dentro del rango profesional aceptable
-- Las 3 variables económicas/optimismo están cerradas (< 3% diff)
-- Las 2 variables políticas están en zona aceptable (< 3% diff)
+- El MAE promedio de 3.3% está dentro del rango profesional aceptable
+- Las 3 variables económicas/optimismo están cerradas (MAE < 3%)
+- Las 2 variables políticas están en zona aceptable para uso operativo
 - Riesgo de sobreajuste supera el beneficio de seguir ajustando
-- El motor está listo para pasar a fase de validación A/B
+- Validación con agentes reales de Supabase proporciona confianza suficiente
 
 ### Qué NO se hará sobre esta baseline
 
@@ -164,7 +174,7 @@ const base =
 
 - Las 5 preguntas muestran correlaciones lógicas entre sí
 - No hay contradicciones evidentes en las respuestas
-- Las variables económicas mantienen separación personal > nacional
+- Las variables económicas mantienen separación personal > nacional (14 puntos)
 
 ### Comparación con Benchmark Real
 
@@ -177,45 +187,24 @@ const base =
 
 ---
 
-## Próximos Pasos Recomendados
+## Estado del Proyecto
 
-### Fase 1: Documentación (inmediato)
+### ✅ Completado
 
-- [x] Crear este documento de cierre
+- [x] Calibración profesional contra benchmark Cadem
+- [x] Validación con agentes reales desde Supabase
+- [x] MAE promedio 3.3% (mejor histórico)
+- [x] Variables económicas perfectamente alineadas
+- [x] Separación personal/nacional lograda
+- [x] Documentación de cierre
 - [x] Tag de Git: `cadem-calibrated-v4.10`
-- [x] Commit explícito de freeze
 
-### Fase 2: Validación A/B (siguiente)
+### ⏳ Pendiente (Próximos Pasos)
 
-**Objetivo:** Rerun comparación A/B con motor calibrado
-
-**Script:** `scripts/test/run_ab_comparison_from_supabase.ts`
-
-**Configuración:**
-- Encuesta A: legacy engine
-- Encuesta B: cadem engine (v4.10 calibrado)
-- Agentes: reales desde Supabase
-- Sampleo: cuotas tipo Cadem
-- Persistencia: `false`
-
-**Output:** `docs/cadem-v3/AB_COMPARISON_RUN_002.md`
-
-### Fase 3: Longitudinal B2 (después de A/B)
-
-**Objetivo:** Validar persistencia y estabilidad longitudinal
-
-**Configuración:**
-- `engineMode: cadem`
-- `persistState: true`
-- Mismos agentes en múltiples olas
-
-**Documento:** `docs/cadem-v3/B2_LONGITUDINAL_TEST_PLAN.md`
-
-### Fase 4: Staging Amplio (futuro)
-
-- Validación en entorno de staging
-- Pruebas con usuarios reales
-- Dashboard de resultados
+- [ ] Validación operativa controlada en staging
+- [ ] Encuestas seleccionadas con `engineMode: 'cadem'`
+- [ ] B2 longitudinal con persistencia real
+- [ ] Comparación operativa con legacy (cuando se implemente correctamente)
 
 ---
 
@@ -224,23 +213,27 @@ const base =
 ### Logros
 
 1. ✅ Motor calibrado profesionalmente contra benchmark real
-2. ✅ MAE promedio 3.4% (mejor histórico)
-3. ✅ Variables económicas perfectamente alineadas
-4. ✅ Separación personal/nacional lograda
-5. ✅ Base estable para iteraciones futuras
+2. ✅ Validación con agentes reales de Supabase (no simulación)
+3. ✅ MAE promedio 3.3% (mejor histórico)
+4. ✅ Variables económicas perfectamente alineadas
+5. ✅ Separación personal/nacional lograda (14 puntos de diferencia)
+6. ✅ Base estable para iteraciones futuras
 
 ### Limitaciones Conocidas
 
 1. Solo 5 preguntas calibradas (extensible)
-2. Variables políticas en zona aceptable pero no cerrada
+2. Variables políticas (approval, direction) en zona aceptable pero no cerrada
 3. Sin persistencia de estados todavía
 4. Sin eventos de noticias automáticos
+5. Comparación operativa A/B con legacy pendiente de implementación real
 
 ### Estado Final
 
-**El motor CADEM Opinion Engine v1.1 queda calibrado para esta batería de benchmark y listo para validación A/B y despliegue controlado en staging.**
+**El motor CADEM Opinion Engine v1.1 queda calibrado para esta batería de benchmark y listo para validación operativa controlada en staging.**
 
 **Alcance de la calibración:** esta calibración se considera válida para la batería actual de 5 preguntas troncales de marzo 2026 y no debe extrapolarse automáticamente a otros módulos temáticos sin validación adicional.
+
+**Recomendación:** No se requiere más calibración contra benchmark. El siguiente paso es validación operativa en staging con encuestas seleccionadas, seguido de B2 longitudinal con persistencia real.
 
 ---
 
@@ -249,9 +242,11 @@ const base =
 - Benchmark: `data/benchmarks/cadem/normalized/cadem_marzo_2026_master.json`
 - Catálogo: `data/surveys/cadem_question_catalog_v1.json`
 - Motor: `src/app/opinionEngine/topicStateSeed.ts`
-- Reporte completo: `docs/cadem-v3/BENCHMARK_COMPARISON_FROM_SUPABASE.md`
+- Reporte benchmark Supabase: `docs/cadem-v3/BENCHMARK_COMPARISON_FROM_SUPABASE.md`
+- Tag Git: `cadem-calibrated-v4.10`
 
 ---
 
 *Documento generado automáticamente el 27 de marzo de 2026*  
-*Versión del motor: CADEM v1.1 (v4.10 congelada)*
+*Versión del motor: CADEM v1.1 (v4.10 congelada)*  
+*Validación: Agentes reales desde Supabase*
