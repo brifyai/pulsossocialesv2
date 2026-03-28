@@ -6,10 +6,8 @@
  */
 
 import type { SyntheticAgent } from '../../types/agent';
-import type { TopicState } from '../opinionEngine/types';
 import {
   type WeeklyEvent,
-  type EventCategory,
   type ExposureResult,
   type TopicShift,
   type EventImpactResult,
@@ -274,9 +272,9 @@ export function calculateAllShifts(
  */
 export function applyEventImpact(
   topicStates: Record<string, number>,
-  event: WeeklyEvent,
+  _event: WeeklyEvent,
   shifts: TopicShift[],
-  config: EventSystemConfig = DEFAULT_EVENT_CONFIG
+  _config: EventSystemConfig = DEFAULT_EVENT_CONFIG
 ): Record<string, number> {
   const updatedStates = { ...topicStates };
 
@@ -392,7 +390,7 @@ export function processMultipleEvents(
  * Genera un resumen del impacto de un evento
  */
 export function summarizeEventImpact(
-  event: WeeklyEvent,
+  _event: WeeklyEvent,
   results: EventImpactResult[]
 ): {
   eventId: string;
@@ -420,8 +418,8 @@ export function summarizeEventImpact(
     .map(([topic]) => topic);
   
   return {
-    eventId: event.id,
-    title: event.title,
+    eventId: _event.id,
+    title: _event.title,
     totalAgents: results.length,
     affectedAgents: affectedResults.length,
     averageExposure: affectedResults.reduce((sum, r) => sum + r.exposure, 0) / 

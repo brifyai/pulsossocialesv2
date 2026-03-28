@@ -7,22 +7,16 @@
  */
 
 import type { SyntheticAgent } from '../../types/agent';
-import type { TopicState } from './types';
 import {
   type WeeklyEvent,
   type EventImpactResult,
-  type TopicShift,
   type EventSystemConfig,
   DEFAULT_EVENT_CONFIG
 } from '../events/types';
 import {
-  calculateInformationProfile,
-  calculateExposure,
-  calculateAllShifts,
-  applyEventImpact,
-  processEventForAgent,
   processMultipleEvents,
-  summarizeEventImpact
+  summarizeEventImpact,
+  calculateExposure
 } from '../events/eventImpact';
 
 // ============================================================================
@@ -150,10 +144,8 @@ export function updateAgentOpinion(
   events: WeeklyEvent[],
   config: EventSystemConfig = DEFAULT_EVENT_CONFIG
 ): AgentUpdateResult {
-  const startTime = Date.now();
-  
   // Procesar todos los eventos
-  const { finalTopicStates, eventResults, totalShifts } = processMultipleEvents(
+  const { finalTopicStates, eventResults } = processMultipleEvents(
     agent,
     events,
     currentTopicStates,
@@ -218,7 +210,6 @@ export function updateBatchOpinions(
 ): BatchUpdateResult {
   const startedAt = new Date().toISOString();
   const startTime = Date.now();
-  
   const agentResults: AgentUpdateResult[] = [];
   const allEventResults: Map<string, EventImpactResult[]> = new Map();
   
