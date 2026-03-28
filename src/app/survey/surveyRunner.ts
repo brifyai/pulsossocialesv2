@@ -1,10 +1,12 @@
 import { runCademSurvey } from './cademAdapter';
 import { runCademSurveyBatchAsync } from './cademAdapterAsync';
 import { generateSurveyResponses } from './syntheticResponseEngine';
+import { getEventsByWeekKey, getWeekKeyWindow } from '../events/eventStore';
 import type { CademAdapterAgent, CademSurveyDefinition } from './cademAdapter';
 import type { UnifiedSurveyResponse, EngineMode, AgentPersistenceMeta } from './unifiedResponseEngine';
 import type { SyntheticAgent } from '../../types/agent';
 import type { SurveyQuestion } from '../../types/survey';
+import type { WeeklyEvent } from '../events/types';
 
 export interface SurveyRunnerInput {
   surveyDefinition: CademSurveyDefinition;
@@ -13,6 +15,8 @@ export interface SurveyRunnerInput {
   persistState?: boolean;
   weekKey?: string;
   debug?: boolean;
+  useEvents?: boolean;
+  eventWindowSize?: number;
 }
 
 export interface SurveyRunnerResult {
@@ -47,10 +51,28 @@ export async function runSurvey(input: SurveyRunnerInput): Promise<SurveyRunnerR
     persistState = false,
     weekKey,
     debug = false,
+    useEvents = false,
+    eventWindowSize = 2,
   } = input;
 
   let responses: UnifiedSurveyResponse[] = [];
   let persistenceMeta: AgentPersistenceMeta[] | undefined;
+  let weeklyEvents: WeeklyEvent[] = [];
+
+  // Cargar eventos si está habilitado y hay weekKey
+  if (useEvents && weekKey) {
+    const weekKeys = getWeekKeyWindow(weekKey, eventWindowSize);
+    const eventResults = await Promise.all(
+      weekKeys.map(wk => getEventsByWeekKey(wk))
+    );
+    
+    weeklyEvents = eventResults.flatMap(r => r.events);
+    
+    if (debug) {
+      console.log(`[SurveyRunner] Eventos cargados: ${weeklyEvents.length} eventos en ventana ${eventWindowSize} semanas`);
+      weeklyEvents.forEach(e => console.log(`  - ${e.weekKey}: ${e.title} (${e.category}, ${e.severity})`));
+    }
+  }
 
   // Modo legacy: motor heurístico original
   if (engineMode === 'legacy') {
@@ -126,7 +148,8 @@ export async function runSurvey(input: SurveyRunnerInput): Promise<SurveyRunnerR
         surveyTopic: surveyDefinition.topic,
         weekKey,
         mode: 'cawi',
-      }
+      },
+      weeklyEvents // Pasar eventos para aplicar impactos
     );
 
     // Flatten responses from all agents

@@ -1,0 +1,51 @@
+{
+  "surveyId": "2e9af93b-774f-4685-b98e-92bfd7b124b2",
+  "runId": "e6147164-3de6-4060-b6f3-412d55ca11db",
+  "startedAt": "2026-03-28T02:26:32.986Z",
+  "completedAt": "2026-03-28T02:41:42.579Z",
+  "durationMs": 909592,
+  "sampleSize": 1000,
+  "totalResponses": 3000,
+  "completionRate": 100,
+  "avgConfidence": 0.8263500000000004,
+  "errorRate": 0,
+  "distributions": {
+    "q_approval": {
+      "approve": 533,
+      "disapprove": 437,
+      "neutral": 0,
+      "no_response": 30
+    },
+    "q_optimism": {
+      "optimistic": 593,
+      "pessimistic": 370,
+      "neutral": 0,
+      "no_response": 36,
+      "very_optimistic": 1
+    },
+    "q_economy_personal": {
+      "better": 0,
+      "same": 0,
+      "worse": 0,
+      "bad": 471,
+      "no_response": 40,
+      "good": 489
+    }
+  },
+  "metrics": {
+    "completionRate": 100,
+    "errorVsBenchmark": null,
+    "coherence": null,
+    "executionTime": 910,
+    "errorRate": 0,
+    "timePerAgent": 0.91
+  },
+  "status": "success",
+  "errors": [],
+  "phase2Comparison": {
+    "completionRateDiff": 0,
+    "errorRateDiff": 0,
+    "confidenceDiff": 0.07500000000003126,
+    "executionTimeRatio": 2.245906172839506
+  }
+}

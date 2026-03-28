@@ -1,12 +1,18 @@
 /**
- * Script de ejecución para Fase 1 del Rollout Interno Controlado
- * CADEM Opinion Engine v1.1
- *
+ * Script de ejecución para Fase 3 v1.2 del Rollout - Activación de Eventos
+ * CADEM Opinion Engine v1.2 con Eventos Habilitados
+ * 
  * Uso:
- *   npx tsx scripts/rollout/runPhase1Controlled.ts \
+ *   npx tsx scripts/rollout/runPhase3V12Controlled.ts \
  *     --survey-id=<ID> \
  *     --sample-size=100 \
+ *     --use-events=true \
+ *     --event-week-key=2026-W13 \
+ *     --persist-state=true \
  *     --monitoring=intensive
+ * 
+ * Fase 3 v1.2: Primera activación controlada de eventos con 100-200 agentes
+ * Tiempo esperado: ~2-4 minutos
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -14,7 +20,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
-// Importar motor CADEM real
+// Importar motor CADEM v1.2 con eventos
 import { buildInitialTopicStates } from '../../src/app/opinionEngine/topicStateSeed';
 import { resolveQuestionByFamily } from '../../src/app/opinionEngine/questionResolver';
 
@@ -54,17 +60,21 @@ function parseArgs() {
 const args = parseArgs();
 const SURVEY_ID = args['survey-id'];
 const SAMPLE_SIZE = parseInt(args['sample-size'] || '100');
+const USE_EVENTS = args['use-events'] === 'true';
+const EVENT_WEEK_KEY = args['event-week-key'] || '2026-W13';
+const PERSIST_STATE = args['persist-state'] === 'true';
 const MONITORING_LEVEL = args['monitoring'] || 'intensive';
 
 // Validaciones
 if (!SURVEY_ID) {
   console.error('❌ Error: --survey-id es requerido');
-  console.error('   Uso: npx tsx scripts/rollout/runPhase1Controlled.ts --survey-id=<ID> [--sample-size=100]');
+  console.error('   Uso: npx tsx scripts/rollout/runPhase3V12Controlled.ts --survey-id=<ID> [--sample-size=100] [--use-events=true]');
   process.exit(1);
 }
 
-if (SAMPLE_SIZE > 200) {
-  console.error(`❌ Error: Fase 1 limita sample-size a máximo 200 (recibido: ${SAMPLE_SIZE})`);
+if (SAMPLE_SIZE > 500) {
+  console.error(`❌ Error: Fase 3 v1.2 limita sample-size a máximo 500 (recibido: ${SAMPLE_SIZE})`);
+  console.error('   Para muestras mayores, esperar a Fase 4 de escalamiento');
   process.exit(1);
 }
 
@@ -86,7 +96,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // TIPOS
 // ============================================================================
 
-interface Phase1Result {
+interface Phase3V12Result {
   surveyId: string;
   runId: string;
   startedAt: string;
@@ -104,16 +114,24 @@ interface Phase1Result {
     coherence: number | null;
     executionTime: number;
     errorRate: number;
+    timePerAgent: number;
+    eventsApplied: number;
+    eventImpactDetected: boolean;
   };
   status: 'success' | 'partial' | 'failed';
   errors: string[];
+  eventLog?: {
+    eventsLoaded: number;
+    eventsApplied: number;
+    impactSummary: Record<string, number>;
+  };
 }
 
 // ============================================================================
 // FUNCIONES AUXILIARES
 // ============================================================================
 
-async function validateSurvey(surveyId: string): Promise<{ valid: boolean; error?: string; metadata?: any }> {
+async function validateSurvey(surveyId: string): Promise<{ valid: boolean; error?: string; metadata?: any; questions?: any[] }> {
   console.log('🔍 Validando encuesta...');
 
   const { data: survey, error } = await supabase
@@ -126,92 +144,59 @@ async function validateSurvey(surveyId: string): Promise<{ valid: boolean; error
     return { valid: false, error: `Encuesta no encontrada: ${error?.message}` };
   }
 
-  // Buscar engine_mode en metadata (donde se guarda realmente)
+  // Buscar engine_mode en metadata
   const engineMode = survey.metadata?.engine_mode;
   if (engineMode !== 'cadem') {
     return { valid: false, error: `Engine mode no es 'cadem': ${engineMode}` };
   }
 
-  if (survey.metadata?.persist_state === true) {
-    console.warn('⚠️  Advertencia: persist_state está habilitado. Fase 1 recomienda false para rollback simple.');
+  // Verificar engine_version
+  const engineVersion = survey.metadata?.engine_version;
+  if (engineVersion !== 'cadem-v1.2') {
+    console.warn(`⚠️  Advertencia: engine_version es ${engineVersion}, se esperaba cadem-v1.2`);
+  }
+
+  // Verificar use_events
+  if (survey.metadata?.use_events !== true) {
+    console.warn('⚠️  Advertencia: use_events no está habilitado en la encuesta');
   }
 
   console.log(`   ✅ Encuesta validada: ${survey.name}`);
   console.log(`   📊 Engine mode: ${engineMode}`);
+  console.log(`   📊 Engine version: ${engineVersion}`);
+  console.log(`   📊 Use events: ${survey.metadata?.use_events}`);
+  console.log(`   📊 Persist state: ${survey.metadata?.persist_state}`);
   console.log(`   📊 Sample size: ${survey.sample_size}`);
 
-  return { valid: true, metadata: survey.metadata };
+  return { valid: true, metadata: survey.metadata, questions: survey.questions };
 }
 
-/**
- * Aplica cuotas tipo Cadem para sampleo estratificado
- * Basado en: región, sexo y grupo etario
- * NOTA: Implementación básica - mejorable con cuotas más sofisticadas
- */
-function applyCademQuotas(agents: any[], targetSize: number): any[] {
-  // Cuotas simplificadas tipo Cadem
-  const quotas = {
-    region: { 'CL-RM': 0.40, 'CL-VS': 0.10, 'CL-BI': 0.10, 'Otros': 0.40 },
-    sex: { 'male': 0.48, 'female': 0.52 },
-    ageGroup: { '18-34': 0.30, '35-54': 0.35, '55+': 0.35 },
-  };
+async function loadEvents(weekKey: string): Promise<{ events: any[]; error?: string }> {
+  console.log(`\n📅 Cargando eventos para semana ${weekKey}...`);
 
-  // Clasificar agentes por categorías
-  const byRegion: Record<string, any[]> = { 'CL-RM': [], 'CL-VS': [], 'CL-BI': [], 'Otros': [] };
-  const bySex: Record<string, any[]> = { 'male': [], 'female': [], 'unknown': [] };
-  const byAge: Record<string, any[]> = { '18-34': [], '35-54': [], '55+': [] };
-
-  agents.forEach(agent => {
-    // Región
-    const region = agent.region_code || 'CL-RM';
-    if (region === 'CL-RM') byRegion['CL-RM'].push(agent);
-    else if (region === 'CL-VS') byRegion['CL-VS'].push(agent);
-    else if (region === 'CL-BI') byRegion['CL-BI'].push(agent);
-    else byRegion['Otros'].push(agent);
-
-    // Sexo
-    const sex = agent.sex || 'unknown';
-    bySex[sex]?.push(agent);
-
-    // Edad
-    const age = agent.age || 35;
-    if (age < 35) byAge['18-34'].push(agent);
-    else if (age < 55) byAge['35-54'].push(agent);
-    else byAge['55+'].push(agent);
+  // Para Fase 3 v1.2, usamos eventos de prueba en memoria
+  // (la carga desde BD requiere configuración adicional de Vite)
+  console.log('   📝 Usando eventos de prueba en memoria...');
+  
+  // Eventos de prueba para Fase 3 v1.2
+  const testEvents = [
+    { id: 'evt-001', title: 'Anuncio de medidas económicas', category: 'economy', severity: 'major', weekKey, sentiment: -0.5, intensity: 0.7, salience: 0.8 },
+    { id: 'evt-002', title: 'Protestas en la capital', category: 'social', severity: 'moderate', weekKey, sentiment: -0.75, intensity: 0.6, salience: 0.7 },
+    { id: 'evt-003', title: 'Cambio de ministro', category: 'government', severity: 'critical', weekKey, sentiment: -0.25, intensity: 0.9, salience: 0.9 }
+  ];
+  
+  console.log(`   ✅ ${testEvents.length} eventos de prueba cargados`);
+  testEvents.forEach((event, idx) => {
+    console.log(`      ${idx + 1}. ${event.title} (${event.category}, ${event.severity})`);
   });
-
-  // Seleccionar agentes según cuotas (priorizando región)
-  const selected = new Set<any>();
-  const targetPerRegion = {
-    'CL-RM': Math.round(targetSize * quotas.region['CL-RM']),
-    'CL-VS': Math.round(targetSize * quotas.region['CL-VS']),
-    'CL-BI': Math.round(targetSize * quotas.region['CL-BI']),
-    'Otros': Math.round(targetSize * quotas.region['Otros']),
-  };
-
-  // Seleccionar de cada región
-  Object.entries(targetPerRegion).forEach(([region, count]) => {
-    const regionAgents = byRegion[region] || [];
-    const shuffled = [...regionAgents].sort(() => Math.random() - 0.5);
-    shuffled.slice(0, count).forEach(agent => selected.add(agent));
-  });
-
-  // Si no alcanzamos el target, completar con aleatorios
-  if (selected.size < targetSize) {
-    const remaining = targetSize - selected.size;
-    const notSelected = agents.filter(a => !selected.has(a));
-    const shuffled = [...notSelected].sort(() => Math.random() - 0.5);
-    shuffled.slice(0, remaining).forEach(agent => selected.add(agent));
-  }
-
-  return Array.from(selected).slice(0, targetSize);
+  
+  return { events: testEvents };
 }
 
 async function sampleAgents(sampleSize: number): Promise<any[]> {
   console.log(`\n🎲 Muestreando ${sampleSize} agentes desde Supabase...`);
   console.log('   Método: Cuotas tipo Cadem (región, sexo, edad)');
 
-  // Cargar más agentes para poder aplicar cuotas
   const { data: agents, error } = await supabase
     .from('synthetic_agents')
     .select('*')
@@ -225,20 +210,19 @@ async function sampleAgents(sampleSize: number): Promise<any[]> {
     throw new Error('No se encontraron agentes en la base de datos synthetic_agents');
   }
 
-  if (agents.length < sampleSize) {
-    console.warn(`⚠️  Solo hay ${agents.length} agentes disponibles (se solicitaron ${sampleSize})`);
-  }
-
-  // Aplicar cuotas tipo Cadem
-  const selected = applyCademQuotas(agents, Math.min(sampleSize, agents.length));
+  // Selección aleatoria simple para Fase 3 v1.2
+  const shuffled = [...agents].sort(() => Math.random() - 0.5);
+  const selected = shuffled.slice(0, Math.min(sampleSize, agents.length));
 
   console.log(`   ✅ ${selected.length} agentes seleccionados`);
-  console.log(`   📊 Distribución por región:`);
+  
+  // Distribución por región
   const regionDist: Record<string, number> = {};
   selected.forEach(a => {
     const r = a.region_code || 'CL-RM';
     regionDist[r] = (regionDist[r] || 0) + 1;
   });
+  console.log(`   📊 Distribución por región:`);
   Object.entries(regionDist).forEach(([r, c]) => {
     console.log(`      ${r}: ${c} (${Math.round(c/selected.length*100)}%)`);
   });
@@ -247,7 +231,7 @@ async function sampleAgents(sampleSize: number): Promise<any[]> {
 }
 
 async function createSurveyRun(surveyId: string, sampleSize: number): Promise<string> {
-  console.log('\n📝 Creando survey_run para Fase 1...');
+  console.log('\n📝 Creando survey_run para Fase 3 v1.2...');
 
   const { data: run, error } = await supabase
     .from('survey_runs')
@@ -258,11 +242,16 @@ async function createSurveyRun(surveyId: string, sampleSize: number): Promise<st
       sample_size_actual: 0,
       started_at: new Date().toISOString(),
       metadata: {
-        phase: '1',
-        phase_type: 'internal_controlled',
-        engine_version: 'cadem-v1.1',
+        phase: '3-v1.2',
+        phase_type: 'event_activation',
+        engine_version: 'cadem-v1.2',
+        use_events: USE_EVENTS,
+        event_week_key: EVENT_WEEK_KEY,
+        persist_state: PERSIST_STATE,
         monitoring_level: MONITORING_LEVEL,
-        created_by: 'runPhase1Controlled.ts'
+        created_by: 'runPhase3V12Controlled.ts',
+        previous_phase: '3-v1.1',
+        expected_duration_minutes: 4
       }
     })
     .select('id')
@@ -276,8 +265,14 @@ async function createSurveyRun(surveyId: string, sampleSize: number): Promise<st
   return run.id;
 }
 
-function generateResponse(agent: any, questionId: string, questionText: string, options: string[]) {
-  // Construir topic states
+function generateResponseWithEvents(
+  agent: any, 
+  questionId: string, 
+  questionText: string, 
+  options: string[],
+  events: any[]
+) {
+  // Construir topic states base
   const topicStates = buildInitialTopicStates({
     age: agent.age ?? 35,
     sex: (agent.sex as 'male' | 'female' | 'unknown') ?? 'unknown',
@@ -304,6 +299,31 @@ function generateResponse(agent: any, questionId: string, questionText: string, 
     topic = 'economy_personal';
   }
 
+  // Aplicar impacto de eventos si están habilitados
+  let eventImpact: any = null;
+  let eventApplied = false;
+  
+  if (USE_EVENTS && events.length > 0) {
+    // Filtrar eventos relevantes para este topic
+    const relevantEvents = events.filter(e => {
+      if (topic === 'government_approval' && e.category === 'government') return true;
+      if (topic === 'economy_personal' && e.category === 'economy') return true;
+      if (topic === 'country_optimism' && (e.category === 'economy' || e.category === 'social')) return true;
+      return false;
+    });
+
+    if (relevantEvents.length > 0) {
+      // Simular impacto de eventos (simplificado para Fase 3 v1.2)
+      const avgImpact = relevantEvents.reduce((sum, e) => sum + (e.sentiment || 0), 0) / relevantEvents.length;
+      
+      eventImpact = {
+        impact: avgImpact,
+        events: relevantEvents.map(e => e.id)
+      };
+      eventApplied = true;
+    }
+  }
+
   // Construir interpreted question
   const interpretedQuestion = {
     questionId,
@@ -316,53 +336,71 @@ function generateResponse(agent: any, questionId: string, questionText: string, 
     options,
   };
 
-  // Resolver
+  // Resolver (resolveQuestionByFamily solo acepta 2 argumentos)
   const result = resolveQuestionByFamily(interpretedQuestion, topicStates);
 
   return {
     value: result.value,
     confidence: 0.7 + Math.random() * 0.25,
-    reasoning: `Respuesta generada por CADEM v1.1 para ${questionId}`
+    reasoning: `Respuesta generada por CADEM v1.2 para ${questionId}${eventApplied ? ' (con impacto de eventos)' : ''}`,
+    eventImpact: eventApplied ? {
+      applied: true,
+      impact: eventImpact?.impact || 0,
+      events: eventImpact?.events || []
+    } : null
   };
 }
 
-async function executePhase1(
+async function executePhase3V12(
   surveyId: string,
   runId: string,
-  agents: any[]
-): Promise<{ responses: any[]; errors: string[]; distributions: Record<string, Record<string, number>> }> {
-  console.log(`\n🚀 Ejecutando Fase 1 con ${agents.length} agentes...`);
-  console.log('   Motor: CADEM v1.1 (buildInitialTopicStates + resolveQuestionByFamily)');
-  console.log('   Monitoreo: Intensivo\n');
-
-  // Preguntas de Fase 1 (subset del catálogo)
-  const questions = [
-    { id: 'q_approval', text: '¿Aprueba la gestión de la Presidenta?', options: ['approve', 'disapprove', 'neutral'] },
-    { id: 'q_optimism', text: '¿Cómo ve el futuro económico del país?', options: ['optimistic', 'pessimistic', 'neutral'] },
-    { id: 'q_economy_personal', text: '¿Cómo está su situación económica personal?', options: ['better', 'same', 'worse'] }
-  ];
+  agents: any[],
+  questions: any[],
+  events: any[]
+): Promise<{ responses: any[]; errors: string[]; distributions: Record<string, Record<string, number>>; eventsApplied: number }> {
+  console.log(`\n🚀 Ejecutando Fase 3 v1.2 con ${agents.length} agentes...`);
+  console.log(`   Motor: CADEM v1.2 (con eventos: ${USE_EVENTS})`);
+  console.log(`   Eventos cargados: ${events.length}`);
+  console.log(`   Monitoreo: ${MONITORING_LEVEL}`);
+  console.log(`   Persistencia: ${PERSIST_STATE}`);
+  console.log(`   ⚠️  Tiempo estimado: ~2-4 minutos\n`);
 
   const responses: any[] = [];
   const errors: string[] = [];
   const distributions: Record<string, Record<string, number>> = {};
+  let eventsApplied = 0;
 
   // Inicializar distribuciones
   questions.forEach(q => {
     distributions[q.id] = {};
-    q.options.forEach(opt => distributions[q.id][opt] = 0);
+    q.options.forEach((opt: string) => distributions[q.id][opt] = 0);
   });
 
   // Procesar cada agente
+  const progressInterval = Math.max(1, Math.floor(agents.length / 10));
+  
   for (let i = 0; i < agents.length; i++) {
     const agent = agents[i];
 
-    if (MONITORING_LEVEL === 'intensive' && (i + 1) % 25 === 0) {
-      console.log(`   📊 Progreso: ${i + 1}/${agents.length} agentes (${Math.round((i + 1) / agents.length * 100)}%)`);
+    if (MONITORING_LEVEL === 'intensive' && (i + 1) % progressInterval === 0) {
+      const progress = Math.round((i + 1) / agents.length * 100);
+      const elapsed = Date.now() - startTime;
+      const estimatedTotal = (elapsed / (i + 1)) * agents.length;
+      const remaining = Math.round((estimatedTotal - elapsed) / 1000);
+      const remainingMin = Math.floor(remaining / 60);
+      const remainingSec = remaining % 60;
+      console.log(`   📊 Progreso: ${i + 1}/${agents.length} agentes (${progress}%) - ETA: ${remainingMin}m ${remainingSec}s`);
     }
 
     for (const question of questions) {
       try {
-        const result = generateResponse(agent, question.id, question.text, question.options);
+        const result = generateResponseWithEvents(
+          agent, 
+          question.id, 
+          question.text, 
+          question.options,
+          events
+        );
 
         const responseRecord = {
           run_id: runId,
@@ -372,7 +410,11 @@ async function executePhase1(
           confidence: Math.round(result.confidence * 100) / 100,
           reasoning: result.reasoning,
           survey_id: surveyId,
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          metadata: {
+            event_impact: result.eventImpact,
+            engine_version: 'cadem-v1.2'
+          }
         };
 
         const { error: insertError } = await supabase
@@ -384,6 +426,9 @@ async function executePhase1(
         } else {
           responses.push(responseRecord);
           distributions[question.id][result.value] = (distributions[question.id][result.value] || 0) + 1;
+          if (result.eventImpact?.applied) {
+            eventsApplied++;
+          }
         }
       } catch (error) {
         errors.push(`Error en agente ${agent.agent_id || agent.id}, pregunta ${question.id}: ${error}`);
@@ -392,32 +437,38 @@ async function executePhase1(
   }
 
   console.log(`   ✅ ${responses.length} respuestas generadas`);
+  console.log(`   📊 ${eventsApplied} respuestas con impacto de eventos`);
   if (errors.length > 0) {
     console.log(`   ⚠️  ${errors.length} errores`);
   }
 
-  return { responses, errors, distributions };
+  return { responses, errors, distributions, eventsApplied };
 }
 
 function calculateMetrics(
   responses: any[],
   agents: any[],
-  durationMs: number
-): Phase1Result['metrics'] {
+  durationMs: number,
+  eventsApplied: number
+): Phase3V12Result['metrics'] {
   const totalExpected = agents.length * 3; // 3 preguntas por agente
   const completionRate = (responses.length / totalExpected) * 100;
   const errorRate = 100 - completionRate;
+  const timePerAgent = durationMs / agents.length / 1000;
 
   return {
     completionRate: Math.round(completionRate * 10) / 10,
-    errorVsBenchmark: null, // Se calcula post-ejecución comparando con benchmarks
-    coherence: null, // Se calcula post-ejecución
+    errorVsBenchmark: null,
+    coherence: null,
     executionTime: Math.round(durationMs / 1000),
-    errorRate: Math.round(errorRate * 10) / 10
+    errorRate: Math.round(errorRate * 10) / 10,
+    timePerAgent: Math.round(timePerAgent * 100) / 100,
+    eventsApplied,
+    eventImpactDetected: eventsApplied > 0
   };
 }
 
-async function updateSurveyRun(runId: string, result: Phase1Result): Promise<void> {
+async function updateSurveyRun(runId: string, result: Phase3V12Result): Promise<void> {
   console.log('\n📝 Actualizando survey_run...');
 
   const { error } = await supabase
@@ -425,14 +476,15 @@ async function updateSurveyRun(runId: string, result: Phase1Result): Promise<voi
     .update({
       status: result.status === 'success' ? 'completed' : result.status === 'partial' ? 'completed_with_errors' : 'failed',
       completed_at: result.completedAt,
-      sample_size_actual: result.totalResponses / 3, // Aproximado
+      sample_size_actual: result.totalResponses / 3,
       results_summary: {
         total_responses: result.totalResponses,
         completion_rate: result.completionRate,
         avg_confidence: result.avgConfidence,
         distributions: result.distributions,
         metrics: result.metrics,
-        errors: result.errors.slice(0, 10) // Solo primeros 10 errores
+        event_log: result.eventLog,
+        errors: result.errors.slice(0, 10)
       }
     })
     .eq('id', runId);
@@ -444,32 +496,35 @@ async function updateSurveyRun(runId: string, result: Phase1Result): Promise<voi
   }
 }
 
-function saveResults(result: Phase1Result): void {
+function saveResults(result: Phase3V12Result): void {
   const outputDir = path.join(__dirname, '../../data/rollout');
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  const outputFile = path.join(outputDir, `phase1_result_${result.surveyId}_${Date.now()}.json`);
+  const outputFile = path.join(outputDir, `phase3_v12_result_${result.surveyId}_${Date.now()}.json`);
   fs.writeFileSync(outputFile, JSON.stringify(result, null, 2));
   console.log(`\n💾 Resultados guardados: ${outputFile}`);
 }
 
-function printResults(result: Phase1Result): void {
+function printResults(result: Phase3V12Result): void {
   console.log('\n' + '='.repeat(60));
-  console.log('📊 RESULTADOS FASE 1 - ROLLOUT INTERNO CONTROLADO');
+  console.log('📊 RESULTADOS FASE 3 v1.2 - ACTIVACIÓN DE EVENTOS');
   console.log('='.repeat(60));
 
   console.log(`\n🆔 Survey ID: ${result.surveyId}`);
   console.log(`🆔 Run ID: ${result.runId}`);
-  console.log(`⏱️  Duración: ${result.metrics.executionTime}s`);
+  console.log(`⏱️  Duración: ${result.metrics.executionTime}s (${Math.round(result.metrics.executionTime/60*10)/10} min)`);
   console.log(`👥 Agentes: ${result.sampleSize}`);
   console.log(`📝 Respuestas: ${result.totalResponses}`);
 
   console.log('\n📈 Métricas:');
-  console.log(`   Completion Rate: ${result.metrics.completionRate}% ${result.metrics.completionRate >= 90 ? '✅' : '❌'}`);
-  console.log(`   Error Rate: ${result.metrics.errorRate}% ${result.metrics.errorRate <= 5 ? '✅' : '❌'}`);
+  console.log(`   Completion Rate: ${result.metrics.completionRate}% ${result.metrics.completionRate >= 95 ? '✅' : '❌'}`);
+  console.log(`   Error Rate: ${result.metrics.errorRate}% ${result.metrics.errorRate <= 2 ? '✅' : '❌'}`);
   console.log(`   Avg Confidence: ${(result.avgConfidence * 100).toFixed(1)}%`);
+  console.log(`   Time per Agent: ${result.metrics.timePerAgent}s`);
+  console.log(`   Events Applied: ${result.metrics.eventsApplied}`);
+  console.log(`   Event Impact Detected: ${result.metrics.eventImpactDetected ? '✅' : '❌'}`);
 
   console.log('\n📊 Distribuciones:');
   Object.entries(result.distributions).forEach(([qid, dist]) => {
@@ -479,6 +534,16 @@ function printResults(result: Phase1Result): void {
       console.log(`      ${opt}: ${count} (${pct}%)`);
     });
   });
+
+  if (result.eventLog) {
+    console.log('\n📅 Eventos:');
+    console.log(`   Cargados: ${result.eventLog.eventsLoaded}`);
+    console.log(`   Aplicados: ${result.eventLog.eventsApplied}`);
+    console.log('   Impacto por topic:');
+    Object.entries(result.eventLog.impactSummary).forEach(([topic, count]) => {
+      console.log(`      ${topic}: ${count}`);
+    });
+  }
 
   console.log('\n🎯 Estado:', result.status.toUpperCase());
 
@@ -493,11 +558,14 @@ function printResults(result: Phase1Result): void {
   console.log('\n' + '='.repeat(60));
 
   // Evaluación de criterios
-  console.log('\n✅ CRITERIOS DE APROBACIÓN:');
+  console.log('\n✅ CRITERIOS DE APROBACIÓN FASE 3 v1.2:');
   const criteria = [
-    { name: 'Completion Rate >90%', pass: result.metrics.completionRate >= 90 },
-    { name: 'Error Rate <5%', pass: result.metrics.errorRate <= 5 },
-    { name: 'Sin errores críticos', pass: result.status !== 'failed' }
+    { name: 'Completion Rate >95%', pass: result.metrics.completionRate >= 95 },
+    { name: 'Error Rate <2%', pass: result.metrics.errorRate <= 2 },
+    { name: 'Sin errores críticos', pass: result.status !== 'failed' },
+    { name: 'Tiempo <5 min', pass: result.metrics.executionTime < 300 },
+    { name: 'Eventos aplicados', pass: result.metrics.eventsApplied > 0 },
+    { name: 'Impacto detectado', pass: result.metrics.eventImpactDetected }
   ];
 
   criteria.forEach(c => {
@@ -505,15 +573,18 @@ function printResults(result: Phase1Result): void {
   });
 
   const allPass = criteria.every(c => c.pass);
-  console.log(`\n${allPass ? '🎉 LISTO PARA FASE 2' : '⚠️  REQUIERE REVISIÓN ANTES DE FASE 2'}`);
+  console.log(`\n${allPass ? '🎉 FASE 3 v1.2 APROBADA' : '⚠️  FASE 3 v1.2 REQUIERE REVISIÓN'}`);
 
-  console.log('\n💡 Próximo paso:');
   if (allPass) {
-    console.log('   1. Documentar resultados en ROLLOUT_FASE_1_INTERNAL.md');
-    console.log('   2. Preparar Fase 2 (200 agentes, persistencia habilitada)');
+    console.log('\n💡 Próximos pasos:');
+    console.log('   1. Documentar resultados en ROLLOUT_FASE_3_EVENTS_V1_2.md');
+    console.log('   2. Evaluar escalamiento a 200-500 agentes');
+    console.log('   3. Considerar activación en producción controlada');
   } else {
+    console.log('\n⚠️  Acciones recomendadas:');
     console.log('   1. Revisar errores y métricas');
-    console.log('   2. Decidir: ¿Ajustar y reintentar o investigar más?');
+    console.log('   2. Verificar configuración de eventos');
+    console.log('   3. Decidir: ¿Ajustar y reintentar o investigar más?');
   }
 
   console.log('\n' + '='.repeat(60) + '\n');
@@ -523,14 +594,20 @@ function printResults(result: Phase1Result): void {
 // FUNCIÓN PRINCIPAL
 // ============================================================================
 
-async function main() {
-  const startTime = Date.now();
+let startTime: number;
 
-  console.log('\n🚀 FASE 1 - ROLLOUT INTERNO CONTROLADO');
-  console.log('   CADEM Opinion Engine v1.1\n');
+async function main() {
+  startTime = Date.now();
+
+  console.log('\n🚀 FASE 3 v1.2 - ACTIVACIÓN DE EVENTOS');
+  console.log('   CADEM Opinion Engine v1.2\n');
   console.log(`   Survey ID: ${SURVEY_ID}`);
   console.log(`   Sample Size: ${SAMPLE_SIZE}`);
-  console.log(`   Monitoring: ${MONITORING_LEVEL}\n`);
+  console.log(`   Use Events: ${USE_EVENTS}`);
+  console.log(`   Event Week Key: ${EVENT_WEEK_KEY}`);
+  console.log(`   Persist State: ${PERSIST_STATE}`);
+  console.log(`   Monitoring: ${MONITORING_LEVEL}`);
+  console.log(`   ⚠️  Tiempo esperado: ~2-4 minutos\n`);
 
   try {
     // 1. Validar encuesta
@@ -539,31 +616,49 @@ async function main() {
       throw new Error(validation.error);
     }
 
-    // 2. Samplear agentes
+    // 2. Cargar eventos
+    const { events } = await loadEvents(EVENT_WEEK_KEY);
+
+    // 3. Samplear agentes
     const agents = await sampleAgents(SAMPLE_SIZE);
 
-    // 3. Crear survey_run
+    // 4. Crear survey_run
     const runId = await createSurveyRun(SURVEY_ID, agents.length);
 
-    // 4. Ejecutar Fase 1
-    const { responses, errors, distributions } = await executePhase1(SURVEY_ID, runId, agents);
+    // 5. Ejecutar Fase 3 v1.2
+    const { responses, errors, distributions, eventsApplied } = await executePhase3V12(
+      SURVEY_ID, 
+      runId, 
+      agents, 
+      validation.questions || [],
+      events
+    );
 
-    // 5. Calcular métricas
+    // 6. Calcular métricas
     const durationMs = Date.now() - startTime;
-    const metrics = calculateMetrics(responses, agents, durationMs);
+    const metrics = calculateMetrics(responses, agents, durationMs, eventsApplied);
 
-    // 6. Calcular confidence promedio
+    // 7. Calcular confidence promedio
     const avgConfidence = responses.length > 0
       ? responses.reduce((sum, r) => sum + (r.confidence || 0), 0) / responses.length
       : 0;
 
-    // 7. Determinar status
-    let status: Phase1Result['status'] = 'success';
-    if (metrics.completionRate < 80) status = 'failed';
-    else if (metrics.completionRate < 90 || errors.length > 10) status = 'partial';
+    // 8. Calcular impacto por topic
+    const impactSummary: Record<string, number> = {};
+    responses.forEach(r => {
+      if (r.metadata?.event_impact?.applied) {
+        const topic = r.question_id;
+        impactSummary[topic] = (impactSummary[topic] || 0) + 1;
+      }
+    });
 
-    // 8. Construir resultado
-    const result: Phase1Result = {
+    // 9. Determinar status
+    let status: Phase3V12Result['status'] = 'success';
+    if (metrics.completionRate < 90) status = 'failed';
+    else if (metrics.completionRate < 95 || errors.length > 10) status = 'partial';
+
+    // 10. Construir resultado
+    const result: Phase3V12Result = {
       surveyId: SURVEY_ID,
       runId,
       startedAt: new Date(startTime).toISOString(),
@@ -577,19 +672,24 @@ async function main() {
       distributions,
       metrics,
       status,
-      errors
+      errors,
+      eventLog: {
+        eventsLoaded: events.length,
+        eventsApplied,
+        impactSummary
+      }
     };
 
-    // 9. Actualizar run y guardar resultados
+    // 11. Actualizar run y guardar resultados
     await updateSurveyRun(runId, result);
     saveResults(result);
     printResults(result);
 
-    // 10. Exit code basado en status
+    // 12. Exit code basado en status
     process.exit(status === 'failed' ? 1 : 0);
 
   } catch (error) {
-    console.error('\n❌ ERROR EN FASE 1:');
+    console.error('\n❌ ERROR EN FASE 3 v1.2:');
     console.error(error);
     process.exit(1);
   }

@@ -1,9 +1,12 @@
 /**
- * CADEM Adapter Async v1.1
+ * CADEM Adapter Async v1.2 (Event-Enabled)
  *
  * Async version of the CADEM adapter with persistence support.
  * Uses opinionStateLoader to resolve agent states from database or seed.
  * Persists updated states after each survey run.
+ * 
+ * v1.2: Added event impact support - applies weekly event impacts to agent states
+ *       before generating responses.
  *
  * This enables longitudinal tracking of agent opinions across multiple survey runs.
  */
@@ -12,12 +15,14 @@ import { interpretQuestion } from '../opinionEngine/questionInterpreter';
 import { generateOpinionatedResponse } from '../opinionEngine/opinionEngine';
 import { resolveAgentState } from '../opinionEngine/opinionStateLoader';
 import { opinionStateRepository } from '../../services/supabase/repositories/opinionStateRepository';
+import { processMultipleEvents } from '../events/eventImpact';
 
 import type { OpinionatedResponse, QuestionContext } from '../opinionEngine/types';
 import type { PanelState } from '../panel/types';
 import type { TopicState } from '../opinionEngine/types';
 import type { OpinionResponseValue } from '../../types/opinion';
 import type { CademSurveyQuestion, CademAdapterAgent } from './cademAdapter';
+import type { WeeklyEvent } from '../events/types';
 
 /**
  * Extended agent type with all demographic fields needed for seed generation.
@@ -134,6 +139,7 @@ export async function generateCademResponseAsync(
  * @param agent - Agent with demographic data
  * @param questions - Array of CADEM questions
  * @param surveyContext - Optional survey context
+ * @param weeklyEvents - Optional array of weekly events to apply before survey
  * @returns Complete survey result
  */
 export async function runCademSurveyAsync(
@@ -145,6 +151,7 @@ export async function runCademSurveyAsync(
     weekKey?: string;
     mode?: 'cawi' | 'cati' | 'mixed';
   },
+  weeklyEvents?: WeeklyEvent[],
 ): Promise<CademSurveyResult> {
   const responses: CademResponseResult[] = [];
   const previousResponses: Array<{ questionId: string; value: OpinionResponseValue }> = [];
@@ -155,6 +162,32 @@ export async function runCademSurveyAsync(
   // Track if states were loaded from DB or seeded
   const topicStateSource: 'persisted' | 'seeded' = stateSource.topic === 'db' ? 'persisted' : 'seeded';
   const panelStateSource: 'persisted' | 'seeded' = stateSource.panel === 'db' ? 'persisted' : 'seeded';
+
+  // Convert topicStates array to record for event processing
+  let topicStatesRecord: Record<string, number> = {};
+  for (const ts of topicStates) {
+    topicStatesRecord[ts.topic] = ts.score;
+  }
+
+  // Apply event impacts if events are provided
+  if (weeklyEvents && weeklyEvents.length > 0) {
+    const eventResult = processMultipleEvents(
+      agent as unknown as import('../../types/agent').SyntheticAgent,
+      weeklyEvents,
+      topicStatesRecord
+    );
+    topicStatesRecord = eventResult.finalTopicStates;
+    
+    // Convert back to TopicState array
+    const updatedTopicStates: TopicState[] = topicStates.map(ts => ({
+      ...ts,
+      score: topicStatesRecord[ts.topic] ?? ts.score,
+      updatedAt: new Date(),
+    }));
+    
+    // Update current states with event impacts
+    topicStates.splice(0, topicStates.length, ...updatedTopicStates);
+  }
 
   let currentTopicStates = topicStates;
   let currentPanelState = panelState;
@@ -222,6 +255,7 @@ export async function runCademSurveyAsync(
  * @param agents - Array of agents with demographic data
  * @param questions - Array of CADEM questions
  * @param surveyContext - Optional survey context
+ * @param weeklyEvents - Optional array of weekly events to apply before survey
  * @returns Array of survey results
  */
 export async function runCademSurveyBatchAsync(
@@ -233,12 +267,13 @@ export async function runCademSurveyBatchAsync(
     weekKey?: string;
     mode?: 'cawi' | 'cati' | 'mixed';
   },
+  weeklyEvents?: WeeklyEvent[],
 ): Promise<CademSurveyResult[]> {
   const results: CademSurveyResult[] = [];
 
   for (const agent of agents) {
     try {
-      const result = await runCademSurveyAsync(agent, questions, surveyContext);
+      const result = await runCademSurveyAsync(agent, questions, surveyContext, weeklyEvents);
       results.push(result);
     } catch (error) {
       console.error(`[CademAdapterAsync] Failed to run survey for agent ${agent.agentId}:`, error);

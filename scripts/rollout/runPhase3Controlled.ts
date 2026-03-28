@@ -1,12 +1,15 @@
 /**
- * Script de ejecución para Fase 1 del Rollout Interno Controlado
+ * Script de ejecución para Fase 3 del Rollout - Escalamiento Final
  * CADEM Opinion Engine v1.1
- *
+ * 
  * Uso:
- *   npx tsx scripts/rollout/runPhase1Controlled.ts \
+ *   npx tsx scripts/rollout/runPhase3Controlled.ts \
  *     --survey-id=<ID> \
- *     --sample-size=100 \
+ *     --sample-size=1000 \
  *     --monitoring=intensive
+ * 
+ * Fase 3: Escalamiento de 500 a 1000 agentes, mismas 3 preguntas que Fases 1 y 2
+ * Tiempo esperado: ~13-14 minutos
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -53,18 +56,19 @@ function parseArgs() {
 
 const args = parseArgs();
 const SURVEY_ID = args['survey-id'];
-const SAMPLE_SIZE = parseInt(args['sample-size'] || '100');
+const SAMPLE_SIZE = parseInt(args['sample-size'] || '1000');
 const MONITORING_LEVEL = args['monitoring'] || 'intensive';
 
 // Validaciones
 if (!SURVEY_ID) {
   console.error('❌ Error: --survey-id es requerido');
-  console.error('   Uso: npx tsx scripts/rollout/runPhase1Controlled.ts --survey-id=<ID> [--sample-size=100]');
+  console.error('   Uso: npx tsx scripts/rollout/runPhase3Controlled.ts --survey-id=<ID> [--sample-size=1000]');
   process.exit(1);
 }
 
-if (SAMPLE_SIZE > 200) {
-  console.error(`❌ Error: Fase 1 limita sample-size a máximo 200 (recibido: ${SAMPLE_SIZE})`);
+if (SAMPLE_SIZE > 2000) {
+  console.error(`❌ Error: Fase 3 limita sample-size a máximo 2000 (recibido: ${SAMPLE_SIZE})`);
+  console.error('   Para muestras mayores, considerar optimizaciones de batch/concurrency');
   process.exit(1);
 }
 
@@ -86,7 +90,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // TIPOS
 // ============================================================================
 
-interface Phase1Result {
+interface Phase3Result {
   surveyId: string;
   runId: string;
   startedAt: string;
@@ -104,9 +108,16 @@ interface Phase1Result {
     coherence: number | null;
     executionTime: number;
     errorRate: number;
+    timePerAgent: number;
   };
   status: 'success' | 'partial' | 'failed';
   errors: string[];
+  phase2Comparison?: {
+    completionRateDiff: number;
+    errorRateDiff: number;
+    confidenceDiff: number;
+    executionTimeRatio: number;
+  };
 }
 
 // ============================================================================
@@ -132,13 +143,20 @@ async function validateSurvey(surveyId: string): Promise<{ valid: boolean; error
     return { valid: false, error: `Engine mode no es 'cadem': ${engineMode}` };
   }
 
+  // Verificar que sample_size sea 1000 para Fase 3
+  if (survey.sample_size !== 1000) {
+    console.warn(`⚠️  Advertencia: sample_size es ${survey.sample_size}, se esperaba 1000 para Fase 3`);
+  }
+
+  // Verificar persist_state
   if (survey.metadata?.persist_state === true) {
-    console.warn('⚠️  Advertencia: persist_state está habilitado. Fase 1 recomienda false para rollback simple.');
+    console.warn('⚠️  Advertencia: persist_state está habilitado. Fase 3 recomienda false para rollback simple.');
   }
 
   console.log(`   ✅ Encuesta validada: ${survey.name}`);
   console.log(`   📊 Engine mode: ${engineMode}`);
   console.log(`   📊 Sample size: ${survey.sample_size}`);
+  console.log(`   📊 Persist state: ${survey.metadata?.persist_state}`);
 
   return { valid: true, metadata: survey.metadata };
 }
@@ -146,7 +164,6 @@ async function validateSurvey(surveyId: string): Promise<{ valid: boolean; error
 /**
  * Aplica cuotas tipo Cadem para sampleo estratificado
  * Basado en: región, sexo y grupo etario
- * NOTA: Implementación básica - mejorable con cuotas más sofisticadas
  */
 function applyCademQuotas(agents: any[], targetSize: number): any[] {
   // Cuotas simplificadas tipo Cadem
@@ -227,6 +244,7 @@ async function sampleAgents(sampleSize: number): Promise<any[]> {
 
   if (agents.length < sampleSize) {
     console.warn(`⚠️  Solo hay ${agents.length} agentes disponibles (se solicitaron ${sampleSize})`);
+    console.warn(`   Se usarán todos los agentes disponibles: ${agents.length}`);
   }
 
   // Aplicar cuotas tipo Cadem
@@ -247,7 +265,7 @@ async function sampleAgents(sampleSize: number): Promise<any[]> {
 }
 
 async function createSurveyRun(surveyId: string, sampleSize: number): Promise<string> {
-  console.log('\n📝 Creando survey_run para Fase 1...');
+  console.log('\n📝 Creando survey_run para Fase 3...');
 
   const { data: run, error } = await supabase
     .from('survey_runs')
@@ -258,11 +276,14 @@ async function createSurveyRun(surveyId: string, sampleSize: number): Promise<st
       sample_size_actual: 0,
       started_at: new Date().toISOString(),
       metadata: {
-        phase: '1',
-        phase_type: 'internal_controlled',
+        phase: '3',
+        phase_type: 'escalamiento_final',
         engine_version: 'cadem-v1.1',
         monitoring_level: MONITORING_LEVEL,
-        created_by: 'runPhase1Controlled.ts'
+        created_by: 'runPhase3Controlled.ts',
+        previous_phase: '2',
+        target_comparison: 'fase_2_baseline',
+        expected_duration_minutes: 14
       }
     })
     .select('id')
@@ -326,16 +347,18 @@ function generateResponse(agent: any, questionId: string, questionText: string, 
   };
 }
 
-async function executePhase1(
+async function executePhase3(
   surveyId: string,
   runId: string,
   agents: any[]
 ): Promise<{ responses: any[]; errors: string[]; distributions: Record<string, Record<string, number>> }> {
-  console.log(`\n🚀 Ejecutando Fase 1 con ${agents.length} agentes...`);
+  console.log(`\n🚀 Ejecutando Fase 3 con ${agents.length} agentes...`);
   console.log('   Motor: CADEM v1.1 (buildInitialTopicStates + resolveQuestionByFamily)');
-  console.log('   Monitoreo: Intensivo\n');
+  console.log('   Monitoreo: Intensivo (cada 100 agentes)');
+  console.log('   Fase 2 baseline: 500 agentes, 405s, 100% completion, 82.56% confidence\n');
+  console.log('   ⚠️  Tiempo estimado: ~13-14 minutos\n');
 
-  // Preguntas de Fase 1 (subset del catálogo)
+  // Preguntas de Fase 3 (mismas que Fases 1 y 2)
   const questions = [
     { id: 'q_approval', text: '¿Aprueba la gestión de la Presidenta?', options: ['approve', 'disapprove', 'neutral'] },
     { id: 'q_optimism', text: '¿Cómo ve el futuro económico del país?', options: ['optimistic', 'pessimistic', 'neutral'] },
@@ -353,11 +376,19 @@ async function executePhase1(
   });
 
   // Procesar cada agente
+  const progressInterval = Math.max(1, Math.floor(agents.length / 10)); // Cada 10%
+  
   for (let i = 0; i < agents.length; i++) {
     const agent = agents[i];
 
-    if (MONITORING_LEVEL === 'intensive' && (i + 1) % 25 === 0) {
-      console.log(`   📊 Progreso: ${i + 1}/${agents.length} agentes (${Math.round((i + 1) / agents.length * 100)}%)`);
+    if (MONITORING_LEVEL === 'intensive' && (i + 1) % progressInterval === 0) {
+      const progress = Math.round((i + 1) / agents.length * 100);
+      const elapsed = Date.now() - startTime;
+      const estimatedTotal = (elapsed / (i + 1)) * agents.length;
+      const remaining = Math.round((estimatedTotal - elapsed) / 1000);
+      const remainingMin = Math.floor(remaining / 60);
+      const remainingSec = remaining % 60;
+      console.log(`   📊 Progreso: ${i + 1}/${agents.length} agentes (${progress}%) - ETA: ${remainingMin}m ${remainingSec}s`);
     }
 
     for (const question of questions) {
@@ -403,21 +434,23 @@ function calculateMetrics(
   responses: any[],
   agents: any[],
   durationMs: number
-): Phase1Result['metrics'] {
+): Phase3Result['metrics'] {
   const totalExpected = agents.length * 3; // 3 preguntas por agente
   const completionRate = (responses.length / totalExpected) * 100;
   const errorRate = 100 - completionRate;
+  const timePerAgent = durationMs / agents.length / 1000; // segundos por agente
 
   return {
     completionRate: Math.round(completionRate * 10) / 10,
     errorVsBenchmark: null, // Se calcula post-ejecución comparando con benchmarks
     coherence: null, // Se calcula post-ejecución
     executionTime: Math.round(durationMs / 1000),
-    errorRate: Math.round(errorRate * 10) / 10
+    errorRate: Math.round(errorRate * 10) / 10,
+    timePerAgent: Math.round(timePerAgent * 100) / 100
   };
 }
 
-async function updateSurveyRun(runId: string, result: Phase1Result): Promise<void> {
+async function updateSurveyRun(runId: string, result: Phase3Result): Promise<void> {
   console.log('\n📝 Actualizando survey_run...');
 
   const { error } = await supabase
@@ -432,6 +465,7 @@ async function updateSurveyRun(runId: string, result: Phase1Result): Promise<voi
         avg_confidence: result.avgConfidence,
         distributions: result.distributions,
         metrics: result.metrics,
+        phase2_comparison: result.phase2Comparison,
         errors: result.errors.slice(0, 10) // Solo primeros 10 errores
       }
     })
@@ -444,32 +478,43 @@ async function updateSurveyRun(runId: string, result: Phase1Result): Promise<voi
   }
 }
 
-function saveResults(result: Phase1Result): void {
+function saveResults(result: Phase3Result): void {
   const outputDir = path.join(__dirname, '../../data/rollout');
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  const outputFile = path.join(outputDir, `phase1_result_${result.surveyId}_${Date.now()}.json`);
+  const outputFile = path.join(outputDir, `phase3_result_${result.surveyId}_${Date.now()}.json`);
   fs.writeFileSync(outputFile, JSON.stringify(result, null, 2));
   console.log(`\n💾 Resultados guardados: ${outputFile}`);
 }
 
-function printResults(result: Phase1Result): void {
+function printResults(result: Phase3Result): void {
   console.log('\n' + '='.repeat(60));
-  console.log('📊 RESULTADOS FASE 1 - ROLLOUT INTERNO CONTROLADO');
+  console.log('📊 RESULTADOS FASE 3 - ESCALAMIENTO FINAL');
   console.log('='.repeat(60));
 
   console.log(`\n🆔 Survey ID: ${result.surveyId}`);
   console.log(`🆔 Run ID: ${result.runId}`);
-  console.log(`⏱️  Duración: ${result.metrics.executionTime}s`);
+  console.log(`⏱️  Duración: ${result.metrics.executionTime}s (${Math.round(result.metrics.executionTime/60*10)/10} min)`);
   console.log(`👥 Agentes: ${result.sampleSize}`);
   console.log(`📝 Respuestas: ${result.totalResponses}`);
 
   console.log('\n📈 Métricas:');
-  console.log(`   Completion Rate: ${result.metrics.completionRate}% ${result.metrics.completionRate >= 90 ? '✅' : '❌'}`);
-  console.log(`   Error Rate: ${result.metrics.errorRate}% ${result.metrics.errorRate <= 5 ? '✅' : '❌'}`);
+  console.log(`   Completion Rate: ${result.metrics.completionRate}% ${result.metrics.completionRate >= 95 ? '✅' : '❌'}`);
+  console.log(`   Error Rate: ${result.metrics.errorRate}% ${result.metrics.errorRate <= 2 ? '✅' : '❌'}`);
   console.log(`   Avg Confidence: ${(result.avgConfidence * 100).toFixed(1)}%`);
+  console.log(`   Time per Agent: ${result.metrics.timePerAgent}s`);
+
+  // Comparación con Fase 2
+  if (result.phase2Comparison) {
+    console.log('\n📊 Comparación con Fase 2:');
+    const comp = result.phase2Comparison;
+    console.log(`   Completion Rate: ${comp.completionRateDiff >= 0 ? '+' : ''}${comp.completionRateDiff.toFixed(1)}% ${Math.abs(comp.completionRateDiff) <= 5 ? '✅' : '⚠️'}`);
+    console.log(`   Error Rate: ${comp.errorRateDiff >= 0 ? '+' : ''}${comp.errorRateDiff.toFixed(1)}% ${Math.abs(comp.errorRateDiff) <= 2 ? '✅' : '⚠️'}`);
+    console.log(`   Confidence: ${comp.confidenceDiff >= 0 ? '+' : ''}${comp.confidenceDiff.toFixed(1)}% ${Math.abs(comp.confidenceDiff) <= 5 ? '✅' : '⚠️'}`);
+    console.log(`   Time Ratio: ${comp.executionTimeRatio.toFixed(1)}x ${comp.executionTimeRatio <= 2.5 ? '✅' : '⚠️'}`);
+  }
 
   console.log('\n📊 Distribuciones:');
   Object.entries(result.distributions).forEach(([qid, dist]) => {
@@ -493,11 +538,15 @@ function printResults(result: Phase1Result): void {
   console.log('\n' + '='.repeat(60));
 
   // Evaluación de criterios
-  console.log('\n✅ CRITERIOS DE APROBACIÓN:');
+  console.log('\n✅ CRITERIOS DE APROBACIÓN FASE 3:');
   const criteria = [
-    { name: 'Completion Rate >90%', pass: result.metrics.completionRate >= 90 },
-    { name: 'Error Rate <5%', pass: result.metrics.errorRate <= 5 },
-    { name: 'Sin errores críticos', pass: result.status !== 'failed' }
+    { name: 'Completion Rate >95%', pass: result.metrics.completionRate >= 95 },
+    { name: 'Error Rate <2%', pass: result.metrics.errorRate <= 2 },
+    { name: 'Sin errores críticos', pass: result.status !== 'failed' },
+    { name: 'Tiempo <20 min', pass: result.metrics.executionTime < 1200 },
+    { name: 'Consistente con Fase 2', pass: result.phase2Comparison ? 
+      (Math.abs(result.phase2Comparison.completionRateDiff) <= 5 && 
+       Math.abs(result.phase2Comparison.confidenceDiff) <= 5) : true }
   ];
 
   criteria.forEach(c => {
@@ -505,15 +554,18 @@ function printResults(result: Phase1Result): void {
   });
 
   const allPass = criteria.every(c => c.pass);
-  console.log(`\n${allPass ? '🎉 LISTO PARA FASE 2' : '⚠️  REQUIERE REVISIÓN ANTES DE FASE 2'}`);
+  console.log(`\n${allPass ? '🎉 FASE 3 APROBADA' : '⚠️  FASE 3 REQUIERE REVISIÓN'}`);
 
-  console.log('\n💡 Próximo paso:');
   if (allPass) {
-    console.log('   1. Documentar resultados en ROLLOUT_FASE_1_INTERNAL.md');
-    console.log('   2. Preparar Fase 2 (200 agentes, persistencia habilitada)');
+    console.log('\n💡 Próximos pasos:');
+    console.log('   1. Documentar resultados en ROLLOUT_FASE_3_INTERNAL.md');
+    console.log('   2. Evaluar rollout a producción con persistencia habilitada');
+    console.log('   3. Considerar optimizaciones de performance para volúmenes mayores');
   } else {
+    console.log('\n⚠️  Acciones recomendadas:');
     console.log('   1. Revisar errores y métricas');
-    console.log('   2. Decidir: ¿Ajustar y reintentar o investigar más?');
+    console.log('   2. Comparar con baseline de Fase 2');
+    console.log('   3. Decidir: ¿Ajustar y reintentar o investigar más?');
   }
 
   console.log('\n' + '='.repeat(60) + '\n');
@@ -523,14 +575,18 @@ function printResults(result: Phase1Result): void {
 // FUNCIÓN PRINCIPAL
 // ============================================================================
 
-async function main() {
-  const startTime = Date.now();
+let startTime: number;
 
-  console.log('\n🚀 FASE 1 - ROLLOUT INTERNO CONTROLADO');
+async function main() {
+  startTime = Date.now();
+
+  console.log('\n🚀 FASE 3 - ESCALAMIENTO FINAL');
   console.log('   CADEM Opinion Engine v1.1\n');
   console.log(`   Survey ID: ${SURVEY_ID}`);
   console.log(`   Sample Size: ${SAMPLE_SIZE}`);
-  console.log(`   Monitoring: ${MONITORING_LEVEL}\n`);
+  console.log(`   Monitoring: ${MONITORING_LEVEL}`);
+  console.log(`   Baseline: Fase 2 (500 agentes, 100% completion, 82.56% confidence, 405s)`);
+  console.log(`   ⚠️  Tiempo esperado: ~13-14 minutos\n`);
 
   try {
     // 1. Validar encuesta
@@ -545,8 +601,8 @@ async function main() {
     // 3. Crear survey_run
     const runId = await createSurveyRun(SURVEY_ID, agents.length);
 
-    // 4. Ejecutar Fase 1
-    const { responses, errors, distributions } = await executePhase1(SURVEY_ID, runId, agents);
+    // 4. Ejecutar Fase 3
+    const { responses, errors, distributions } = await executePhase3(SURVEY_ID, runId, agents);
 
     // 5. Calcular métricas
     const durationMs = Date.now() - startTime;
@@ -557,13 +613,21 @@ async function main() {
       ? responses.reduce((sum, r) => sum + (r.confidence || 0), 0) / responses.length
       : 0;
 
-    // 7. Determinar status
-    let status: Phase1Result['status'] = 'success';
-    if (metrics.completionRate < 80) status = 'failed';
-    else if (metrics.completionRate < 90 || errors.length > 10) status = 'partial';
+    // 7. Comparar con Fase 2
+    const phase2Comparison = {
+      completionRateDiff: metrics.completionRate - 100, // Fase 2: 100%
+      errorRateDiff: metrics.errorRate - 0, // Fase 2: 0%
+      confidenceDiff: (avgConfidence * 100) - 82.56, // Fase 2: 82.56%
+      executionTimeRatio: durationMs / 405000 // Fase 2: ~405s
+    };
 
-    // 8. Construir resultado
-    const result: Phase1Result = {
+    // 8. Determinar status
+    let status: Phase3Result['status'] = 'success';
+    if (metrics.completionRate < 90) status = 'failed';
+    else if (metrics.completionRate < 95 || errors.length > 40) status = 'partial';
+
+    // 9. Construir resultado
+    const result: Phase3Result = {
       surveyId: SURVEY_ID,
       runId,
       startedAt: new Date(startTime).toISOString(),
@@ -577,19 +641,20 @@ async function main() {
       distributions,
       metrics,
       status,
-      errors
+      errors,
+      phase2Comparison
     };
 
-    // 9. Actualizar run y guardar resultados
+    // 10. Actualizar run y guardar resultados
     await updateSurveyRun(runId, result);
     saveResults(result);
     printResults(result);
 
-    // 10. Exit code basado en status
+    // 11. Exit code basado en status
     process.exit(status === 'failed' ? 1 : 0);
 
   } catch (error) {
-    console.error('\n❌ ERROR EN FASE 1:');
+    console.error('\n❌ ERROR EN FASE 3:');
     console.error(error);
     process.exit(1);
   }

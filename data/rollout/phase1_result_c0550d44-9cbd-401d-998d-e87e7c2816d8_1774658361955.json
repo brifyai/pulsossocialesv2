@@ -1,0 +1,43 @@
+{
+  "surveyId": "c0550d44-9cbd-401d-998d-e87e7c2816d8",
+  "runId": "fb7ddcb9-087d-4f09-97da-e9a5698626fb",
+  "startedAt": "2026-03-28T00:38:07.142Z",
+  "completedAt": "2026-03-28T00:39:21.715Z",
+  "durationMs": 74573,
+  "sampleSize": 100,
+  "totalResponses": 300,
+  "completionRate": 100,
+  "avgConfidence": 0.831433333333333,
+  "errorRate": 0,
+  "distributions": {
+    "q_approval": {
+      "approve": 49,
+      "disapprove": 47,
+      "neutral": 0,
+      "no_response": 4
+    },
+    "q_optimism": {
+      "optimistic": 62,
+      "pessimistic": 36,
+      "neutral": 0,
+      "no_response": 2
+    },
+    "q_economy_personal": {
+      "better": 0,
+      "same": 0,
+      "worse": 0,
+      "good": 54,
+      "bad": 45,
+      "no_response": 1
+    }
+  },
+  "metrics": {
+    "completionRate": 100,
+    "errorVsBenchmark": null,
+    "coherence": null,
+    "executionTime": 75,
+    "errorRate": 0
+  },
+  "status": "success",
+  "errors": []
+}
