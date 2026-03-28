@@ -1,8 +1,9 @@
 -- Migration: Create agent_topic_state table
 -- CADEM Opinion Engine v1.1 - Persistencia de estados de topic
+-- CORREGIDO: Agregada FK a synthetic_agents(agent_id)
 
 CREATE TABLE IF NOT EXISTS agent_topic_state (
-  agent_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL REFERENCES synthetic_agents(agent_id) ON DELETE CASCADE,
   topic TEXT NOT NULL,
   score FLOAT NOT NULL,
   confidence FLOAT NOT NULL DEFAULT 0.5,

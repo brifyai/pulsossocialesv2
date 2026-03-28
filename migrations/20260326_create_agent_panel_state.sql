@@ -1,8 +1,9 @@
 -- Migration: Create agent_panel_state table
 -- CADEM Opinion Engine v1.1 - Persistencia de estado del panel
+-- CORREGIDO: Agregada FK a synthetic_agents(agent_id)
 
 CREATE TABLE IF NOT EXISTS agent_panel_state (
-  agent_id TEXT PRIMARY KEY,
+  agent_id TEXT PRIMARY KEY REFERENCES synthetic_agents(agent_id) ON DELETE CASCADE,
   eligible_web BOOLEAN DEFAULT true,
   participation_propensity FLOAT DEFAULT 0.5,
   panel_fatigue FLOAT DEFAULT 0.0,

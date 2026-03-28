@@ -1,0 +1,93 @@
+{
+  "wave": 2,
+  "wave_date": "2026-03-27",
+  "survey_id": "ef3a0444-81fa-4b9a-bb4a-6874d3ce6f8b",
+  "run_id": "9da384c9-fcb7-4eb1-af78-15e8d339f7b7",
+  "total_agents": 200,
+  "responses": [
+    {
+      "run_id": "9da384c9-fcb7-4eb1-af78-15e8d339f7b7",
+      "agent_id": "7540475_1_3",
+      "question_id": "q_approval",
+      "value": "disapprove",
+      "confidence": 0.9,
+      "reasoning": "Respuesta generada por motor CADEM para q_approval",
+      "survey_id": "ef3a0444-81fa-4b9a-bb4a-6874d3ce6f8b",
+      "created_at": "2026-03-27T22:00:51.029Z"
+    },
+    {
+      "run_id": "9da384c9-fcb7-4eb1-af78-15e8d339f7b7",
+      "agent_id": "7540475_1_3",
+      "question_id": "q_optimism",
+      "value": "pessimistic",
+      "confidence": 0.72,
+      "reasoning": "Respuesta generada por motor CADEM para q_optimism",
+      "survey_id": "ef3a0444-81fa-4b9a-bb4a-6874d3ce6f8b",
+      "created_at": "2026-03-27T22:00:51.272Z"
+    },
+    {
+      "run_id": "9da384c9-fcb7-4eb1-af78-15e8d339f7b7",
+      "agent_id": "7540475_1_3",
+      "question_id": "q_economy_personal",
+      "value": "bad",
+      "confidence": 0.94,
+      "reasoning": "Respuesta generada por motor CADEM para q_economy_personal",
+      "survey_id": "ef3a0444-81fa-4b9a-bb4a-6874d3ce6f8b",
+      "created_at": "2026-03-27T22:00:51.603Z"
+    },
+    {
+      "run_id": "9da384c9-fcb7-4eb1-af78-15e8d339f7b7",
+      "agent_id": "5011787_1_2",
+      "question_id": "q_approval",
+      "value": "disapprove",
+      "confidence": 0.82,
+      "reasoning": "Respuesta generada por motor CADEM para q_approval",
+      "survey_id": "ef3a0444-81fa-4b9a-bb4a-6874d3ce6f8b",
+      "created_at": "2026-03-27T22:00:51.914Z"
+    },
+    {
+      "run_id": "9da384c9-fcb7-4eb1-af78-15e8d339f7b7",
+      "agent_id": "5011787_1_2",
+      "question_id": "q_optimism",
+      "value": "optimistic",
+      "confidence": 0.89,
+      "reasoning": "Respuesta generada por motor CADEM para q_optimism",
+      "survey_id": "ef3a0444-81fa-4b9a-bb4a-6874d3ce6f8b",
+      "created_at": "2026-03-27T22:00:52.217Z"
+    }
+  ],
+  "distributions": {
+    "q_approval": {
+      "Aprueba": 0,
+      "Desaprueba": 0,
+      "No responde": 0,
+      "disapprove": 42.5,
+      "approve": 55,
+      "no_response": 2.5
+    },
+    "q_optimism": {
+      "Muy optimista": 0,
+      "Optimista": 0,
+      "Pesimista": 0,
+      "Muy pesimista": 0,
+      "No responde": 0,
+      "pessimistic": 38,
+      "optimistic": 57.5,
+      "no_response": 4,
+      "very_optimistic": 0.5
+    },
+    "q_economy_personal": {
+      "Muy buena": 0,
+      "Buena": 0,
+      "Mala": 0,
+      "Muy mala": 0,
+      "No responde": 0,
+      "bad": 52,
+      "good": 43,
+      "no_response": 5
+    }
+  },
+  "avg_confidence": 0.8176263306921384,
+  "duration_ms": 160501,
+  "completed_at": "2026-03-27T22:03:28.917Z"
+}

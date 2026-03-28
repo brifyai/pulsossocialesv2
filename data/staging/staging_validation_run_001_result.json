@@ -1,0 +1,77 @@
+{
+  "surveyId": "8a220499-a6a2-422c-aba8-936e0dcbb941",
+  "runId": "d87bcac0-047c-4414-9b46-12d324b875c8",
+  "surveyName": "Staging Test 001 - CADEM Calibrated",
+  "startedAt": "2026-03-27T17:28:05.346Z",
+  "completedAt": "2026-03-27T17:28:11.065Z",
+  "durationMs": 5719,
+  "totalAgents": 200,
+  "totalResponses": 600,
+  "avgConfidence": 0.8193666666666675,
+  "questions": {
+    "q_approval": {
+      "text": "Ahora. Independiente de su posición política, ¿Usted aprueba o desaprueba la forma cómo José Antonio Kast está conduciendo su Gobierno?",
+      "responses": {
+        "disapprove": 87,
+        "approve": 108,
+        "no_response": 5
+      },
+      "distribution": {
+        "disapprove": 43.5,
+        "approve": 54,
+        "no_response": 2.5
+      },
+      "confidence": {
+        "avg": 0.82,
+        "min": 0.7,
+        "max": 0.95
+      }
+    },
+    "q_optimism": {
+      "text": "En general, ¿Cómo se siente usted acerca del futuro del país?",
+      "responses": {
+        "optimistic": 121,
+        "pessimistic": 71,
+        "very_optimistic": 2,
+        "no_response": 6
+      },
+      "distribution": {
+        "optimistic": 60.5,
+        "pessimistic": 35.5,
+        "very_optimistic": 1,
+        "no_response": 3
+      },
+      "confidence": {
+        "avg": 0.82,
+        "min": 0.7,
+        "max": 0.95
+      }
+    },
+    "q_economy_personal": {
+      "text": "¿Cómo calificaría usted la situación económica actual de usted y su familia?",
+      "responses": {
+        "bad": 84,
+        "good": 111,
+        "no_response": 5
+      },
+      "distribution": {
+        "bad": 42,
+        "good": 55.5,
+        "no_response": 2.5
+      },
+      "confidence": {
+        "avg": 0.82,
+        "min": 0.7,
+        "max": 0.95
+      }
+    }
+  },
+  "metadata": {
+    "engineMode": "cadem",
+    "engineVersion": "cadem-v1.1",
+    "persistState": false,
+    "sampleSize": 200,
+    "catalogVersion": "1.0.0"
+  },
+  "errors": []
+}
