@@ -1,9 +1,9 @@
 # DECISIÓN FINAL: CADEM Opinion Engine v1.2
 ## Aprobación para Producción Controlada
 
-**Fecha:** 2026-03-28  
-**Versión:** 1.0  
-**Estado:** ✅ **APROBADO**
+**Fecha:** 2026-03-29  
+**Versión:** 1.1  
+**Estado:** ✅ **APROBADO - ACTUALIZADO CON ESCALAMIENTO A 500 AGENTES**
 
 ---
 
@@ -21,8 +21,9 @@ Esta decisión formaliza el cierre de la fase de validación y establece las pol
 | Fase 2 v1.1 | ✅ Aprobada | 500 agentes, escalamiento validado |
 | Fase 3 v1.1 | ✅ Aprobada | 1,000 agentes, producción controlada |
 | Fase 3 v1.2 | ✅ Aprobada | 100 agentes, eventos activados |
+| **Fase 3 v1.2 - 500** | ✅ **Aprobada** | **500 agentes, eventos validados operativamente** |
 
-**Veredicto:** El sistema ya no es solo una capacidad técnica, sino una **capacidad operativa validada**.
+**Veredicto:** El sistema ya no es solo una capacidad técnica, sino una **capacidad operativa validada**. CADEM v1.2 con eventos está **aprobada para producción controlada con 500 agentes**.
 
 ---
 
@@ -97,10 +98,11 @@ Esta decisión formaliza el cierre de la fase de validación y establece las pol
 
 | Aspecto | Límite | Razón |
 |---------|--------|-------|
-| Sample size inicial | 100-500 agentes | Validación progresiva |
+| Sample size validado | 100-500 agentes | Validación operativa completada |
 | Eventos por semana | Máximo 5 | Evitar sobrecarga |
 | Severidad mínima | moderate | Eventos menores ignorados |
 | Persistencia | Opcional | No obligatoria en todas las encuestas |
+| Tiempo esperado (500) | ~7 min | Basado en ejecución real |
 
 ### Restricciones Operativas
 
@@ -173,10 +175,11 @@ sample_method: cadem_quotas
 - [ ] Crear dashboard de eventos
 
 ### Corto plazo (1-2 meses)
-- [ ] Escalar v1.2 a 500 agentes
+- [x] Escalar v1.2 a 500 agentes ✅ **COMPLETADO**
 - [ ] Validar v1.2 con eventos reales (no de prueba)
 - [ ] Implementar UI de gestión de eventos
 - [ ] Documentar lecciones aprendidas
+- [ ] Evaluar escalamiento a 1,000 agentes con eventos
 
 ### Mediano plazo (3-6 meses)
 - [ ] Evaluar v1.3 (ingestión automática de eventos)
@@ -218,7 +221,8 @@ sample_method: cadem_quotas
 - [x] Fase 1 v1.1 completada y aprobada
 - [x] Fase 2 v1.1 completada y aprobada
 - [x] Fase 3 v1.1 completada y aprobada
-- [x] Fase 3 v1.2 completada y aprobada
+- [x] Fase 3 v1.2 completada y aprobada (100 agentes)
+- [x] Fase 3 v1.2 - 500 agentes completada y aprobada
 - [x] Política operativa definida
 - [x] Límites y restricciones establecidos
 - [x] Métricas de monitoreo definidas
@@ -258,20 +262,28 @@ Para issues técnicos:
 
 ## 🏁 Conclusión
 
-**CADEM Opinion Engine v1.2 está aprobado para producción controlada.**
+**CADEM Opinion Engine v1.2 está aprobado para producción controlada con 500 agentes.**
 
 El sistema ha demostrado:
 - ✅ Estabilidad en v1.1 (baseline)
 - ✅ Funcionalidad en v1.2 (eventos)
-- ✅ Escalabilidad (hasta 1,000 agentes)
+- ✅ Escalabilidad (hasta 1,000 agentes en v1.1, 500 en v1.2)
 - ✅ Robustez (0% error rate)
+- ✅ Eventos aplicados correctamente (1500 eventos en ejecución de 500 agentes)
+- ✅ Confidence mantenido > 75% (82.4% en escala)
 
-**Próximo paso:** Implementar esta política operativa y comenzar a usar v1.2 en casos de uso apropiados, manteniendo v1.1 como baseline estable.
+**Estado de v1.2:** Aprobada para producción controlada con eventos, con observación menor de performance a 500 agentes (6.9 min), sin impacto crítico en calidad ni estabilidad.
+
+**Próximo paso:** 
+1. Implementar esta política operativa
+2. Comenzar a usar v1.2 en casos de uso apropiados (100-500 agentes)
+3. Evaluar escalamiento a 1,000 agentes con eventos
+4. Mantener v1.1 como baseline estable para tracking longitudinal
 
 ---
 
-**Documento aprobado el:** 2026-03-28  
-**Próxima revisión:** 2026-04-28 (o antes si hay incidentes)  
-**Versión:** 1.0
+**Documento aprobado el:** 2026-03-29  
+**Próxima revisión:** 2026-04-29 (o antes si hay incidentes)  
+**Versión:** 1.1
 
-> **"Con Fase 3 v1.2 aprobada, el sistema ya está listo para producción controlada con eventos; el siguiente paso lógico es formalizar cuándo usar v1.1 y cuándo usar v1.2, no seguir improvisando."**
+> **"Con Fase 3 v1.2 aprobada a 500 agentes, CADEM v1.2 puede considerarse validada operativamente para uso controlado con eventos en producción interna."**
