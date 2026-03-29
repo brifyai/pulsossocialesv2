@@ -3,11 +3,14 @@
  * 
  * Carga los agentes sintéticos desde el JSON empaquetado en el bundle.
  * Esto elimina la dependencia de archivos externos en producción.
+ * 
+ * ACTUALIZADO: 2026-03-29 - getUniqueRegions y getUniqueCommunes ahora usan Supabase
  */
 
 import type { SyntheticAgentsData, SyntheticAgent } from '../types/agent';
 // Importar el JSON directamente para que se empaquete en el bundle
 import agentsDataJson from '../../data/processed/synthetic_agents_v1.json';
+import { getRegions, getComunasByRegion } from '../services/supabase/repositories/territoryRepository';
 
 let cachedData: SyntheticAgentsData | null = null;
 
@@ -43,41 +46,76 @@ export async function getAllAgents(): Promise<SyntheticAgent[]> {
 }
 
 /**
- * Get unique regions from agents
+ * Get unique regions from Supabase territories table
+ * NOTA: Ahora consulta Supabase en lugar de los datos locales de agentes
  */
 export async function getUniqueRegions(): Promise<Array<{ code: string; name: string }>> {
-  const agents = await getAllAgents();
-  const regionMap = new Map<string, string>();
-  
-  agents.forEach(agent => {
-    if (!regionMap.has(agent.region_code)) {
-      regionMap.set(agent.region_code, agent.region_name);
-    }
-  });
-  
-  return Array.from(regionMap.entries()).map(([code, name]) => ({ code, name }));
+  try {
+    const regions = await getRegions();
+    return regions.map(r => ({ code: r.code, name: r.name }));
+  } catch (error) {
+    console.warn('[syntheticAgents] Error fetching regions from Supabase, falling back to local agents:', error);
+    // Fallback: usar datos locales de agentes
+    const agents = await getAllAgents();
+    const regionMap = new Map<string, string>();
+    
+    agents.forEach(agent => {
+      if (!regionMap.has(agent.region_code)) {
+        regionMap.set(agent.region_code, agent.region_name);
+      }
+    });
+    
+    return Array.from(regionMap.entries()).map(([code, name]) => ({ code, name }));
+  }
 }
 
 /**
- * Get unique communes from agents (optionally filtered by region)
+ * Get unique communes from Supabase territories table (optionally filtered by region)
+ * NOTA: Ahora consulta Supabase en lugar de los datos locales de agentes
  */
 export async function getUniqueCommunes(regionCode?: string): Promise<Array<{ code: string; name: string }>> {
-  const agents = await getAllAgents();
-  const comunaMap = new Map<string, string>();
-  
-  agents.forEach(agent => {
-    if (!regionCode || agent.region_code === regionCode) {
-      const key = `${agent.region_code}-${agent.comuna_code}`;
-      if (!comunaMap.has(key)) {
-        comunaMap.set(key, agent.comuna_name);
-      }
+  try {
+    if (regionCode) {
+      const comunas = await getComunasByRegion(regionCode);
+      return comunas.map(c => ({ code: c.code, name: c.name }));
+    } else {
+      // Si no hay región específica, retornar todas las comunas
+      // Nota: getComunasByRegion no tiene opción para "todas", así que usamos fallback
+      const agents = await getAllAgents();
+      const comunaMap = new Map<string, string>();
+      
+      agents.forEach(agent => {
+        const key = `${agent.region_code}-${agent.comuna_code}`;
+        if (!comunaMap.has(key)) {
+          comunaMap.set(key, agent.comuna_name);
+        }
+      });
+      
+      return Array.from(comunaMap.entries()).map(([key, name]) => {
+        const code = key.split('-')[1];
+        return { code, name };
+      });
     }
-  });
-  
-  return Array.from(comunaMap.entries()).map(([key, name]) => {
-    const code = key.split('-')[1];
-    return { code, name };
-  });
+  } catch (error) {
+    console.warn('[syntheticAgents] Error fetching communes from Supabase, falling back to local agents:', error);
+    // Fallback: usar datos locales de agentes
+    const agents = await getAllAgents();
+    const comunaMap = new Map<string, string>();
+    
+    agents.forEach(agent => {
+      if (!regionCode || agent.region_code === regionCode) {
+        const key = `${agent.region_code}-${agent.comuna_code}`;
+        if (!comunaMap.has(key)) {
+          comunaMap.set(key, agent.comuna_name);
+        }
+      }
+    });
+    
+    return Array.from(comunaMap.entries()).map(([key, name]) => {
+      const code = key.split('-')[1];
+      return { code, name };
+    });
+  }
 }
 
 /**

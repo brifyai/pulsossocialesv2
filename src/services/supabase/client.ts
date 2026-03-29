@@ -24,13 +24,28 @@ export interface SupabaseStatus {
 // Configuration
 // ===========================================
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// Soporte tanto para Vite (import.meta.env) como Node.js (process.env)
+const getEnvVar = (name: string): string => {
+  // Intentar import.meta.env primero (Vite)
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    return import.meta.env[name] || '';
+  }
+  // Fallback a process.env (Node.js)
+  if (typeof process !== 'undefined' && process.env) {
+    return process.env[name] || '';
+  }
+  return '';
+};
+
+const SUPABASE_URL = getEnvVar('VITE_SUPABASE_URL');
+// Usar SERVICE_KEY con prioridad (para scripts internos), fallback a ANON_KEY (para frontend)
+const SUPABASE_KEY = getEnvVar('VITE_SUPABASE_SERVICE_KEY') || getEnvVar('VITE_SUPABASE_ANON_KEY');
 
 // Debug: Verificar variables de entorno en build-time
 console.log('[ENV CHECK]', {
-  supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-  hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY,
+  supabaseUrl: SUPABASE_URL ? '***configured***' : '***missing***',
+  hasKey: !!SUPABASE_KEY,
+  keyType: getEnvVar('VITE_SUPABASE_SERVICE_KEY') ? 'service' : 'anon',
 });
 
 // ===========================================
@@ -109,7 +124,7 @@ export function getConnectionStatus(): {
 async function loadSupabaseModule(): Promise<typeof import('@supabase/supabase-js') | null> {
   try {
     // Dynamic import - only loads if Supabase is configured
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
       return null;
     }
     // Import dinámico
@@ -139,12 +154,12 @@ export async function initSupabase(): Promise<SupabaseStatus> {
 
   initializationPromise = (async (): Promise<SupabaseStatus> => {
     // Check if configured
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      logFallback('Supabase no configurado - faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY');
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      logFallback('Supabase no configurado - faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY/SERVICE_KEY');
       const status: SupabaseStatus = {
         isAvailable: false,
         isConnected: false,
-        error: 'Supabase not configured (VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY required)',
+        error: 'Supabase not configured (VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY or VITE_SUPABASE_SERVICE_KEY required)',
       };
       lastKnownStatus = status;
       return status;
@@ -169,7 +184,7 @@ export async function initSupabase(): Promise<SupabaseStatus> {
 
       // Create client
       const { createClient } = supabaseModule;
-      const client = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      const client = createClient<Database>(SUPABASE_URL, SUPABASE_KEY, {
         auth: {
           autoRefreshToken: true,
           persistSession: true,
@@ -345,7 +360,7 @@ export async function safeQueryWithFallback<T>(
  * Check if Supabase is configured (has env vars)
  */
 export function isSupabaseConfigured(): boolean {
-  return !!SUPABASE_URL && !!SUPABASE_ANON_KEY;
+  return !!SUPABASE_URL && !!SUPABASE_KEY;
 }
 
 /**

@@ -40,7 +40,7 @@ export async function createSurveysPage(): Promise<HTMLElement> {
   page.className = 'page surveys-page';
   page.id = 'surveys-page';
   
-  // Cargar datos iniciales
+  // Cargar datos iniciales - usar todas las regiones de Chile desde Supabase
   regions = await getUniqueRegions();
   
   // Crear encuestas de ejemplo si no hay ninguna

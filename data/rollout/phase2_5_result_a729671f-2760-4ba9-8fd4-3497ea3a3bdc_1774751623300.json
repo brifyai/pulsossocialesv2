@@ -1,0 +1,15 @@
+{
+  "surveyId": "a729671f-2760-4ba9-8fd4-3497ea3a3bdc",
+  "responses": [],
+  "summary": {
+    "totalAgents": 100,
+    "completed": 0,
+    "errors": 0,
+    "noResponse": 0,
+    "completionRate": 0,
+    "errorRate": 0,
+    "noResponseRate": 0,
+    "avgConfidence": 0,
+    "duration": 25268
+  }
+}
