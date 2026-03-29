@@ -16,6 +16,7 @@ import './styles/benchmarks.css';
 import './styles/methodology.css';
 import './styles/landing.css';
 import './styles/auth.css';
+import './styles/scenarios.css';
 
 // Router & Auth
 import { 
@@ -45,6 +46,7 @@ import { createBenchmarksPage, cleanupBenchmarksPage } from './pages/BenchmarksP
 import { createMethodologyPage, cleanupMethodologyPage } from './pages/MethodologyPage';
 import { createProfilePage, cleanupProfilePage } from './pages/ProfilePage';
 import { createSettingsPage, cleanupSettingsPage } from './pages/SettingsPage';
+import { createScenarioBuilderPage, cleanupScenarioBuilderPage } from './pages/ScenarioBuilderPage';
 
 // App state
 let navigation: HTMLElement | null = null;
@@ -207,6 +209,8 @@ async function renderProtectedPage(route: Route): Promise<HTMLElement | null> {
       return createProfilePage();
     case 'settings':
       return createSettingsPage();
+    case 'scenarios':
+      return await createScenarioBuilderPage();
     default:
       return createHomePage();
   }
@@ -296,6 +300,11 @@ function cleanupMapResources(currentRoute: Route): void {
   // Cleanup settings page if leaving settings route
   if (currentRoute !== 'settings') {
     cleanupSettingsPage();
+  }
+
+  // Cleanup scenario builder page if leaving scenarios route
+  if (currentRoute !== 'scenarios') {
+    cleanupScenarioBuilderPage();
   }
 }
 

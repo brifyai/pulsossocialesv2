@@ -274,13 +274,15 @@ function estimateCountryDirection(
   securityPerception: number,
   politicalIdentity: number,
 ): number {
-  // Reducida cascada: menos dependencia de optimismo, más independencia
+  // FIX q_direction: Reducido peso de optimism de 0.2 a 0.05 para evitar acoplamiento excesivo
+  // que causaba comportamiento inconsistente en escenarios económicos negativos.
+  // Aumentado ligeramente economyNational para mantener sensibilidad a factores económicos.
   const base =
-    optimism * 0.2 +
-    economyNational * 0.2 +
-    securityPerception * 0.1 +
-    politicalIdentity * 0.15 +
-    components.income * 0.1 +
+    optimism * 0.05 +        // Reducido de 0.2: optimism es volátil, no debería dominar
+    economyNational * 0.25 + // Aumentado de 0.2: más peso a factores económicos concretos
+    securityPerception * 0.15 + // Aumentado ligeramente
+    politicalIdentity * 0.20 +  // Aumentado: identidad política es más estable
+    components.income * 0.15 +  // Aumentado: ingreso es factor objetivo
     components.noiseDirection * 1.3;
 
   return safeScore(base);

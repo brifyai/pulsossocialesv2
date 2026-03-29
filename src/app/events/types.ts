@@ -291,6 +291,10 @@ export interface CategoryParams {
 
 /**
  * Mapeo de categorías de eventos a topics que afectan
+ * 
+ * NOTA DE CALIBRACIÓN (Iteración 1 - 29/03/2026):
+ * - Agregado 'government_approval' a economía (efecto indirecto vía economía)
+ * - Crisis económicas afectan aprobación del gobierno
  */
 export const CATEGORY_TOPIC_MAP: Record<EventCategory, string[]> = {
   government: [
@@ -301,7 +305,8 @@ export const CATEGORY_TOPIC_MAP: Record<EventCategory, string[]> = {
     'economy_national',
     'economy_personal',
     'country_optimism',
-    'country_direction'
+    'country_direction',
+    'government_approval'  // Nuevo: efecto indirecto de economía sobre aprobación
   ],
   security: [
     'security_perception',
@@ -326,10 +331,17 @@ export const CATEGORY_TOPIC_MAP: Record<EventCategory, string[]> = {
 
 /**
  * Configuración por defecto del sistema de eventos
+ * 
+ * NOTA DE CALIBRACIÓN (Iteración 1 - 29/03/2026):
+ * - globalAttenuation: 0.7 → 0.85 (aumentar impacto visible)
+ * - maxShiftPerEvent: 0.15 → 0.20 (permitir cambios más fuertes)
+ * 
+ * Basado en diagnóstico: el problema principal es magnitud, no dirección.
+ * Valores conservadores para evitar sobreajuste.
  */
 export const DEFAULT_EVENT_CONFIG: EventSystemConfig = {
-  globalAttenuation: 0.7,      // Atenuación del 30%
-  maxShiftPerEvent: 0.15,      // Máximo 15% de cambio por evento
+  globalAttenuation: 0.85,     // Atenuación del 15% (era 30%)
+  maxShiftPerEvent: 0.20,      // Máximo 20% de cambio por evento (era 15%)
   minExposureThreshold: 0.3,   // Mínimo 30% de exposición
   eventWindowWeeks: 4,         // Eventos de últimas 4 semanas
   weeklyDecayRate: 0.15        // Decay del 15% por semana
@@ -345,7 +357,10 @@ export const CATEGORY_PARAMS: Record<EventCategory, CategoryParams> = {
     minSeverity: 'moderate'
   },
   economy: {
-    impactMultiplier: 0.9,
+    // NOTA DE CALIBRACIÓN (Iteración 1 - 29/03/2026):
+    // impactMultiplier: 0.9 → 1.1 (aumentar impacto de eventos económicos)
+    // Valor conservador para evitar sobreajuste. Iteración 2 puede subir a 1.2 si es necesario.
+    impactMultiplier: 1.1,
     defaultTopics: ['economy_national', 'economy_personal', 'country_optimism'],
     minSeverity: 'moderate'
   },

@@ -2,6 +2,7 @@ import { runCademSurvey } from './cademAdapter';
 import { runCademSurveyBatchAsync } from './cademAdapterAsync';
 import { generateSurveyResponses } from './syntheticResponseEngine';
 import { getEventsByWeekKey, getWeekKeyWindow } from '../events/eventStore';
+import { getScenarioById, scenarioToWeeklyEvent } from '../events/scenarioEventStore';
 import type { CademAdapterAgent, CademSurveyDefinition } from './cademAdapter';
 import type { UnifiedSurveyResponse, EngineMode, AgentPersistenceMeta } from './unifiedResponseEngine';
 import type { SyntheticAgent } from '../../types/agent';
@@ -17,6 +18,8 @@ export interface SurveyRunnerInput {
   debug?: boolean;
   useEvents?: boolean;
   eventWindowSize?: number;
+  /** ID del escenario hipotético a aplicar (opcional) */
+  scenarioEventId?: string;
 }
 
 export interface SurveyRunnerResult {
@@ -53,6 +56,7 @@ export async function runSurvey(input: SurveyRunnerInput): Promise<SurveyRunnerR
     debug = false,
     useEvents = false,
     eventWindowSize = 2,
+    scenarioEventId,
   } = input;
 
   let responses: UnifiedSurveyResponse[] = [];
@@ -71,6 +75,26 @@ export async function runSurvey(input: SurveyRunnerInput): Promise<SurveyRunnerR
     if (debug) {
       console.log(`[SurveyRunner] Eventos cargados: ${weeklyEvents.length} eventos en ventana ${eventWindowSize} semanas`);
       weeklyEvents.forEach(e => console.log(`  - ${e.weekKey}: ${e.title} (${e.category}, ${e.severity})`));
+    }
+  }
+
+  // Cargar escenario hipotético si se proporciona
+  if (scenarioEventId) {
+    const scenarioResult = await getScenarioById(scenarioEventId);
+    
+    if (scenarioResult.success && scenarioResult.data) {
+      const scenarioEvent = scenarioToWeeklyEvent(scenarioResult.data, weekKey || 'SCENARIO');
+      weeklyEvents.push(scenarioEvent);
+      
+      if (debug) {
+        console.log(`[SurveyRunner] Escenario aplicado: ${scenarioEvent.title}`);
+        console.log(`  - Categoría: ${scenarioEvent.category}`);
+        console.log(`  - Severidad: ${scenarioEvent.severity}`);
+        console.log(`  - Sentimiento: ${scenarioEvent.sentiment}`);
+        console.log(`  - Intensidad: ${scenarioEvent.intensity}`);
+      }
+    } else {
+      console.warn(`[SurveyRunner] No se pudo cargar el escenario ${scenarioEventId}: ${scenarioResult.error}`);
     }
   }
 

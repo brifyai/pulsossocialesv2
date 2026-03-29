@@ -1,0 +1,63 @@
+{
+  "surveyId": "46d9d0c3-bda8-487c-8924-7b83284d8ff7",
+  "runId": "a10ce970-c39a-4772-b169-8e35883cd696",
+  "startedAt": "2026-03-29T04:06:27.952Z",
+  "completedAt": "2026-03-29T04:13:20.370Z",
+  "durationMs": 412417,
+  "sampleSize": 500,
+  "totalResponses": 1500,
+  "completionRate": 100,
+  "avgConfidence": 0.8241733333333325,
+  "errorRate": 0,
+  "distributions": {
+    "q_approval": {
+      "Aprueba": 0,
+      "Desaprueba": 0,
+      "No responde": 0,
+      "approve": 257,
+      "disapprove": 234,
+      "no_response": 9
+    },
+    "q_optimism": {
+      "Muy optimista": 0,
+      "Optimista": 0,
+      "Pesimista": 0,
+      "Muy pesimista": 0,
+      "No responde": 0,
+      "pessimistic": 182,
+      "optimistic": 303,
+      "no_response": 15
+    },
+    "q_economy_personal": {
+      "Muy buena": 0,
+      "Buena": 0,
+      "Mala": 0,
+      "Muy mala": 0,
+      "No responde": 0,
+      "good": 258,
+      "bad": 227,
+      "no_response": 15
+    }
+  },
+  "metrics": {
+    "completionRate": 100,
+    "errorVsBenchmark": null,
+    "coherence": null,
+    "executionTime": 412,
+    "errorRate": 0,
+    "timePerAgent": 0.82,
+    "eventsApplied": 1500,
+    "eventImpactDetected": true
+  },
+  "status": "success",
+  "errors": [],
+  "eventLog": {
+    "eventsLoaded": 3,
+    "eventsApplied": 1500,
+    "impactSummary": {
+      "q_approval": 500,
+      "q_optimism": 500,
+      "q_economy_personal": 500
+    }
+  }
+}

@@ -6,7 +6,7 @@
  */
 
 import type { SupabaseClient as RealSupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '../../types/database';
+import type { Database } from '../../types/database.ts';
 
 // ===========================================
 // Types
