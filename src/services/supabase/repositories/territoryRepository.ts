@@ -170,7 +170,8 @@ export async function getTerritoryByComunaCode(comunaCode: string): Promise<DbTe
 
 /**
  * Get all regions
- * NOTA: Usa region_code y region_name que son las columnas existentes en DB
+ * NOTA: Obtiene regiones únicas de los registros de comunas (usando region_code y region_name)
+ * ya que la tabla no tiene registros de tipo 'region', solo 'comuna'
  */
 export async function getRegions(): Promise<Territory[]> {
   console.log('[🟢 TerritoryRepository] getRegions() - Intentando leer de Supabase...');
@@ -185,10 +186,11 @@ export async function getRegions(): Promise<Territory[]> {
 
   try {
     console.log('[🟢 TerritoryRepository] Ejecutando query a territories...');
+    // Obtener todas las comunas y extraer regiones únicas
     const { data, error } = await client
       .from('territories')
       .select('region_code, region_name, centroid')
-      .eq('level', 'region')
+      .eq('level', 'comuna')
       .order('region_code');
 
     if (error) {
@@ -196,13 +198,20 @@ export async function getRegions(): Promise<Territory[]> {
       throw error;
     }
 
-    // Mapear usando region_code y region_name
-    const regions = (data || []).map((t: any) => ({
-      code: t.region_code,
-      name: t.region_name,
-      centroid: t.centroid,
-    }));
-    console.log(`[🟢 TerritoryRepository] ✅ Datos de SUPABASE: ${regions.length} regiones`);
+    // Extraer regiones únicas de las comunas
+    const regionMap = new Map<string, Territory>();
+    (data || []).forEach((t: any) => {
+      if (t.region_code && !regionMap.has(t.region_code)) {
+        regionMap.set(t.region_code, {
+          code: t.region_code,
+          name: t.region_name,
+          centroid: t.centroid,
+        });
+      }
+    });
+
+    const regions = Array.from(regionMap.values());
+    console.log(`[🟢 TerritoryRepository] ✅ Datos de SUPABASE: ${regions.length} regiones únicas extraídas de comunas`);
     return regions;
   } catch (error) {
     console.warn('[🟡 TerritoryRepository] Query failed, usando fallback:', error);
