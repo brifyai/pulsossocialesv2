@@ -199,9 +199,10 @@ export async function getAgentById(agentId: string): Promise<SyntheticAgent | nu
 }
 
 /**
- * Get unique regions from agents
- * Sprint 10B: Obtiene regiones únicas donde hay agentes reales
- * NOTA: Consulta synthetic_agents para obtener solo regiones con datos
+ * Get unique regions from territories table
+ * Sprint 10B: Obtiene TODAS las regiones de Chile desde la tabla territories
+ * NOTA: Consulta territories para obtener todas las regiones disponibles,
+ * no solo las que tienen agentes asignados
  */
 export async function getUniqueRegions(): Promise<Array<{ code: string; name: string }>> {
   const client = await getSupabaseClient();
@@ -212,37 +213,28 @@ export async function getUniqueRegions(): Promise<Array<{ code: string; name: st
   }
 
   try {
-    // Obtener regiones únicas desde los agentes reales
-    const { data: agents, error } = await client
-      .from('synthetic_agents')
-      .select('region_code')
-      .order('region_code');
+    // Obtener TODAS las regiones desde la tabla territories
+    const { data: territories, error } = await client
+      .from('territories')
+      .select('code, name')
+      .eq('level', 'region')
+      .order('code');
 
     if (error) throw error;
 
-    if (agents && agents.length > 0) {
-      // Extraer regiones únicas
-      const uniqueRegions = new Map<string, string>();
+    if (territories && territories.length > 0) {
+      // Mapear a formato de región
+      const result: Array<{ code: string; name: string }> = territories.map((t: any) => ({
+        code: t.code,
+        name: t.name || `Región ${t.code}`
+      }));
       
-      (agents as any[]).forEach((agent: any) => {
-        const code = agent.region_code;
-        if (code && !uniqueRegions.has(code)) {
-          // Obtener nombre de región desde el caché o usar el código como fallback
-          uniqueRegions.set(code, code); // Temporalmente usamos el código como nombre
-        }
-      });
-      
-      // Convertir a array y obtener nombres reales
-      const result: Array<{ code: string; name: string }> = [];
-      for (const [code, _] of uniqueRegions) {
-        const name = await getRegionName(code);
-        result.push({ code, name: name !== code ? name : `Región ${code}` });
-      }
-      
-      return result.sort((a, b) => a.code.localeCompare(b.code));
+      console.log(`[🟢 AgentRepository] Cargadas ${result.length} regiones desde territories`);
+      return result;
     }
 
-    // Si no hay agentes, fallback a datos locales
+    // Si no hay regiones en territories, fallback a datos locales
+    console.warn('[🟡 AgentRepository] No se encontraron regiones en territories, usando fallback');
     return getLocalUniqueRegions();
   } catch (error) {
     console.warn('[AgentRepository] Query failed, using fallback:', error);
