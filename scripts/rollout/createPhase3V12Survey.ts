@@ -42,6 +42,8 @@ const args = process.argv.slice(2);
 const useEvents = args.includes('--use-events=true') || args.includes('--use-events');
 const eventWeekKey = args.find(arg => arg.startsWith('--event-week-key='))?.split('=')[1] || '2026-W13';
 const persistState = args.includes('--persist-state=true') || args.includes('--persist-state');
+const sampleSizeArg = args.find(arg => arg.startsWith('--sample-size='))?.split('=')[1];
+const SAMPLE_SIZE = sampleSizeArg ? parseInt(sampleSizeArg) : 100;
 
 async function loadQuestionCatalog(): Promise<any[]> {
   const catalogPath = path.join(__dirname, '../../data/surveys/cadem_question_catalog_v1.json');
@@ -96,7 +98,7 @@ async function createSurveyWithQuestions(questions: any[]): Promise<string | nul
   console.log('📝 Creando encuesta de Fase 3 v1.2...');
   console.log(`   Nombre: ${SURVEY_NAME}`);
   console.log(`   Slug: ${SURVEY_SLUG}`);
-  console.log(`   Sample size: 100-200 (conservador para primera prueba)`);
+  console.log(`   Sample size: ${SAMPLE_SIZE}`);
   console.log(`   Engine mode: cadem`);
   console.log(`   Engine version: cadem-v1.2`);
   console.log(`   Use events: ${useEvents}`);
@@ -121,7 +123,7 @@ async function createSurveyWithQuestions(questions: any[]): Promise<string | nul
     slug: SURVEY_SLUG,
     description: 'Fase 3 v1.2 - Primera activación controlada de eventos con 100-200 agentes',
     status: 'draft',
-    sample_size: 100, // Conservador para primera prueba
+    sample_size: SAMPLE_SIZE,
     questions: embeddedQuestions,
     segment: {
       type: 'national',
@@ -167,12 +169,12 @@ async function createSurveyWithQuestions(questions: any[]): Promise<string | nul
 async function main() {
   console.log('🚀 FASE 3 v1.2 ROLLOUT - Creación de Encuesta con Eventos\n');
   console.log('   Activación controlada de eventos');
-  console.log('   Sample size: 100-200 agentes (conservador)');
+  console.log(`   Sample size: ${SAMPLE_SIZE} agentes`);
   console.log('   Mismas 3 preguntas que Fases 1-3 v1.1');
   console.log('   Eventos habilitados: true');
   console.log('   Persistencia: true');
   console.log('   Event week key: 2026-W13\n');
-  console.log('   ⚠️  NOTA: Tiempo esperado ~2-4 minutos para 100 agentes\n');
+  console.log(`   ⚠️  NOTA: Tiempo esperado ~${Math.round(SAMPLE_SIZE * 0.8 / 60)}-${Math.round(SAMPLE_SIZE * 1.2 / 60)} minutos para ${SAMPLE_SIZE} agentes\n`);
 
   // Verificar si ya existe
   const existingSurvey = await checkExistingSurvey();
@@ -220,7 +222,7 @@ async function main() {
   console.log(`   Nombre: ${SURVEY_NAME}`);
   console.log(`   Slug: ${SURVEY_SLUG}`);
   console.log(`   Status: draft`);
-  console.log(`   Sample size: 100 (conservador)`);
+  console.log(`   Sample size: ${SAMPLE_SIZE}`);
   console.log(`   Engine mode: cadem`);
   console.log(`   Engine version: cadem-v1.2`);
   console.log(`   Use events: ${useEvents}`);
@@ -229,11 +231,17 @@ async function main() {
   console.log(`   Preguntas: ${selectedQuestions.length}`);
   console.log(`   Sample method: cadem_quotas`);
   console.log(`   Fase anterior: 3-v1.1 (comparabilidad mantenida)`);
-  console.log(`   Tiempo esperado: ~2-4 minutos para 100 agentes`);
+  console.log(`   Tiempo esperado: ~${Math.round(SAMPLE_SIZE * 0.8 / 60)}-${Math.round(SAMPLE_SIZE * 1.2 / 60)} minutos para ${SAMPLE_SIZE} agentes`);
   console.log('\n➡️  Próximo paso: Ejecutar la encuesta con:');
-  console.log(`   npx tsx scripts/rollout/runPhase3Controlled.ts --survey-id=${surveyId} --sample-size=100 --use-events=true --event-week-key=${eventWeekKey} --persist-state=true --monitoring=intensive`);
-  console.log('\n⚠️  ADVERTENCIA: Esta es la primera activación de eventos en entorno controlado.');
-  console.log('   Mantener sample size conservador (100) y monitoreo intensivo.');
+  console.log(`   npx tsx scripts/rollout/runPhase3V12Controlled.ts --survey-id=${surveyId} --sample-size=${SAMPLE_SIZE} --use-events=true --event-week-key=${eventWeekKey} --persist-state=true --monitoring=intensive`);
+  
+  if (SAMPLE_SIZE <= 200) {
+    console.log('\n⚠️  ADVERTENCIA: Esta es la primera activación de eventos en entorno controlado.');
+    console.log('   Mantener sample size conservador (100-200) y monitoreo intensivo.');
+  } else {
+    console.log('\n📊 Escalamiento a mayor volumen detectado.');
+    console.log('   Monitorear métricas de confidence y performance.');
+  }
 }
 
 main().catch(error => {
