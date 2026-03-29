@@ -23,6 +23,146 @@ import type { TopicState } from '../opinionEngine/types';
 import type { OpinionResponseValue } from '../../types/opinion';
 import type { CademSurveyQuestion, CademAdapterAgent } from './cademAdapter';
 import type { WeeklyEvent } from '../events/types';
+import type { SyntheticAgent } from '../../types/agent';
+
+/**
+ * Convierte un CademAdapterAgent a SyntheticAgent para el sistema de eventos.
+ * Mapea campos de camelCase a snake_case según corresponda.
+ * Usa valores por defecto seguros para campos no disponibles en CademAdapterAgent.
+ */
+export function toSyntheticAgent(agent: CademAdapterAgent): SyntheticAgent {
+  // Determinar age_group basado en age
+  const age = agent.age ?? 35;
+  let age_group: import('../../types/agent').AgeGroup = 'adult';
+  if (age < 18) age_group = 'youth';
+  else if (age < 35) age_group = 'adult';
+  else if (age < 60) age_group = 'middle_age';
+  else age_group = 'senior';
+
+  // Mapear sex a tipo correcto
+  const sex: import('../../types/agent').Sex = agent.sex === 'female' ? 'female' : 'male';
+
+  // Mapear educationLevel a EducationLevel
+  const educationLevelMap: Record<string, import('../../types/agent').EducationLevel> = {
+    'none': 'none',
+    'primary': 'primary',
+    'secondary': 'secondary',
+    'technical': 'technical',
+    'university': 'university',
+    'postgraduate': 'postgraduate',
+  };
+  const education_level = agent.educationLevel 
+    ? (educationLevelMap[agent.educationLevel] ?? 'secondary')
+    : 'secondary';
+
+  // Mapear povertyStatus a PovertyStatus
+  const povertyStatusMap: Record<string, import('../../types/agent').PovertyStatus> = {
+    'extreme_poverty': 'extreme_poverty',
+    'poverty': 'poverty',
+    'vulnerable': 'vulnerable',
+    'middle_class': 'middle_class',
+    'upper_middle': 'upper_middle',
+    'upper_class': 'upper_class',
+  };
+  const poverty_status = agent.povertyStatus
+    ? (povertyStatusMap[agent.povertyStatus] ?? 'middle_class')
+    : 'middle_class';
+
+  // Mapear connectivityLevel a ConnectivityLevel
+  const connectivityMap: Record<string, import('../../types/agent').ConnectivityLevel> = {
+    'none': 'none',
+    'low': 'low',
+    'medium': 'medium',
+    'high': 'high',
+    'very_high': 'very_high',
+  };
+  const connectivity_level = agent.connectivityLevel
+    ? (connectivityMap[agent.connectivityLevel] ?? 'medium')
+    : 'medium';
+
+  // Mapear digitalExposure a DigitalExposureLevel
+  const digitalExposureMap: Record<string, import('../../types/agent').DigitalExposureLevel> = {
+    'none': 'none',
+    'low': 'low',
+    'medium': 'medium',
+    'high': 'high',
+    'very_high': 'very_high',
+  };
+  const digital_exposure_level = agent.digitalExposure
+    ? (digitalExposureMap[agent.digitalExposure] ?? 'medium')
+    : 'medium';
+
+  // Mapear preferredChannel a SurveyChannel
+  const channelMap: Record<string, import('../../types/agent').SurveyChannel> = {
+    'phone': 'phone',
+    'online': 'online',
+    'in_person': 'in_person',
+    'mixed': 'mixed',
+  };
+  const preferred_survey_channel = agent.preferredChannel
+    ? (channelMap[agent.preferredChannel] ?? 'online')
+    : 'online';
+
+  // Mapear agentType a SyntheticAgentType
+  const agentTypeMap: Record<string, import('../../types/agent').SyntheticAgentType> = {
+    'resident': 'resident',
+    'retiree': 'retiree',
+    'student': 'student',
+    'entrepreneur': 'entrepreneur',
+    'worker': 'worker',
+  };
+  const agent_type = agent.agentType
+    ? (agentTypeMap[agent.agentType] ?? 'resident')
+    : 'resident';
+
+  // Inferir socioeconomic_level basado en incomeDecile o povertyStatus
+  let socioeconomic_level: import('../../types/agent').SocioeconomicLevel = 'medium';
+  if (agent.incomeDecile !== undefined) {
+    if (agent.incomeDecile <= 3) socioeconomic_level = 'low';
+    else if (agent.incomeDecile >= 8) socioeconomic_level = 'high';
+    else socioeconomic_level = 'medium';
+  } else if (agent.povertyStatus) {
+    if (['extreme_poverty', 'poverty'].includes(agent.povertyStatus)) {
+      socioeconomic_level = 'low';
+    } else if (['upper_middle', 'upper_class'].includes(agent.povertyStatus)) {
+      socioeconomic_level = 'high';
+    }
+  }
+
+  return {
+    agent_id: agent.agentId,
+    synthetic_batch_id: 'cadem-adapter-batch',
+    source_version: 'cadem-v1.2',
+    created_at: new Date().toISOString(),
+    country_code: 'CL',
+    region_code: agent.regionCode ?? '13',
+    region_name: 'Metropolitana', // Valor por defecto, no disponible en CademAdapterAgent
+    comuna_code: agent.communeCode ?? agent.regionCode ?? '13',
+    comuna_name: 'Santiago', // Valor por defecto, no disponible en CademAdapterAgent
+    urbanicity: 'urban', // Valor por defecto, no disponible en CademAdapterAgent
+    sex,
+    age,
+    age_group,
+    household_size: 3, // Valor por defecto, no disponible en CademAdapterAgent
+    household_type: 'family', // Valor por defecto, no disponible en CademAdapterAgent
+    income_decile: agent.incomeDecile ?? 5,
+    poverty_status,
+    education_level,
+    occupation_status: 'employed', // Valor por defecto, no disponible en CademAdapterAgent
+    occupation_group: null, // No disponible en CademAdapterAgent
+    socioeconomic_level,
+    connectivity_level,
+    digital_exposure_level,
+    preferred_survey_channel,
+    agent_type,
+    backbone_key: agent.agentId, // Usar agentId como fallback
+    subtel_profile_key: null, // No disponible en CademAdapterAgent
+    casen_profile_key: null, // No disponible en CademAdapterAgent
+    generation_notes: 'Converted from CademAdapterAgent for event processing',
+    location_lat: null, // No disponible en CademAdapterAgent
+    location_lng: null, // No disponible en CademAdapterAgent
+  };
+}
 
 /**
  * Extended agent type with all demographic fields needed for seed generation.
@@ -172,7 +312,7 @@ export async function runCademSurveyAsync(
   // Apply event impacts if events are provided
   if (weeklyEvents && weeklyEvents.length > 0) {
     const eventResult = processMultipleEvents(
-      agent as unknown as import('../../types/agent').SyntheticAgent,
+      toSyntheticAgent(agent),
       weeklyEvents,
       topicStatesRecord
     );
@@ -243,7 +383,7 @@ export async function runCademSurveyAsync(
     finalTopicStates: currentTopicStates,
     finalPanelState: currentPanelState,
     completedAt: new Date(),
-    engineVersion: 'cadem-v1.1',
+    engineVersion: 'cadem-v1.2',
     persistenceMeta,
   };
 }

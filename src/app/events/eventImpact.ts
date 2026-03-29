@@ -101,8 +101,12 @@ export function calculateExposure(
   
   // Coincidencia demográfica con segmentos afectados
   let demographicMatch = 0.5;
-  if (event.affectedSegments && event.affectedSegments.length > 0) {
-    const matches = event.affectedSegments.filter(segment => {
+  
+  // Asegurar que affectedSegments sea un array válido
+  const affectedSegments = Array.isArray(event.affectedSegments) ? event.affectedSegments : [];
+  
+  if (affectedSegments.length > 0) {
+    const matches = affectedSegments.filter(segment => {
       if (segment.regionCode && agent.region_code !== segment.regionCode) return false;
       if (segment.comunaCode && agent.comuna_code !== segment.comunaCode) return false;
       if (segment.sesGroup && agent.socioeconomic_level !== segment.sesGroup) return false;
@@ -119,12 +123,13 @@ export function calculateExposure(
   
   // Proximidad geográfica
   let geographicProximity = 0.5;
-  const isLocalEvent = event.affectedSegments?.some(s => s.regionCode && s.regionCode !== '13');
+  const safeAffectedSegments = Array.isArray(event.affectedSegments) ? event.affectedSegments : [];
+  const isLocalEvent = safeAffectedSegments.some(s => s.regionCode && s.regionCode !== '13');
   const isNationalEvent = !isLocalEvent || event.severity === 'critical';
   
   if (isLocalEvent && agent.region_code !== '13') {
     // Evento local en regiones: mayor impacto en regiones afectadas
-    const isInAffectedRegion = event.affectedSegments?.some(s => s.regionCode === agent.region_code);
+    const isInAffectedRegion = safeAffectedSegments.some(s => s.regionCode === agent.region_code);
     geographicProximity = isInAffectedRegion ? 0.9 : 0.3;
   } else if (isNationalEvent) {
     // Evento nacional: todos tienen cierta exposición
