@@ -1,8 +1,11 @@
 /**
  * Supabase Client - Sprint 9
- * 
+ *
  * Cliente de Supabase con lazy loading y fallback automático.
  * Si Supabase no está configurado, la app funciona con datos locales.
+ *
+ * SEGURIDAD: Este cliente usa SOLO ANON_KEY para el frontend.
+ * Para operaciones privilegiadas (scripts), usar createServiceClient() desde scripts/.
  */
 
 import type { SupabaseClient as RealSupabaseClient } from '@supabase/supabase-js';
@@ -38,14 +41,15 @@ const getEnvVar = (name: string): string => {
 };
 
 const SUPABASE_URL = getEnvVar('VITE_SUPABASE_URL');
-// Usar SERVICE_KEY con prioridad (para scripts internos), fallback a ANON_KEY (para frontend)
-const SUPABASE_KEY = getEnvVar('VITE_SUPABASE_SERVICE_KEY') || getEnvVar('VITE_SUPABASE_ANON_KEY');
+// ⚠️ SEGURIDAD: Frontend usa SOLO ANON_KEY
+// SERVICE_KEY está prohibido en el frontend - usar solo en scripts
+const SUPABASE_KEY = getEnvVar('VITE_SUPABASE_ANON_KEY');
 
 // Debug: Verificar variables de entorno en build-time
 console.log('[ENV CHECK]', {
   supabaseUrl: SUPABASE_URL ? '***configured***' : '***missing***',
   hasKey: !!SUPABASE_KEY,
-  keyType: getEnvVar('VITE_SUPABASE_SERVICE_KEY') ? 'service' : 'anon',
+  keyType: 'anon',
 });
 
 // ===========================================
@@ -78,39 +82,39 @@ function logError(message: string, error?: unknown): void {
 /**
  * Obtener el estado actual de conexión para mostrar en UI
  */
-export function getConnectionStatus(): { 
-  mode: 'db' | 'fallback' | 'unknown'; 
+export function getConnectionStatus(): {
+  mode: 'db' | 'fallback' | 'unknown';
   details: string;
   isConfigured: boolean;
 } {
   if (!isSupabaseConfigured()) {
-    return { 
-      mode: 'fallback', 
+    return {
+      mode: 'fallback',
       details: 'Supabase no configurado - usando datos locales',
-      isConfigured: false 
+      isConfigured: false
     };
   }
-  
+
   if (!lastKnownStatus) {
-    return { 
-      mode: 'unknown', 
+    return {
+      mode: 'unknown',
       details: 'Verificando conexión...',
-      isConfigured: true 
+      isConfigured: true
     };
   }
-  
+
   if (lastKnownStatus.isConnected) {
-    return { 
-      mode: 'db', 
+    return {
+      mode: 'db',
       details: 'Conectado a Supabase',
-      isConfigured: true 
+      isConfigured: true
     };
   }
-  
-  return { 
-    mode: 'fallback', 
-    details: `Error de conexión: ${lastKnownStatus.error || 'Desconocido'} - usando datos locales`,
-    isConfigured: true 
+
+  return {
+    mode: 'fallback',
+    details: `Error de conexión: ${lastKnownStatus.error || 'Desconido'} - usando datos locales`,
+    isConfigured: true
   };
 }
 
@@ -142,7 +146,7 @@ async function loadSupabaseModule(): Promise<typeof import('@supabase/supabase-j
 
 /**
  * Initialize Supabase client (lazy loading)
- * 
+ *
  * Returns status without throwing - app continues to work
  * even if Supabase is not configured or fails to connect.
  */
@@ -155,11 +159,11 @@ export async function initSupabase(): Promise<SupabaseStatus> {
   initializationPromise = (async (): Promise<SupabaseStatus> => {
     // Check if configured
     if (!SUPABASE_URL || !SUPABASE_KEY) {
-      logFallback('Supabase no configurado - faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY/SERVICE_KEY');
+      logFallback('Supabase no configurado - faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY');
       const status: SupabaseStatus = {
         isAvailable: false,
         isConnected: false,
-        error: 'Supabase not configured (VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY or VITE_SUPABASE_SERVICE_KEY required)',
+        error: 'Supabase not configured (VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY required)',
       };
       lastKnownStatus = status;
       return status;
@@ -170,7 +174,7 @@ export async function initSupabase(): Promise<SupabaseStatus> {
     try {
       // Dynamically load supabase module
       const supabaseModule = await loadSupabaseModule();
-      
+
       if (!supabaseModule) {
         logError('No se pudo cargar el módulo de Supabase');
         const status: SupabaseStatus = {
@@ -191,46 +195,46 @@ export async function initSupabase(): Promise<SupabaseStatus> {
         },
       });
 
-    // Test connection with detailed error diagnosis
-    logDb('Probando conexión a tabla territories...');
-    const { error, count } = await client.from('territories').select('id', { count: 'exact', head: true });
+      // Test connection with detailed error diagnosis
+      logDb('Probando conexión a tabla territories...');
+      const { error, count } = await client.from('territories').select('id', { count: 'exact', head: true });
 
-    if (error) {
-      // Diagnose the specific error
-      let errorType = 'unknown';
-      let errorDetails = error.message;
-      
-      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-        errorType = 'network';
-        errorDetails = 'Error de red - verifica la URL de Supabase y tu conexión';
-      } else if (error.message.includes('JWT') || error.message.includes('token') || error.message.includes('Unauthorized')) {
-        errorType = 'auth';
-        errorDetails = 'Error de autenticación - el anon key puede ser inválido';
-      } else if (error.message.includes('permission') || error.message.includes('Policy') || error.code === '42501') {
-        errorType = 'rls';
-        errorDetails = 'Error de permisos (RLS) - se necesitan políticas de acceso para anon';
-      } else if (error.message.includes('does not exist') || error.code === '42P01') {
-        errorType = 'schema';
-        errorDetails = 'La tabla no existe - verifica el schema de la base de datos';
-      } else if (error.code === 'PGRST301') {
-        errorType = 'postgrest';
-        errorDetails = 'Error de PostgREST - verifica que la extensión esté habilitada';
+      if (error) {
+        // Diagnose the specific error
+        let errorType = 'unknown';
+        let errorDetails = error.message;
+
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          errorType = 'network';
+          errorDetails = 'Error de red - verifica la URL de Supabase y tu conexión';
+        } else if (error.message.includes('JWT') || error.message.includes('token') || error.message.includes('Unauthorized')) {
+          errorType = 'auth';
+          errorDetails = 'Error de autenticación - el anon key puede ser inválido';
+        } else if (error.message.includes('permission') || error.message.includes('Policy') || error.code === '42501') {
+          errorType = 'rls';
+          errorDetails = 'Error de permisos (RLS) - se necesitan políticas de acceso para anon';
+        } else if (error.message.includes('does not exist') || error.code === '42P01') {
+          errorType = 'schema';
+          errorDetails = 'La tabla no existe - verifica el schema de la base de datos';
+        } else if (error.code === 'PGRST301') {
+          errorType = 'postgrest';
+          errorDetails = 'Error de PostgREST - verifica que la extensión esté habilitada';
+        }
+
+        logError(`Conexión fallida [${errorType}]: ${errorDetails}`);
+        logError('Código de error:', error.code);
+        logError('Mensaje original:', error.message);
+
+        const status: SupabaseStatus = {
+          isAvailable: true,
+          isConnected: false,
+          error: `[${errorType}] ${errorDetails}`,
+        };
+        lastKnownStatus = status;
+        return status;
       }
-      
-      logError(`Conexión fallida [${errorType}]: ${errorDetails}`);
-      logError('Código de error:', error.code);
-      logError('Mensaje original:', error.message);
-      
-      const status: SupabaseStatus = {
-        isAvailable: true,
-        isConnected: false,
-        error: `[${errorType}] ${errorDetails}`,
-      };
-      lastKnownStatus = status;
-      return status;
-    }
 
-    logDb(`✅ Conexión exitosa - tabla territories accesible (${count ?? '?'} registros)`);
+      logDb(`✅ Conexión exitosa - tabla territories accesible (${count ?? '?'} registros)`);
 
       supabaseInstance = client;
       logDb('✅ Conectado exitosamente a Supabase');
@@ -259,7 +263,7 @@ export async function initSupabase(): Promise<SupabaseStatus> {
 
 /**
  * Get Supabase client instance
- * 
+ *
  * Returns null if not available - callers must handle this gracefully.
  */
 export async function getSupabaseClient(): Promise<SupabaseClient | null> {
@@ -300,7 +304,7 @@ export function getSupabaseStatus(): SupabaseStatus | null {
 
 /**
  * Execute a Supabase query with automatic fallback
- * 
+ *
  * Usage:
  * ```typescript
  * const result = await safeQuery(
@@ -318,7 +322,7 @@ export async function safeQuery<T>(
 ): Promise<T> {
   try {
     const client = await getSupabaseClient();
-    
+
     if (!client) {
       // Supabase not available, return fallback
       return fallbackValue;
@@ -340,7 +344,7 @@ export async function safeQueryWithFallback<T>(
 ): Promise<T> {
   try {
     const client = await getSupabaseClient();
-    
+
     if (!client) {
       return await fallbackFn();
     }

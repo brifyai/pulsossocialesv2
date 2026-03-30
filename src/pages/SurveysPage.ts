@@ -5,7 +5,7 @@
  * Sprint 13 - Layout corregido: estructura plana y continua
  */
 
-import type { SurveyDefinition, SurveyResult, QuestionResult, SurveyViewMode, SurveyRun } from '../types/survey';
+import type { SurveyDefinition, SurveyResult, QuestionResult, SurveyViewMode, SurveyRun, SingleChoiceResult, LikertResult } from '../types/survey';
 import { 
   createSurvey, 
   getAllSurveys, 
@@ -21,6 +21,8 @@ import {
   getSurveyRun
 } from '../app/survey/surveyService';
 import { getUniqueRegions, getUniqueCommunes } from '../data/syntheticAgents';
+// R1 - Import scenario event store
+import { listScenarios, type ScenarioEvent } from '../app/events/scenarioEventStore';
 
 // Estado local
 let currentView: SurveyViewMode = 'list';
@@ -30,6 +32,11 @@ let currentRunId: string | null = null;
 let surveyRuns: SurveyRun[] = [];
 let regions: Array<{ code: string; name: string }> = [];
 let communes: Array<{ code: string; name: string }> = [];
+// R1 - Estado para modal de escenarios
+let pendingSurveyId: string | null = null;
+let availableScenarios: ScenarioEvent[] = [];
+// R2 - Estado para escenario pre-seleccionado desde query param
+let preSelectedScenarioId: string | null = null;
 
 // ===========================================
 // Main Page Component
@@ -46,10 +53,64 @@ export async function createSurveysPage(): Promise<HTMLElement> {
   // Crear encuestas de ejemplo si no hay ninguna
   await createSampleSurveys();
   
+  // R2 - Leer query param ?scenario= para pre-seleccionar escenario
+  const urlParams = new URLSearchParams(window.location.search);
+  preSelectedScenarioId = urlParams.get('scenario');
+  
+  // Limpiar el query param de la URL para no mantenerlo en history
+  if (preSelectedScenarioId) {
+    const newUrl = window.location.pathname;
+    window.history.replaceState({}, '', newUrl);
+  }
+  
   // Renderizar según vista actual
   renderContent(page);
   
+  // R2 - Si hay escenario pre-seleccionado, mostrar modal al hacer clic en ejecutar
+  // o si viene de Scenario Builder, mostrar modal inmediatamente
+  if (preSelectedScenarioId) {
+    // Esperar a que se renderice el contenido
+    setTimeout(() => {
+      handlePreSelectedScenario();
+    }, 100);
+  }
+  
   return page;
+}
+
+/**
+ * R2 - Maneja el escenario pre-seleccionado desde query param
+ * Muestra el modal de selección con el escenario ya seleccionado
+ */
+async function handlePreSelectedScenario(): Promise<void> {
+  if (!preSelectedScenarioId) return;
+  
+  // Verificar que el escenario existe
+  const result = await listScenarios({ status: 'active', limit: 100 });
+  if (result.success && result.data) {
+    const scenario = result.data.scenarios.find(s => s.id === preSelectedScenarioId);
+    if (scenario) {
+      // Si hay una encuesta disponible, mostrar modal para ejecutar
+      const surveys = await getAllSurveys();
+      if (surveys.length > 0) {
+        // Usar la primera encuesta o la más reciente
+        const surveyToRun = surveys[0];
+        pendingSurveyId = surveyToRun.id;
+        availableScenarios = result.data.scenarios;
+        
+        // Mostrar modal con el escenario pre-seleccionado
+        showScenarioSelectionModalWithPreselection(surveyToRun.id, preSelectedScenarioId);
+      } else {
+        // No hay encuestas, mostrar mensaje
+        alert(`Escenario "${scenario.name}" seleccionado. Crea una encuesta para ejecutarlo.`);
+      }
+    } else {
+      console.warn('Escenario pre-seleccionado no encontrado:', preSelectedScenarioId);
+    }
+  }
+  
+  // Limpiar el estado
+  preSelectedScenarioId = null;
 }
 
 /**
@@ -188,7 +249,7 @@ async function renderSurveyList(container: HTMLElement): Promise<void> {
           <div class="survey-last-run">
             <span class="last-run-label">Última ejecución:</span>
             <span class="last-run-date">${formatDate(lastRun.completedAt)}</span>
-            <span class="last-run-stats">${lastRun.totalAgents} agentes, ${lastRun.responses.length} respuestas</span>
+            <span class="last-run-stats">${lastRun.totalAgents} agentes, ${lastRun.metadata.resultsSummary?.total_responses || lastRun.responses.length || 0} respuestas</span>
           </div>
         ` : ''}
         
@@ -233,11 +294,11 @@ async function renderSurveyList(container: HTMLElement): Promise<void> {
 }
 
 function attachSurveyListListeners(list: HTMLElement): void {
-  // Run survey
+  // Run survey - R1: Ahora abre el modal de selección de escenario
   list.querySelectorAll('.btn-run').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       const id = (e.currentTarget as HTMLElement).dataset.id;
-      if (id) await executeSurvey(id);
+      if (id) await showScenarioSelectionModal(id);
     });
   });
   
@@ -512,12 +573,16 @@ async function renderResults(container: HTMLElement): Promise<void> {
         <div class="run-selector">
           <label for="run-select">Ejecución:</label>
           <select id="run-select" class="run-select">
-            ${surveyRuns.map((run, index) => `
-              <option value="${run.id}" ${run.id === currentRunId ? 'selected' : ''}>
-                Ejecución #${surveyRuns.length - index} - ${formatDate(run.completedAt)} 
-                (${run.totalAgents} agentes)
-              </option>
-            `).join('')}
+            ${surveyRuns.map((run, index) => {
+              const isScenario = run.metadata.scenarioEventId;
+              const scenarioLabel = isScenario ? ` [${run.metadata.scenarioName || 'Escenario'}]` : ' [Baseline]';
+              return `
+                <option value="${run.id}" ${run.id === currentRunId ? 'selected' : ''}>
+                  Ejecución #${surveyRuns.length - index} - ${formatDate(run.completedAt)} 
+                  (${run.totalAgents} agentes)${scenarioLabel}
+                </option>
+              `;
+            }).join('')}
           </select>
           <span class="run-count">${surveyRuns.length} ejecuciones totales</span>
         </div>
@@ -525,6 +590,12 @@ async function renderResults(container: HTMLElement): Promise<void> {
         <div class="run-info">
           <span class="run-badge">Ejecución única</span>
           <span class="run-date">${formatDate(selectedRun.completedAt)}</span>
+          ${selectedRun.metadata.scenarioEventId ? `
+            <span class="scenario-badge scenario-badge-${selectedRun.metadata.scenarioSeverity || 'moderate'}">
+              <span class="material-symbols-outlined" style="font-size: 12px; vertical-align: middle;">event</span>
+              ${escapeHtml(selectedRun.metadata.scenarioName || 'Escenario')}
+            </span>
+          ` : '<span class="baseline-badge"><span class="material-symbols-outlined" style="font-size: 12px; vertical-align: middle;">check_circle</span> Baseline</span>'}
         </div>
       ` : ''}
       
@@ -542,7 +613,7 @@ async function renderResults(container: HTMLElement): Promise<void> {
           <span class="summary-label">Respuestas totales</span>
         </div>
         <div class="summary-card">
-          <span class="summary-value">${Math.round((selectedResults.summary.totalResponses / selectedResults.summary.uniqueAgents) * 100)}%</span>
+          <span class="summary-value">100%</span>
           <span class="summary-label">Tasa de respuesta</span>
         </div>
       </div>
@@ -613,55 +684,183 @@ function attachResultsListeners(header: HTMLElement): void {
   });
 }
 
+// Mapa de claves canónicas a labels en español
+const CANONICAL_LABELS: Record<string, string> = {
+  approve: 'Aprueba',
+  disapprove: 'Desaprueba',
+  no_response: 'No responde',
+  no_opinion: 'Sin opinión',
+  optimistic: 'Optimista',
+  pessimistic: 'Pesimista',
+  good: 'Buena',
+  bad: 'Mala',
+  regular: 'Regular',
+  excellent: 'Excelente',
+  poor: 'Mala',
+  yes: 'Sí',
+  no: 'No',
+  maybe: 'Tal vez',
+  agree: 'De acuerdo',
+  disagree: 'En desacuerdo',
+  neutral: 'Neutral'
+};
+
 function renderQuestionResult(result: QuestionResult, number: number): string {
   let content = '';
   
+  // Debug: log the complete result structure
+  console.log('🔍🔍🔍 renderQuestionResult - COMPLETE OBJECT:', JSON.stringify(result, null, 2));
+  console.log('🔍 result keys:', Object.keys(result));
+  console.log('🔍 questionType:', result.questionType);
+  console.log('🔍 questionId:', result.questionId);
+  console.log('🔍 questionText:', result.questionText);
+  
   if (result.questionType === 'single_choice') {
-    const scResult = result as any;
-    const entries = Object.entries(scResult.distribution);
-    const maxCount = Math.max(...entries.map(([, v]: [string, any]) => v.count));
-    const total = entries.reduce((sum, [, v]: [string, any]) => sum + v.count, 0);
-    
-    content = `
-      <div class="distribution-bars">
-        ${entries.map(([, data]: [string, any]) => `
-          <div class="dist-bar-row">
-            <span class="dist-label">${escapeHtml(data.label)}</span>
-            <div class="dist-bar-container">
-              <div class="dist-bar" style="width: ${maxCount > 0 ? (data.count / maxCount * 100) : 0}%"></div>
-            </div>
-            <span class="dist-value">${data.count} (${data.percentage}%)</span>
-          </div>
-        `).join('')}
-      </div>
-      <div class="result-total">Total respuestas: ${total}</div>
-    `;
+    const scResult = result as SingleChoiceResult;
+    console.log('🔍 single_choice - distribution:', scResult.distribution);
+    console.log('🔍 single_choice - distribution type:', typeof scResult.distribution);
+    console.log('🔍 single_choice - distribution keys:', scResult.distribution ? Object.keys(scResult.distribution) : 'N/A');
   } else if (result.questionType === 'likert_scale') {
-    const likertResult = result as any;
-    const entries = Object.entries(likertResult.distribution);
-    const maxCount = Math.max(...entries.map(([, v]: [string, any]) => v.count));
+    const likertResult = result as LikertResult;
+    console.log('🔍 likert_scale - distribution:', likertResult.distribution);
+    console.log('🔍 likert_scale - distribution type:', typeof likertResult.distribution);
+    console.log('🔍 likert_scale - distribution keys:', likertResult.distribution ? Object.keys(likertResult.distribution) : 'N/A');
+  }
+  
+  if (result.questionType === 'single_choice') {
+    const scResult = result as SingleChoiceResult;
+    
+    // Normalize distribution data - handle various formats
+    const distribution = scResult.distribution || {};
+    console.log('📊 Single choice distribution:', distribution);
+    
+    // Calculate total for percentage calculation
+    const rawEntries = Object.entries(distribution);
+    const total = rawEntries.reduce((sum, [, value]) => {
+      if (typeof value === 'number') return sum + value;
+      if (typeof value === 'object' && value !== null && typeof value.count === 'number') return sum + value.count;
+      return sum;
+    }, 0);
+    
+    const entries = rawEntries.map(([key, value]: [string, any]) => {
+      // Handle format: { "approve": 267 } (simple number)
+      if (typeof value === 'number') {
+        const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+        return {
+          key,
+          label: CANONICAL_LABELS[key] || key,
+          count: value,
+          percentage
+        };
+      }
+      // Handle format: { "approve": { count: 267, percentage: 53.4 } } (object)
+      if (typeof value === 'object' && value !== null) {
+        return {
+          key,
+          label: value.label || CANONICAL_LABELS[key] || key,
+          count: typeof value.count === 'number' ? value.count : 0,
+          percentage: typeof value.percentage === 'number' ? value.percentage : (total > 0 ? Math.round((value.count / total) * 100) : 0)
+        };
+      }
+      // Fallback
+      return { key, label: CANONICAL_LABELS[key] || key, count: 0, percentage: 0 };
+    });
+    
+    // Filter out entries with no count
+    const validEntries = entries.filter(e => e.count > 0);
+    const maxCount = validEntries.length > 0 ? Math.max(...validEntries.map(e => e.count)) : 0;
+    
+    console.log('📊 Processed entries:', validEntries);
+    
+    if (validEntries.length === 0) {
+      content = `<div class="result-empty">No hay datos de distribución disponibles</div>`;
+    } else {
+      content = `
+        <div class="distribution-bars">
+          ${validEntries.map(entry => `
+            <div class="dist-bar-row">
+              <span class="dist-label">${escapeHtml(entry.label)}</span>
+              <div class="dist-bar-container">
+                <div class="dist-bar" style="width: ${maxCount > 0 ? (entry.count / maxCount * 100) : 0}%"></div>
+              </div>
+              <span class="dist-value">${entry.count} (${entry.percentage}%)</span>
+            </div>
+          `).join('')}
+        </div>
+        <div class="result-total">Total respuestas: ${total}</div>
+      `;
+    }
+  } else if (result.questionType === 'likert_scale') {
+    const likertResult = result as LikertResult;
+    
+    // Normalize distribution data
+    const distribution = likertResult.distribution || {};
+    console.log('📊 Likert distribution:', distribution);
+    
+    // Calculate total for percentage calculation
+    const rawEntries = Object.entries(distribution);
+    const total = rawEntries.reduce((sum, [, value]) => {
+      if (typeof value === 'number') return sum + value;
+      if (typeof value === 'object' && value !== null && typeof value.count === 'number') return sum + value.count;
+      return sum;
+    }, 0);
+    
+    const entries = rawEntries.map(([key, value]: [string, any]) => {
+      const numKey = parseInt(key) || key;
+      // Handle format: { "1": 100 } (simple number)
+      if (typeof value === 'number') {
+        const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+        return {
+          key: numKey,
+          count: value,
+          percentage
+        };
+      }
+      // Handle format: { "1": { count: 100, percentage: 20 } } (object)
+      if (typeof value === 'object' && value !== null) {
+        return {
+          key: numKey,
+          count: typeof value.count === 'number' ? value.count : 0,
+          percentage: typeof value.percentage === 'number' ? value.percentage : (total > 0 ? Math.round((value.count / total) * 100) : 0)
+        };
+      }
+      return { key: numKey, count: 0, percentage: 0 };
+    }).filter(e => e.count > 0).sort((a, b) => (typeof a.key === 'number' && typeof b.key === 'number') ? a.key - b.key : 0);
+    
+    const maxCount = entries.length > 0 ? Math.max(...entries.map(e => e.count)) : 0;
+    
+    console.log('📊 Processed likert entries:', entries);
     
     content = `
       <div class="likert-stats">
         <div class="likert-stat">
-          <span class="stat-value">${likertResult.average}</span>
+          <span class="stat-value">${likertResult.average?.toFixed(1) || 'N/A'}</span>
           <span class="stat-label">Promedio</span>
         </div>
         <div class="likert-stat">
-          <span class="stat-value">${likertResult.median}</span>
+          <span class="stat-value">${likertResult.median || 'N/A'}</span>
           <span class="stat-label">Mediana</span>
         </div>
       </div>
       <div class="distribution-bars">
-        ${entries.map(([key, data]: [string, any]) => `
-          <div class="dist-bar-row">
-            <span class="dist-label">${key} ${key == likertResult.min ? `(${likertResult.minLabel})` : key == likertResult.max ? `(${likertResult.maxLabel})` : ''}</span>
-            <div class="dist-bar-container">
-              <div class="dist-bar" style="width: ${maxCount > 0 ? (data.count / maxCount * 100) : 0}%"></div>
+        ${entries.map(entry => {
+          const keyStr = String(entry.key);
+          const minLabel = likertResult.minLabel || '';
+          const maxLabel = likertResult.maxLabel || '';
+          const min = 1;
+          const max = 5;
+          const labelSuffix = entry.key === min && minLabel ? ` (${minLabel})` : 
+                             entry.key === max && maxLabel ? ` (${maxLabel})` : '';
+          return `
+            <div class="dist-bar-row">
+              <span class="dist-label">${keyStr}${labelSuffix}</span>
+              <div class="dist-bar-container">
+                <div class="dist-bar" style="width: ${maxCount > 0 ? (entry.count / maxCount * 100) : 0}%"></div>
+              </div>
+              <span class="dist-value">${entry.count} (${entry.percentage}%)</span>
             </div>
-            <span class="dist-value">${data.count} (${data.percentage}%)</span>
-          </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
     `;
   }
@@ -983,7 +1182,543 @@ async function handleFormSubmit(e: Event): Promise<void> {
   }
 }
 
-async function executeSurvey(surveyId: string): Promise<void> {
+// ===========================================
+// R1 - Modal de selección de escenario MEJORADO
+// ===========================================
+
+/**
+ * Muestra el modal de selección de escenario antes de ejecutar una encuesta
+ * MEJORADO: Con búsqueda, filtros por categoría y preview de impacto
+ */
+async function showScenarioSelectionModal(surveyId: string): Promise<void> {
+  pendingSurveyId = surveyId;
+  
+  // Cargar escenarios disponibles
+  const result = await listScenarios({ status: 'active', limit: 100 });
+  if (result.success && result.data) {
+    availableScenarios = result.data.scenarios;
+  } else {
+    availableScenarios = [];
+  }
+  
+  // Crear modal
+  const modal = document.createElement('div');
+  modal.className = 'scenario-modal-overlay';
+  modal.id = 'scenario-selection-modal';
+  
+  const hasScenarios = availableScenarios.length > 0;
+  
+  // Obtener categorías únicas para filtros
+  const categories = [...new Set(availableScenarios.map(s => s.category))].sort();
+  
+  modal.innerHTML = `
+    <div class="scenario-modal scenario-modal-enhanced">
+      <div class="scenario-modal-header">
+        <h3><span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 8px;">psychology</span>Ejecutar Encuesta</h3>
+        <button class="btn-icon btn-close-modal" title="Cerrar">×</button>
+      </div>
+      <div class="scenario-modal-body">
+        <p class="scenario-modal-description">
+          Selecciona un escenario para simular el impacto de eventos hipotéticos, 
+          o ejecuta sin escenario para obtener resultados baseline.
+        </p>
+        
+        ${hasScenarios ? `
+          <!-- Barra de búsqueda y filtros -->
+          <div class="scenario-filters">
+            <div class="scenario-search">
+              <span class="material-symbols-outlined">search</span>
+              <input type="text" id="scenario-search-input" placeholder="Buscar escenarios..." />
+            </div>
+            <div class="scenario-filter-tags">
+              <button class="filter-tag active" data-filter="all">Todos</button>
+              ${categories.map(cat => `
+                <button class="filter-tag" data-filter="${cat}">${formatCategoryLabel(cat)}</button>
+              `).join('')}
+            </div>
+          </div>
+          
+          <div class="scenario-list-container">
+            <!-- Baseline siempre primero -->
+            <div class="scenario-option scenario-option-baseline" data-scenario-id="">
+              <div class="scenario-option-header">
+                <span class="material-symbols-outlined scenario-icon">check_circle</span>
+                <span class="scenario-name">Baseline (sin escenario)</span>
+                <span class="scenario-badge baseline">Baseline</span>
+              </div>
+              <p class="scenario-description">Ejecutar encuesta con estado actual de los agentes</p>
+              <div class="scenario-impact-preview">
+                <span class="impact-label">Impacto esperado:</span>
+                <span class="impact-value neutral">Sin cambios</span>
+              </div>
+            </div>
+            
+            <!-- Lista de escenarios -->
+            <div class="scenarios-list">
+              ${availableScenarios.map(scenario => `
+                <div class="scenario-option" data-scenario-id="${scenario.id}" data-category="${scenario.category}" data-name="${escapeHtml(scenario.name.toLowerCase())}">
+                  <div class="scenario-option-header">
+                    <span class="material-symbols-outlined scenario-icon">event</span>
+                    <span class="scenario-name">${escapeHtml(scenario.name)}</span>
+                    <span class="scenario-badge scenario-badge-${scenario.severity}">${scenario.severity}</span>
+                  </div>
+                  <p class="scenario-description">${escapeHtml(scenario.description || 'Sin descripción')}</p>
+                  <div class="scenario-meta">
+                    <span class="scenario-category">${formatCategoryLabel(scenario.category)}</span>
+                    <span class="scenario-sentiment ${scenario.sentiment > 0 ? 'positive' : scenario.sentiment < 0 ? 'negative' : 'neutral'}">
+                      ${getSentimentIcon(scenario.sentiment)} ${getSentimentLabel(scenario.sentiment)}
+                    </span>
+                    <span class="scenario-intensity" title="Intensidad: ${(scenario.intensity * 100).toFixed(0)}%">
+                      <span class="intensity-bar">
+                        <span class="intensity-fill" style="width: ${scenario.intensity * 100}%"></span>
+                      </span>
+                    </span>
+                  </div>
+                  <div class="scenario-impact-preview">
+                    <span class="impact-label">Impacto esperado:</span>
+                    <span class="impact-value ${getImpactClass(scenario)}">${getImpactLabel(scenario)}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          
+          <div class="scenario-count">${availableScenarios.length} escenario${availableScenarios.length !== 1 ? 's' : ''} disponible${availableScenarios.length !== 1 ? 's' : ''}</div>
+        ` : `
+          <div class="scenario-empty">
+            <span class="material-symbols-outlined" style="font-size: 48px; color: #6b7280;">event_busy</span>
+            <p>No hay escenarios activos disponibles</p>
+            <p class="scenario-empty-hint">Puedes crear escenarios en el Scenario Builder</p>
+            <button class="btn btn-secondary btn-create-scenario" style="margin-top: 16px;">
+              <span class="material-symbols-outlined">add</span> Crear Escenario
+            </button>
+          </div>
+          
+          <div class="scenario-option scenario-option-baseline scenario-option-selected" data-scenario-id="">
+            <div class="scenario-option-header">
+              <span class="material-symbols-outlined scenario-icon">check_circle</span>
+              <span class="scenario-name">Baseline (sin escenario)</span>
+            </div>
+            <p class="scenario-description">Ejecutar encuesta con estado actual de los agentes</p>
+          </div>
+        `}
+      </div>
+      <div class="scenario-modal-footer">
+        <button class="btn btn-secondary btn-cancel-modal">Cancelar</button>
+        <button class="btn btn-primary btn-confirm-execution" disabled>
+          <span class="btn-icon material-symbols-outlined">play_arrow</span>
+          <span class="btn-text">Selecciona una opción</span>
+        </button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Estado de selección
+  let selectedScenarioId: string | null = null;
+  
+  // Event listeners
+  const closeModal = () => {
+    modal.remove();
+    pendingSurveyId = null;
+  };
+  
+  modal.querySelector('.btn-close-modal')?.addEventListener('click', closeModal);
+  modal.querySelector('.btn-cancel-modal')?.addEventListener('click', closeModal);
+  
+  // Cerrar al hacer click fuera
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+  
+  // Botón crear escenario (cuando no hay escenarios)
+  modal.querySelector('.btn-create-scenario')?.addEventListener('click', () => {
+    closeModal();
+    window.location.href = '/scenarios';
+  });
+  
+  // Búsqueda y filtros
+  const searchInput = modal.querySelector('#scenario-search-input') as HTMLInputElement;
+  const filterTags = modal.querySelectorAll('.filter-tag');
+  const scenarioOptions = modal.querySelectorAll('.scenario-option');
+  const confirmBtn = modal.querySelector('.btn-confirm-execution') as HTMLButtonElement;
+  const confirmBtnText = confirmBtn?.querySelector('.btn-text');
+  
+  // Función de filtrado
+  const filterScenarios = () => {
+    const searchTerm = searchInput?.value.toLowerCase() || '';
+    const activeFilter = modal.querySelector('.filter-tag.active')?.getAttribute('data-filter') || 'all';
+    
+    let visibleCount = 0;
+    
+    scenarioOptions.forEach(option => {
+      const htmlOption = option as HTMLElement;
+      if (option.classList.contains('scenario-option-baseline')) {
+        htmlOption.style.display = '';
+        return;
+      }
+      
+      const name = option.getAttribute('data-name') || '';
+      const category = option.getAttribute('data-category') || '';
+      
+      const matchesSearch = name.includes(searchTerm);
+      const matchesFilter = activeFilter === 'all' || category === activeFilter;
+      
+      if (matchesSearch && matchesFilter) {
+        htmlOption.style.display = '';
+        visibleCount++;
+      } else {
+        htmlOption.style.display = 'none';
+      }
+    });
+    
+    // Actualizar contador
+    const countEl = modal.querySelector('.scenario-count');
+    if (countEl) {
+      countEl.textContent = `${visibleCount} escenario${visibleCount !== 1 ? 's' : ''} disponible${visibleCount !== 1 ? 's' : ''}`;
+    }
+  };
+  
+  // Event listeners para búsqueda
+  searchInput?.addEventListener('input', filterScenarios);
+  
+  // Event listeners para filtros
+  filterTags.forEach(tag => {
+    tag.addEventListener('click', () => {
+      filterTags.forEach(t => t.classList.remove('active'));
+      tag.classList.add('active');
+      filterScenarios();
+    });
+  });
+  
+  // Selección de escenario
+  scenarioOptions.forEach(option => {
+    option.addEventListener('click', () => {
+      // Quitar selección previa
+      scenarioOptions.forEach(opt => opt.classList.remove('scenario-option-selected'));
+      // Agregar selección actual
+      option.classList.add('scenario-option-selected');
+      
+      selectedScenarioId = option.getAttribute('data-scenario-id') || null;
+      
+      // Habilitar botón de confirmar
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        if (confirmBtnText) {
+          confirmBtnText.textContent = selectedScenarioId 
+            ? 'Ejecutar con escenario' 
+            : 'Ejecutar baseline';
+        }
+      }
+    });
+  });
+  
+  // Confirmar ejecución
+  confirmBtn?.addEventListener('click', async () => {
+    if (!pendingSurveyId) return;
+    
+    // Guardar el ID antes de cerrar el modal (que limpia pendingSurveyId)
+    const surveyIdToExecute = pendingSurveyId;
+    const scenarioIdToUse = selectedScenarioId || undefined;
+    
+    closeModal();
+    await executeSurveyWithScenario(surveyIdToExecute, scenarioIdToUse);
+  });
+  
+  // Seleccionar baseline por defecto si no hay escenarios
+  if (!hasScenarios) {
+    const baselineOption = modal.querySelector('.scenario-option-baseline');
+    baselineOption?.classList.add('scenario-option-selected');
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      if (confirmBtnText) {
+        confirmBtnText.textContent = 'Ejecutar baseline';
+      }
+    }
+  }
+}
+
+// Helper functions para el modal mejorado
+function formatCategoryLabel(category: string): string {
+  const labels: Record<string, string> = {
+    economy: 'Economía',
+    government: 'Gobierno',
+    social: 'Social',
+    security: 'Seguridad',
+    international: 'Internacional',
+    environment: 'Medio Ambiente',
+    other: 'Otro'
+  };
+  return labels[category] || category;
+}
+
+function getSentimentIcon(sentiment: number): string {
+  if (sentiment > 0.3) return '↗️';
+  if (sentiment > 0) return '↗';
+  if (sentiment < -0.3) return '↘️';
+  if (sentiment < 0) return '↘';
+  return '➡️';
+}
+
+function getSentimentLabel(sentiment: number): string {
+  if (sentiment > 0.5) return 'Muy positivo';
+  if (sentiment > 0.2) return 'Positivo';
+  if (sentiment < -0.5) return 'Muy negativo';
+  if (sentiment < -0.2) return 'Negativo';
+  return 'Neutral';
+}
+
+function getImpactClass(scenario: ScenarioEvent): string {
+  const impact = Math.abs(scenario.sentiment) * scenario.intensity * scenario.salience;
+  if (impact > 0.5) return 'high';
+  if (impact > 0.25) return 'medium';
+  return 'low';
+}
+
+function getImpactLabel(scenario: ScenarioEvent): string {
+  const impact = Math.abs(scenario.sentiment) * scenario.intensity * scenario.salience;
+  if (impact > 0.5) return 'Alto impacto';
+  if (impact > 0.25) return 'Impacto moderado';
+  return 'Bajo impacto';
+}
+
+/**
+ * R2 - Muestra el modal de selección de escenario con un escenario pre-seleccionado
+ * Usado cuando el usuario viene desde Scenario Builder con ?scenario=<id>
+ */
+async function showScenarioSelectionModalWithPreselection(surveyId: string, preSelectedScenarioId: string): Promise<void> {
+  pendingSurveyId = surveyId;
+  
+  // Crear modal
+  const modal = document.createElement('div');
+  modal.className = 'scenario-modal-overlay';
+  modal.id = 'scenario-selection-modal';
+  
+  const hasScenarios = availableScenarios.length > 0;
+  const preSelectedScenario = availableScenarios.find(s => s.id === preSelectedScenarioId);
+  
+  // Obtener categorías únicas para filtros
+  const categories = [...new Set(availableScenarios.map(s => s.category))].sort();
+  
+  modal.innerHTML = `
+    <div class="scenario-modal scenario-modal-enhanced">
+      <div class="scenario-modal-header">
+        <h3><span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 8px;">psychology</span>Ejecutar Encuesta</h3>
+        <button class="btn-icon btn-close-modal" title="Cerrar">×</button>
+      </div>
+      <div class="scenario-modal-body">
+        <p class="scenario-modal-description">
+          Escenario pre-seleccionado desde Scenario Builder. 
+          Puedes ejecutar con este escenario o seleccionar otro.
+        </p>
+        
+        ${hasScenarios && preSelectedScenario ? `
+          <!-- Escenario pre-seleccionado destacado -->
+          <div class="scenario-preselected-notice">
+            <span class="material-symbols-outlined">event</span>
+            <span>Escenario pre-seleccionado: <strong>${escapeHtml(preSelectedScenario.name)}</strong></span>
+          </div>
+          
+          <!-- Barra de búsqueda y filtros -->
+          <div class="scenario-filters">
+            <div class="scenario-search">
+              <span class="material-symbols-outlined">search</span>
+              <input type="text" id="scenario-search-input" placeholder="Buscar escenarios..." />
+            </div>
+            <div class="scenario-filter-tags">
+              <button class="filter-tag active" data-filter="all">Todos</button>
+              ${categories.map(cat => `
+                <button class="filter-tag" data-filter="${cat}">${formatCategoryLabel(cat)}</button>
+              `).join('')}
+            </div>
+          </div>
+          
+          <div class="scenario-list-container">
+            <!-- Baseline siempre primero -->
+            <div class="scenario-option scenario-option-baseline" data-scenario-id="">
+              <div class="scenario-option-header">
+                <span class="material-symbols-outlined scenario-icon">check_circle</span>
+                <span class="scenario-name">Baseline (sin escenario)</span>
+                <span class="scenario-badge baseline">Baseline</span>
+              </div>
+              <p class="scenario-description">Ejecutar encuesta con estado actual de los agentes</p>
+              <div class="scenario-impact-preview">
+                <span class="impact-label">Impacto esperado:</span>
+                <span class="impact-value neutral">Sin cambios</span>
+              </div>
+            </div>
+            
+            <!-- Lista de escenarios -->
+            <div class="scenarios-list">
+              ${availableScenarios.map(scenario => `
+                <div class="scenario-option ${scenario.id === preSelectedScenarioId ? 'scenario-option-selected' : ''}" data-scenario-id="${scenario.id}" data-category="${scenario.category}" data-name="${escapeHtml(scenario.name.toLowerCase())}">
+                  <div class="scenario-option-header">
+                    <span class="material-symbols-outlined scenario-icon">event</span>
+                    <span class="scenario-name">${escapeHtml(scenario.name)}</span>
+                    <span class="scenario-badge scenario-badge-${scenario.severity}">${scenario.severity}</span>
+                    ${scenario.id === preSelectedScenarioId ? '<span class="preselected-indicator">✓ Pre-seleccionado</span>' : ''}
+                  </div>
+                  <p class="scenario-description">${escapeHtml(scenario.description || 'Sin descripción')}</p>
+                  <div class="scenario-meta">
+                    <span class="scenario-category">${formatCategoryLabel(scenario.category)}</span>
+                    <span class="scenario-sentiment ${scenario.sentiment > 0 ? 'positive' : scenario.sentiment < 0 ? 'negative' : 'neutral'}">
+                      ${getSentimentIcon(scenario.sentiment)} ${getSentimentLabel(scenario.sentiment)}
+                    </span>
+                    <span class="scenario-intensity" title="Intensidad: ${(scenario.intensity * 100).toFixed(0)}%">
+                      <span class="intensity-bar">
+                        <span class="intensity-fill" style="width: ${scenario.intensity * 100}%"></span>
+                      </span>
+                    </span>
+                  </div>
+                  <div class="scenario-impact-preview">
+                    <span class="impact-label">Impacto esperado:</span>
+                    <span class="impact-value ${getImpactClass(scenario)}">${getImpactLabel(scenario)}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          
+          <div class="scenario-count">${availableScenarios.length} escenario${availableScenarios.length !== 1 ? 's' : ''} disponible${availableScenarios.length !== 1 ? 's' : ''}</div>
+        ` : `
+          <div class="scenario-empty">
+            <span class="material-symbols-outlined" style="font-size: 48px; color: #6b7280;">event_busy</span>
+            <p>El escenario pre-seleccionado no está disponible</p>
+            <p class="scenario-empty-hint">Se ejecutará en modo baseline</p>
+          </div>
+          
+          <div class="scenario-option scenario-option-baseline scenario-option-selected" data-scenario-id="">
+            <div class="scenario-option-header">
+              <span class="material-symbols-outlined scenario-icon">check_circle</span>
+              <span class="scenario-name">Baseline (sin escenario)</span>
+            </div>
+            <p class="scenario-description">Ejecutar encuesta con estado actual de los agentes</p>
+          </div>
+        `}
+      </div>
+      <div class="scenario-modal-footer">
+        <button class="btn btn-secondary btn-cancel-modal">Cancelar</button>
+        <button class="btn btn-primary btn-confirm-execution" ${!preSelectedScenario ? 'disabled' : ''}>
+          <span class="btn-icon material-symbols-outlined">play_arrow</span>
+          <span class="btn-text">${preSelectedScenario ? 'Ejecutar con escenario' : 'Selecciona una opción'}</span>
+        </button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Estado de selección - por defecto el pre-seleccionado
+  let selectedScenarioId: string | null = preSelectedScenarioId || null;
+  
+  // Event listeners
+  const closeModal = () => {
+    modal.remove();
+    pendingSurveyId = null;
+  };
+  
+  modal.querySelector('.btn-close-modal')?.addEventListener('click', closeModal);
+  modal.querySelector('.btn-cancel-modal')?.addEventListener('click', closeModal);
+  
+  // Cerrar al hacer click fuera
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+  
+  // Búsqueda y filtros
+  const searchInput = modal.querySelector('#scenario-search-input') as HTMLInputElement;
+  const filterTags = modal.querySelectorAll('.filter-tag');
+  const scenarioOptions = modal.querySelectorAll('.scenario-option');
+  const confirmBtn = modal.querySelector('.btn-confirm-execution') as HTMLButtonElement;
+  const confirmBtnText = confirmBtn?.querySelector('.btn-text');
+  
+  // Función de filtrado
+  const filterScenarios = () => {
+    const searchTerm = searchInput?.value.toLowerCase() || '';
+    const activeFilter = modal.querySelector('.filter-tag.active')?.getAttribute('data-filter') || 'all';
+    
+    let visibleCount = 0;
+    
+    scenarioOptions.forEach(option => {
+      const htmlOption = option as HTMLElement;
+      if (option.classList.contains('scenario-option-baseline')) {
+        htmlOption.style.display = '';
+        return;
+      }
+      
+      const name = option.getAttribute('data-name') || '';
+      const category = option.getAttribute('data-category') || '';
+      
+      const matchesSearch = name.includes(searchTerm);
+      const matchesFilter = activeFilter === 'all' || category === activeFilter;
+      
+      if (matchesSearch && matchesFilter) {
+        htmlOption.style.display = '';
+        visibleCount++;
+      } else {
+        htmlOption.style.display = 'none';
+      }
+    });
+    
+    // Actualizar contador
+    const countEl = modal.querySelector('.scenario-count');
+    if (countEl) {
+      countEl.textContent = `${visibleCount} escenario${visibleCount !== 1 ? 's' : ''} disponible${visibleCount !== 1 ? 's' : ''}`;
+    }
+  };
+  
+  // Event listeners para búsqueda
+  searchInput?.addEventListener('input', filterScenarios);
+  
+  // Event listeners para filtros
+  filterTags.forEach(tag => {
+    tag.addEventListener('click', () => {
+      filterTags.forEach(t => t.classList.remove('active'));
+      tag.classList.add('active');
+      filterScenarios();
+    });
+  });
+  
+  // Selección de escenario
+  scenarioOptions.forEach(option => {
+    option.addEventListener('click', () => {
+      // Quitar selección previa
+      scenarioOptions.forEach(opt => opt.classList.remove('scenario-option-selected'));
+      // Agregar selección actual
+      option.classList.add('scenario-option-selected');
+      
+      selectedScenarioId = option.getAttribute('data-scenario-id') || null;
+      
+      // Habilitar botón de confirmar
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        if (confirmBtnText) {
+          confirmBtnText.textContent = selectedScenarioId 
+            ? 'Ejecutar con escenario' 
+            : 'Ejecutar baseline';
+        }
+      }
+    });
+  });
+  
+  // Confirmar ejecución
+  confirmBtn?.addEventListener('click', async () => {
+    if (!pendingSurveyId) return;
+    
+    // Guardar el ID antes de cerrar el modal (que limpia pendingSurveyId)
+    const surveyIdToExecute = pendingSurveyId;
+    const scenarioIdToUse = selectedScenarioId || undefined;
+    
+    closeModal();
+    await executeSurveyWithScenario(surveyIdToExecute, scenarioIdToUse);
+  });
+}
+
+/**
+ * Ejecuta una encuesta con un escenario opcional
+ */
+async function executeSurveyWithScenario(surveyId: string, scenarioEventId?: string): Promise<void> {
   const btn = document.querySelector(`[data-id="${surveyId}"].btn-run`);
   if (btn) {
     btn.innerHTML = '<span class="btn-icon material-symbols-outlined">hourglass_empty</span> Ejecutando...';
@@ -991,7 +1726,8 @@ async function executeSurvey(surveyId: string): Promise<void> {
   }
   
   try {
-    const run = await runSurvey(surveyId);
+    console.log(`🚀 Executing survey ${surveyId}${scenarioEventId ? ` with scenario ${scenarioEventId}` : ' (baseline)'}`);
+    const run = await runSurvey(surveyId, scenarioEventId);
     
     // Show success and navigate to results
     currentRunId = run.id;
@@ -1005,6 +1741,13 @@ async function executeSurvey(surveyId: string): Promise<void> {
       (btn as HTMLButtonElement).disabled = false;
     }
   }
+}
+
+/**
+ * @deprecated Usar executeSurveyWithScenario
+ */
+async function executeSurvey(surveyId: string): Promise<void> {
+  return executeSurveyWithScenario(surveyId);
 }
 
 async function viewSurveyResults(surveyId: string): Promise<void> {

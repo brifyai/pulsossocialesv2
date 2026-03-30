@@ -2,9 +2,11 @@
  * Script para crear la encuesta de staging STAGING_VALIDATION_RUN_001
  * Inserta una encuesta en survey_definitions con configuración CADEM
  * Usa el schema real: questions se almacenan como JSON embebido en survey_definitions
+ * 
+ * 🔒 REQUIERE: SUPABASE_SERVICE_KEY (no permite fallback a ANON_KEY)
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { serviceClient } from '../utils/serviceClient';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,16 +14,8 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Cargar variables de entorno
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ Error: Variables de entorno VITE_SUPABASE_URL y VITE_SUPABASE_SERVICE_KEY/VITE_SUPABASE_ANON_KEY son requeridas');
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Cliente Supabase centralizado (valida entorno automáticamente)
+const supabase = serviceClient;
 
 // Configuración de la encuesta de staging
 const SURVEY_NAME = 'Staging Test 001 - CADEM Calibrated';

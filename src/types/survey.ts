@@ -107,6 +107,17 @@ export interface SurveyRun {
     segmentMatched: number;
     sampleSizeRequested: number;
     sampleSizeActual: number;
+    // Results summary from DB (when loaded from persistence)
+    resultsSummary?: {
+      total_responses: number;
+      completion_rate: number;
+      average_confidence: number;
+    } | null;
+    // R2 - Scenario metadata for traceability
+    scenarioEventId?: string;
+    scenarioName?: string;
+    scenarioCategory?: string;
+    scenarioSeverity?: 'minor' | 'moderate' | 'major' | 'critical';
   };
   // CADEM v1.1 - Engine metadata for traceability
   engineMode?: 'legacy' | 'cadem';

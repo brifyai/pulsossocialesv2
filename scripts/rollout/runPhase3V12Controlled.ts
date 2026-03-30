@@ -15,7 +15,7 @@
  * Tiempo esperado: ~2-4 minutos
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { serviceClient } from '../utils/serviceClient';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -26,6 +26,9 @@ import { resolveQuestionByFamily } from '../../src/app/opinionEngine/questionRes
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Cliente Supabase centralizado (valida entorno automáticamente)
+const supabase = serviceClient;
 
 // ============================================================================
 // PARSEAR ARGUMENTOS
@@ -77,20 +80,6 @@ if (SAMPLE_SIZE > 500) {
   console.error('   Para muestras mayores, esperar a Fase 4 de escalamiento');
   process.exit(1);
 }
-
-// ============================================================================
-// CONFIGURACIÓN SUPABASE
-// ============================================================================
-
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const supabaseKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ Error: Variables de entorno VITE_SUPABASE_URL y VITE_SUPABASE_SERVICE_KEY son requeridas');
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ============================================================================
 // TIPOS

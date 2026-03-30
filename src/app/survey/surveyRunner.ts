@@ -213,6 +213,7 @@ export async function runSurvey(input: SurveyRunnerInput): Promise<SurveyRunnerR
       agents,
       weekKey,
       mode: 'cawi',
+      weeklyEvents, // ← PASAR EVENTOS/ESCENARIOS
     });
 
     responses = rawResponses.map((r) => ({

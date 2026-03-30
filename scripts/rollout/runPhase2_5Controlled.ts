@@ -5,7 +5,7 @@
  * Fase 2.5: Puente entre Fase 2 (500 agentes sin eventos) y Fase 3 (500 agentes con eventos)
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { serviceClient } from '../utils/serviceClient';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,42 +13,8 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Cargar variables de entorno desde archivo .env
-function loadEnvFile() {
-  const envPath = path.join(__dirname, '../../.env');
-  if (fs.existsSync(envPath)) {
-    const envContent = fs.readFileSync(envPath, 'utf-8');
-    const lines = envContent.split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith('#')) {
-        const [key, ...valueParts] = trimmed.split('=');
-        if (key && valueParts.length > 0) {
-          const value = valueParts.join('=').trim();
-          // Remover comillas si existen
-          const cleanValue = value.replace(/^["']|["']$/g, '');
-          if (!process.env[key]) {
-            process.env[key] = cleanValue;
-          }
-        }
-      }
-    }
-  }
-}
-
-// Cargar .env antes de cualquier otra operación
-loadEnvFile();
-
-// Cargar variables de entorno
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ Error: Variables de entorno VITE_SUPABASE_URL y VITE_SUPABASE_SERVICE_KEY/VITE_SUPABASE_ANON_KEY son requeridas');
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Cliente Supabase centralizado (valida entorno automáticamente)
+const supabase = serviceClient;
 
 // Parsear argumentos
 const args = process.argv.slice(2);

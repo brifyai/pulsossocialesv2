@@ -14,20 +14,12 @@
  *   - persistState: false (obligatorio)
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { serviceClient } from '../utils/serviceClient';
 import { resolve } from 'path';
 import { writeFileSync } from 'fs';
 
-// Configuración
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = process.env.VITE_SUPABASE_SERVICE_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error('❌ Error: Variables de entorno VITE_SUPABASE_URL y VITE_SUPABASE_SERVICE_KEY requeridas');
-  process.exit(1);
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// Cliente Supabase centralizado (valida entorno automáticamente)
+const supabase = serviceClient;
 
 // Parsear argumentos
 function parseArgs() {

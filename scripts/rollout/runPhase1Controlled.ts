@@ -7,12 +7,15 @@
  *     --survey-id=<ID> \
  *     --sample-size=100 \
  *     --monitoring=intensive
+ * 
+ * 🔒 REQUIERE: SUPABASE_SERVICE_KEY (no permite fallback a ANON_KEY)
  */
 
 import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { getServiceClientConfig } from '../utils/validateScriptEnv';
 
 // Importar motor CADEM real
 import { buildInitialTopicStates } from '../../src/app/opinionEngine/topicStateSeed';
@@ -72,13 +75,8 @@ if (SAMPLE_SIZE > 200) {
 // CONFIGURACIÓN SUPABASE
 // ============================================================================
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const supabaseKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ Error: Variables de entorno VITE_SUPABASE_URL y VITE_SUPABASE_SERVICE_KEY son requeridas');
-  process.exit(1);
-}
+// Validar y obtener configuración de entorno (requiere SERVICE_KEY)
+const { url: supabaseUrl, key: supabaseKey } = getServiceClientConfig();
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 

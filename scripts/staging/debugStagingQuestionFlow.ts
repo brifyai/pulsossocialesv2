@@ -3,7 +3,7 @@
  * Inspecciona exactamente cómo se interpretan y resuelven las preguntas
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { serviceClient } from '../utils/serviceClient';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -15,16 +15,8 @@ import { resolveQuestionByFamily } from '../../src/app/opinionEngine/questionRes
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Configuración
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const supabaseKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ Error: Variables de entorno requeridas');
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Cliente Supabase centralizado (valida entorno automáticamente)
+const supabase = serviceClient;
 
 const SURVEY_NAME = 'Staging Test 001 - CADEM Calibrated';
 const CATALOG_PATH = path.resolve('data/surveys/cadem_question_catalog_v1.json');

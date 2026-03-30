@@ -1,29 +1,26 @@
 /**
  * Script para aplicar migraciones SQL en Supabase
  * Ejecuta las migraciones pendientes usando el cliente de Supabase
+ * 
+ * ⚠️ REQUIERE: SUPABASE_SERVICE_KEY en .env.scripts
+ * NO usar ANON_KEY - las migraciones requieren privilegios de service_role
  */
 
-import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { serviceClient } from './utils/serviceClient';
 
-dotenv.config();
+// Cargar variables de entorno desde .env.scripts
+dotenv.config({ path: '.env.scripts' });
 
 // ESM compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.error('❌ Error: Variables de entorno no configuradas');
-  process.exit(1);
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// El cliente serviceClient ya está validado y configurado
+const supabase = serviceClient;
 
 // Lista de migraciones a aplicar (en orden)
 const MIGRATIONS = [

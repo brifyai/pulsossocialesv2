@@ -1,517 +1,320 @@
 # AUDITORÍA TÉCNICA COMPLETA - Pulso Social
-## Fecha: 23 de marzo 2026
-## Versión: 2.0 - Actualización Post-Implementación
+## Fecha: 30 de marzo 2026
+## Versión: 3.0 - Actualización Post-Scenario Builder
 
 ---
 
-## 1. RESUMEN EJECUTIVO
+## A. EXECUTIVE SUMMARY
 
-**Estado actual:** ✅ **EXCELENTE** - App funcional y estable con arquitectura completa implementada.
+**Estado actual:** 🟡 **OPERATIVO CON RIESGOS** - App funcional pero con deuda técnica significativa en seguridad y operación.
 
-**Versión actual:** v0.9.1 (según CHECKPOINTS.md)
+**Versión actual:** v1.0 (Scenario Builder MVP completado)
 
-**Fortalezas:**
-- ✅ Código bien estructurado y modular
-- ✅ Sistema de routing multi-página implementado
-- ✅ Modo de calidad/performance (Full/Lite) funcionando
-- ✅ Data pipeline completo (Censo/CASEN/SUBTEL)
-- ✅ Tests unitarios implementados
-- ✅ Manejo de errores robusto
-- ✅ Supabase self-hosted configurado
-- ✅ Docker + CI/CD implementado
-- ✅ Documentación exhaustiva
+### Principales Fortalezas
+- ✅ Scenario Builder MVP completamente operativo y conectado al motor real
+- ✅ Motor de opinión validado internamente (R1, estabilidad, coherencia)
+- ✅ Sistema de encuestas CADEM v1.1/v1.2 implementado y probado
+- ✅ Data pipeline completo (Censo/CASEN/SUBTEL) funcionando
+- ✅ 3 escenarios de prueba preparados para validación con usuarios
+- ✅ RLS v4 aplicado con políticas restrictivas
 
-**Riesgos principales:**
-- 🟡 Cobertura de tests insuficiente (~10%)
-- 🟡 Sin rate limiting en API
-- 🟡 JWT token en .env requiere verificación
-- 🟡 Sin estrategia de backups documentada
+### Principales Riesgos
+- 🔴 **Seguridad**: Sin rate limiting, JWT en .env, sin MFA
+- 🔴 **Operación**: Dependencia crítica de scripts manuales para operaciones core
+- 🔴 **UX**: No hay comparación visual baseline vs escenario (crítico para valor)
+- 🟡 **Testing**: Cobertura ~10%, sin tests E2E
+- 🟡 **Monitoreo**: Sin alertas ni métricas de producción
 
-**Veredicto:** El proyecto ha evolucionado exitosamente desde la base estable inicial. La arquitectura soporta producción con algunas mejoras de seguridad y testing pendientes.
+**Veredicto:** El Scenario Builder está listo para validación con usuarios, pero la plataforma tiene deuda técnica grave en seguridad y operación que debe atenderse antes de escalar.
 
 ---
 
-## 2. ESTADO ACTUAL DETALLADO
+## B. HALLAZGOS CRÍTICOS
 
-### 2.1 Stack Tecnológico
+### B.1 Seguridad - Riesgo Alto
 
-| Componente | Tecnología | Versión | Estado |
-|------------|-----------|---------|--------|
-| Framework | Vanilla TypeScript | 5.9.3 | ✅ Estable |
-| Bundler | Vite | 8.0.0 | ✅ Estable |
-| Mapa | MapLibre GL JS | 5.20.1 | ✅ Estable |
-| Tiles/Estilo | MapTiler | API v1 | ✅ Estable |
-| Estilos | CSS puro | - | ✅ Estable |
-| Estado | Variables globales + localStorage | - | ✅ Estable |
-| Routing | Hash-based Router | Custom | ✅ Implementado |
-| Tests | Vitest | 3.0.0 | ✅ Implementado |
-| Backend | Supabase | 2.99.1 | ✅ Configurado |
-| Auth | JWT + localStorage | - | ✅ Implementado |
-| Deploy | Docker + GitHub Actions | - | ✅ Configurado |
+**Problema:** La plataforma carece de controles de seguridad esenciales para producción.
 
-### 2.2 Árbol de Carpetas Actualizado
+**Evidencia:**
+- Sin rate limiting en API Gateway (Kong)
+- JWT tokens expuestos en .env.scripts
+- Sin MFA para usuarios admin
+- Sin rotación automática de secrets
+- Sin auditoría de accesos
 
-```
-src/
-├── app/
-│   ├── initMap.ts              # Inicialización MapLibre (FRÁGIL)
-│   ├── mapConfig.ts            # Configuración cámara, colores
-│   ├── fog.ts                  # Configuración niebla
-│   ├── styleTweaks.ts          # Ajustes visuales globales
-│   ├── performance/
-│   │   └── qualityMode.ts      # Sistema Full/Lite ✅ NUEVO
-│   ├── layers/
-│   │   ├── buildings.ts        # Edificios 3D extruidos
-│   │   ├── roads.ts            # Recolorización carreteras
-│   │   ├── labels.ts           # Recolorización labels
-│   │   └── agents.ts           # Capa agentes (símbolos)
-│   ├── simulation/
-│   │   ├── agentEngine.ts      # Motor simulación + loop (FRÁGIL)
-│   │   ├── network.ts          # Red peatonal + heurística angular
-│   │   ├── spawn.ts            # Spawning agentes
-│   │   └── agentModel.ts       # Modelo agente
-│   ├── survey/
-│   │   ├── surveyService.ts    # Servicio de encuestas ✅ NUEVO
-│   │   └── syntheticResponseEngine.ts  # Motor respuestas ✅ NUEVO
-│   ├── benchmark/
-│   │   └── benchmarkService.ts # Servicio benchmarks ✅ NUEVO
-│   └── utils/
-│       ├── styleHelpers.ts     # Helpers estilo MapLibre
-│       ├── geoUtils.ts         # Utilidades geográficas
-│       ├── icons.ts            # Iconos SVG agentes
-│       └── errorHandling.ts    # Manejo de errores ✅ NUEVO
-├── components/
-│   ├── Navigation.ts           # Navegación ✅ NUEVO
-│   └── UserMenu.ts             # Menú usuario ✅ NUEVO
-├── data/
-│   ├── elGolfNetwork.ts        # Red fija El Golf
-│   ├── chileRegions.ts         # Regiones de Chile ✅ NUEVO
-│   └── syntheticAgents.ts      # Agentes sintéticos ✅ NUEVO
-├── pages/
-│   ├── LandingPage.ts          # Landing ✅ NUEVO
-│   ├── HomePage.ts             # Home ✅ NUEVO
-│   ├── MapViewPage.ts          # Mapa ✅ NUEVO
-│   ├── ChileMapPage.ts         # Mapa Chile ✅ NUEVO
-│   ├── RegionDetailPage.ts     # Detalle región ✅ NUEVO
-│   ├── AgentsPage.ts           # Vista agentes ✅ NUEVO
-│   ├── SurveysPage.ts          # Encuestas ✅ NUEVO
-│   ├── BenchmarksPage.ts       # Benchmarks ✅ NUEVO
-│   ├── MethodologyPage.ts      # Metodología ✅ NUEVO
-│   ├── LoginPage.ts            # Login ✅ NUEVO
-│   ├── ProfilePage.ts          # Perfil ✅ NUEVO
-│   └── SettingsPage.ts         # Configuración ✅ NUEVO
-├── router/
-│   └── index.ts                # Router ✅ NUEVO
-├── services/
-│   ├── auth/
-│   │   ├── index.ts            # Servicio auth ✅ NUEVO
-│   │   └── auth.test.ts        # Tests auth ✅ NUEVO
-│   └── supabase/
-│       ├── client.ts           # Cliente Supabase ✅ NUEVO
-│       ├── index.ts            # Index ✅ NUEVO
-│       └── repositories/
-│           ├── agentRepository.ts      # Repo agentes ✅ NUEVO
-│           ├── surveyRepository.ts     # Repo encuestas ✅ NUEVO
-│           ├── territoryRepository.ts  # Repo territorios ✅ NUEVO
-│           └── userRepository.ts       # Repo usuarios ✅ NUEVO
-├── styles/
-│   ├── main.css                # Estilos cyberpunk + UI (FRÁGIL)
-│   ├── auth.css                # Estilos auth ✅ NUEVO
-│   ├── landing.css             # Estilos landing ✅ NUEVO
-│   ├── region-detail.css       # Estilos región ✅ NUEVO
-│   ├── surveys.css             # Estilos encuestas ✅ NUEVO
-│   ├── benchmarks.css          # Estilos benchmarks ✅ NUEVO
-│   └── methodology.css         # Estilos metodología ✅ NUEVO
-├── types/
-│   ├── map.ts                  # Tipos MapLibre
-│   ├── network.ts              # Tipos red + agentes
-│   ├── agent.ts                # Tipos agente
-│   ├── database.ts             # Tipos DB ✅ NUEVO
-│   ├── survey.ts               # Tipos encuestas ✅ NUEVO
-│   └── benchmark.ts            # Tipos benchmarks ✅ NUEVO
-└── ui/
-    └── panel.ts                # Panel lateral controles
+**Impacto:** Vulnerable a ataques de fuerza bruta, exfiltración de datos, escalación de privilegios.
 
-scripts/
-├── config/
-│   ├── territories.ts          # Config territorios ✅ NUEVO
-│   └── variable_maps.ts        # Mapeo variables ✅ NUEVO
-├── ingest/
-│   ├── ingest_censo.ts         # Ingesta Censo ✅ NUEVO
-│   ├── ingest_casen.ts         # Ingesta CASEN ✅ NUEVO
-│   ├── ingest_subtel.ts        # Ingesta SUBTEL ✅ NUEVO
-│   └── download_chile_regions.ts  # Descarga regiones ✅ NUEVO
-├── normalize/
-│   ├── normalize_censo.ts      # Normaliza Censo ✅ NUEVO
-│   ├── normalize_casen.ts      # Normaliza CASEN ✅ NUEVO
-│   └── normalize_subtel.ts     # Normaliza SUBTEL ✅ NUEVO
-├── integrate/
-│   ├── build_territories_master.ts      # Integra territorios ✅ NUEVO
-│   ├── build_population_backbone.ts     # Backbone población ✅ NUEVO
-│   └── build_subtel_profile.ts          # Perfil SUBTEL ✅ NUEVO
-├── synthesize/
-│   ├── synthesize_population.ts         # Síntesis población ✅ NUEVO
-│   └── generate_synthetic_agents_v1.ts  # Genera agentes ✅ NUEVO
-├── validate/
-│   ├── validate_backbone.ts             # Valida backbone ✅ NUEVO
-│   └── validate_synthetic_population.ts # Valida población ✅ NUEVO
-├── seed/
-│   ├── seed_territories.ts     # Seed territorios ✅ NUEVO
-│   ├── seed_agents.ts          # Seed agentes ✅ NUEVO
-│   └── migrate_territories_api.cjs  # Migración ✅ NUEVO
-└── pipeline.ts                 # Orquestador pipeline ✅ NUEVO
+**Recomendación:** Implementar rate limiting, mover secrets a vault, agregar MFA antes de cualquier escalamiento.
 
-deploy/
-├── docker-compose.supabase.yml # Supabase self-hosted ✅ NUEVO
-├── Dockerfile                  # Multi-stage build ✅ NUEVO
-├── nginx.conf                  # Config Nginx ✅ NUEVO
-├── init/
-│   ├── 01-schema.sql           # Schema SQL ✅ NUEVO
-│   ├── 02-migrate-territories.sql      # Migración ✅ NUEVO
-│   ├── 03-migrate-territories-to-v2.sql # Migración v2 ✅ NUEVO
-│   └── 04-migrate-simple.sql   # Migración simple ✅ NUEVO
-└── easypanel/
-    ├── pulsos-sociales.json    # Template Easypanel ✅ NUEVO
-    └── pulsos-sociales-frontend-only.json # Frontend only ✅ NUEVO
+### B.2 Operación Manual - Riesgo Alto
 
-docs/
-├── ARCHITECTURE_SUPABASE.md    # Arquitectura ✅ NUEVO
-└── TERRITORIES_MODEL_ALIGNMENT.md  # Alineación modelo ✅ NUEVO
+**Problema:** Demasiadas operaciones críticas dependen de scripts manuales.
 
-.github/
-└── workflows/
-    └── docker-build.yml        # CI/CD ✅ NUEVO
-```
+**Evidencia:**
+- Creación de encuestas: requiere script `createPhaseXSurvey.ts`
+- Rollout controlado: requiere script `runPhaseXControlled.ts`
+- Validación de datos: requiere scripts de audit
+- Migraciones: requieren ejecución manual con tsx
 
-### 2.3 Features Implementadas ✅
+**Impacto:** Alto riesgo de error humano, imposible escalar, dependencia de conocimiento tribal.
 
-#### Arquitectura
-- [x] Sistema de routing multi-página (12 páginas)
-- [x] Estado global con localStorage
-- [x] Manejo de errores robusto (Error Boundaries)
-- [x] Tests unitarios (Vitest)
-- [x] CI/CD con GitHub Actions
-- [x] Docker multi-stage build
+**Recomendación:** Automatizar operaciones core en UI, crear API de gestión, documentar runbooks.
 
-#### Performance
-- [x] Modo de calidad/performance (Full/Lite)
-- [x] Instrumentación de métricas (FPS tracking)
-- [x] Auto-detección de bajo rendimiento
-- [x] Lazy loading implícito por páginas
+### B.3 UX de Comparación - Riesgo Medio
 
-#### Data Pipeline
-- [x] Pipeline completo: ingest → normalize → integrate → synthesize → validate
-- [x] Scripts para Censo, CASEN, SUBTEL
-- [x] Validación de datos
-- [x] Generación de agentes sintéticos
+**Problema:** No hay forma visual de comparar baseline vs escenario simulado.
 
-#### Producto
-- [x] PWA básica (manifest, icons)
-- [x] Mobile-optimized UI
-- [x] Autenticación (JWT + localStorage)
-- [x] 12 páginas funcionales
-- [x] Sistema de encuestas
-- [x] Sistema de benchmarks
-- [x] Vista de agentes con ficha
+**Evidencia:**
+- Scenario Builder genera resultados pero no los compara con baseline
+- Usuario debe navegar manualmente entre páginas
+- No hay visualización de delta/oportunidad
 
-#### Backend
-- [x] Supabase self-hosted configurado
-- [x] Schema SQL completo (7 tablas)
-- [x] Repositorios con RLS
-- [x] Fallback a datos locales
+**Impacto:** Usuario no percibe valor completo del escenario, baja adopción.
 
-### 2.4 Features Faltantes ❌
-
-#### Testing
-- [ ] Tests de integración con Supabase
-- [ ] Tests E2E (Playwright/Cypress)
-- [ ] Cobertura >70%
-- [ ] Tests del data pipeline
-
-#### Seguridad
-- [ ] Rate limiting en API Gateway
-- [ ] CORS restrictivo en producción
-- [ ] Rotación automática de JWT secrets
-- [ ] HTTPS obligatorio
-
-#### DevOps
-- [ ] Estrategia de backups documentada
-- [ ] Monitoreo de producción
-- [ ] Alertas automáticas
-- [ ] Multi-environment (dev/staging/prod)
-
-#### Performance
-- [ ] Service Worker para offline
-- [ ] CDN para assets estáticos
-- [ ] Code splitting por rutas
-- [ ] Web Workers para simulación
+**Recomendación:** Implementar vista de comparación lado-a-lado con métricas de delta.
 
 ---
 
-## 3. ANÁLISIS DE SEGURIDAD
+## C. HALLAZGOS IMPORTANTES PERO NO CRÍTICOS
 
-### 3.1 Variables de Entorno
+### C.1 Deuda Técnica
 
-**Archivo:** `.env`
+- **Tests:** Cobertura ~10%, sin tests de integración con Supabase
+- **Documentación:** Extensa pero dispersa, difícil de navegar
+- **Código:** Algunos archivos frágiles (initMap.ts, agentEngine.ts) sin tests
+- **Migraciones:** Múltiples versiones de migraciones RLS acumuladas
 
-```
-VITE_MAPTILER_KEY=orWgcmF4NtAAER2Tgjp2
-VITE_SUPABASE_URL=https://supabase.pulsossociales.com
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
+### C.2 UX Incompleta
 
-**⚠️ Hallazgos:**
+- Scenario Builder: falta edición de escenarios, duplicar, filtros
+- Encuestas: no hay dashboard de resultados en tiempo real
+- Benchmarks: sin alertas de desviación significativa
 
-1. **JWT Token**: El token `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` parece ser un token de demo (decodificado: rol "anon", issuer "supabase-demo"). Verificar que no sea de producción.
+### C.3 Riesgos de Mantenimiento
 
-2. **MapTiler Key**: Expuesta en build (inevitable para frontend). Verificar restricciones de dominio en MapTiler Cloud.
-
-3. **Supabase URL**: Usa dominio personalizado (https://supabase.pulsossociales.com). ✅ Buena práctica.
-
-**Recomendaciones:**
-- 🔒 Rotar JWT secrets si es token real
-- 🔒 Configurar rate limiting en Kong
-- 🔒 Verificar CORS en producción
-- 🔒 Usar HTTPS obligatorio
-
-### 3.2 Autenticación
-
-**Implementación:** JWT + localStorage
-
-**Puntos Positivos:**
-- ✅ Tokens con expiración (3600s)
-- ✅ Validación de sesión
-- ✅ Soft deletes en usuarios
-- ✅ Roles (user, admin)
-
-**⚠️ Hallazgos:**
-- 🟡 localStorage vulnerable a XSS
-- 🟡 Sin refresh token automático
-- 🟡 Sin MFA
-
-**Recomendaciones:**
-- 🔒 Considerar httpOnly cookies
-- 🔒 Implementar refresh tokens
-- 🔒 Agregar MFA para admins
-
-### 3.3 Base de Datos
-
-**Row Level Security (RLS):**
-- ✅ Habilitado en todas las tablas
-- ✅ Políticas definidas por rol
-- ✅ Soft deletes implementados
-
-**⚠️ Hallazgos:**
-- 🟡 Sin rate limiting en queries
-- 🟡 Sin query timeout configurado
-- 🟡 Sin auditoría de cambios
+- Dependencia de service keys para operaciones críticas
+- Scripts de rollout acoplados a estructura de fases específica
+- Sin estrategia de rollback documentada
 
 ---
 
-## 4. ANÁLISIS DE PERFORMANCE
+## D. LO QUE SÍ ESTÁ BIEN Y DEBE PROTEGERSE
 
-### 4.1 Frontend
+### D.1 Scenario Builder MVP - ✅ Estable
 
-**Puntos Positivos:**
-- ✅ Modo Full/Lite implementado
-- ✅ FPS tracking
-- ✅ Auto-detección de bajo rendimiento
-- ✅ Gzip compression en Nginx
-- ✅ Cache headers configurados
+**Estado:** Operativo, conectado al motor real, validado internamente.
 
-**Métricas:**
-- Bundle size: ~280 KB (gzip)
-- Tiempo de build: ~200ms
-- Lighthouse: Estimado 85-90
+**Componentes:**
+- Vista de lista con tarjetas y métricas
+- Formulario de creación con 7 categorías
+- Simulación conectada a eventImpact.ts real
+- RLS v4 aplicado correctamente
+- 3 escenarios de prueba preparados
 
-**⚠️ Hallazgos:**
-- 🟡 Sin Service Worker
-- 🟡 Sin lazy loading explícito
-- 🟡 Sin CDN
+**Evidencia:**
+- `SCENARIO_BUILDER_VALIDATION_RUN_003.md`: 3 validaciones exitosas
+- `SCENARIO_BUILDER_USER_TESTING_RUN_001.md`: guía de testing completa
+- Prompts 1-7 completados y documentados
 
-### 4.2 Backend
+**Proteger:** No refactorizar sin necesidad, mantener estabilidad para validación con usuarios.
 
-**Puntos Positivos:**
-- ✅ PostgreSQL con índices optimizados
-- ✅ GIN indexes para búsquedas
-- ✅ Connection pooling (PostgREST)
+### D.2 Motor de Opinión v1.1/v1.2 - ✅ Validado
 
-**⚠️ Hallazgos:**
-- 🟡 Sin caché de queries
-- 🟡 Sin rate limiting
-- 🟡 Sin monitoreo de queries lentas
+**Estado:** Calibrado y validado con benchmarks CADEM.
 
----
+**Evidencia:**
+- `CALIBRATION_RESULTS.md`: calibración exitosa
+- `BENCHMARK_COMPARISON_RESULTS.md`: comparación favorable
+- `PERSISTENCE_VALIDATION.md`: persistencia de estados validada
 
-## 5. ANÁLISIS DE TESTS
+**Proteger:** No modificar lógica de opinión sin re-validación completa.
 
-### 5.1 Cobertura Actual
+### D.3 Data Pipeline - ✅ Robusto
 
-**Tests Existentes:**
-- `src/services/auth/auth.test.ts` - Tests de autenticación
-- `src/app/utils/errorHandling.test.ts` - Tests de utilidades
+**Estado:** Pipeline completo funcionando desde ingesta hasta validación.
 
-**Cobertura Estimada:** ~10-15%
+**Evidencia:**
+- **25,000 agentes sintéticos en Supabase** (cifra oficial operativa)
+- Scripts de ingest, normalize, integrate, synthesize, validate operativos
+- Agentes generados con datos reales Censo/CASEN
+- Validaciones de calidad implementadas
 
-### 5.2 Hallazgos
+**Proteger:** Mantener estabilidad, documentar dependencias de datos externos.
 
-**⚠️ Críticos:**
-- 🔴 Sin tests de integración
-- 🔴 Sin tests del data pipeline
-- 🔴 Sin tests E2E
-- 🔴 Sin tests de componentes UI
-
-**Recomendaciones:**
-- 📌 Priorizar tests de integración con Supabase
-- 📌 Agregar tests del data pipeline
-- 📌 Implementar E2E con Playwright
-- 📌 Objetivo: 70% cobertura
+**Nota:** Las referencias a "200 agentes" o "500 agentes" en documentación de test se refieren a muestras de validación, no al universo total de 25,000 agentes.
 
 ---
 
-## 6. ANÁLISIS DE DEPLOY
+## E. TABLA DE ESTADO POR MÓDULO
 
-### 6.1 Docker
-
-**Puntos Positivos:**
-- ✅ Multi-stage build optimizado
-- ✅ Node 20 Alpine
-- ✅ Nginx Alpine
-- ✅ Health checks
-
-**Archivo:** `Dockerfile`
-
-```dockerfile
-# Stage 1: Build
-FROM node:20-alpine AS builder
-# ...
-
-# Stage 2: Production
-FROM nginx:alpine
-# ...
-```
-
-### 6.2 GitHub Actions
-
-**Puntos Positivos:**
-- ✅ Build automático en push
-- ✅ Push a GHCR
-- ✅ Cache de Docker layers
-
-**⚠️ Hallazgos:**
-- 🟡 Sin tests en CI
-- 🟡 Sin linting
-- 🟡 Sin security scanning
-
-**Recomendaciones:**
-- 📌 Agregar paso de tests
-- 📌 Agregar ESLint/Prettier
-- 📌 Agregar Trivy para scanning
-
-### 6.3 Supabase Self-Hosted
-
-**Servicios:**
-- PostgreSQL 15
-- Kong API Gateway
-- GoTrue (Auth)
-- PostgREST
-- Realtime
-- Storage
-- Studio
-
-**⚠️ Hallazgos:**
-- 🟡 Sin backups automatizados
-- 🟡 Sin monitoreo
-- 🟡 Kong sin rate limiting
+| Módulo | Estado | Evidencia | Riesgo | Recomendación |
+|--------|--------|-----------|--------|---------------|
+| **Scenario Builder UI** | ✅ Operativo | Prompts 1-7 completados, 3 escenarios listos | Bajo | Congelar features, enfocar en validación UX |
+| **Scenario Builder Backend** | ✅ Operativo | RLS v4 aplicado, eventImpact integrado | Bajo | Monitorear performance en simulaciones grandes |
+| **Motor Opinión v1.1** | ✅ Validado | CALIBRATION_RESULTS.md, benchmarks | Bajo | No modificar sin re-validación |
+| **Motor Opinión v1.2** | ✅ Validado | V1_2_EVENT_IMPACT_RUN_001.md | Bajo | Eventos operativos, monitorear logs |
+| **Encuestas CADEM** | ✅ Operativo | ROLLOUT_FASE_3_INTERNAL.md | Medio | Automatizar creación en UI |
+| **Benchmarks** | ✅ Operativo | BENCHMARK_COMPARISON_RESULTS.md | Medio | Agregar alertas de desviación |
+| **Agentes Sintéticos** | ✅ Operativo | SYNTHETIC_AGENTS_AUDIT.md | Bajo | Mantener, no regenerar sin necesidad |
+| **Persistencia Estados** | ✅ Validada | PERSISTENCE_VALIDATION.md | Bajo | Monitorear tamaño de tablas |
+| **Weekly Events** | ✅ Operativo | V1_2_EVENT_IMPACT_RUN_001.md | Medio | Verificar scheduling automático |
+| **Event Impact** | ✅ Operativo | EVENT_IMPACT_TUNING_001.md | Medio | Revisar logs periódicamente |
+| **Survey Runner** | ✅ Operativo | STAGING_VALIDATION_RUN_001.md | Medio | Optimizar para grandes volúmenes |
+| **Cadem Adapter** | ✅ Operativo | AB_COMPARISON_RESULTS.md | Bajo | Mantener sincronización con catálogo |
+| **Question Resolver** | ✅ Validado | Q_DIRECTION_DIAGNOSTIC.md | Bajo | No modificar mapeos sin validación |
+| **Question Interpreter** | ✅ Validado | questionInterpreter.test.ts | Bajo | Agregar más casos de test |
+| **Topic State Seed** | ✅ Operativo | topicStateSeed.ts | Medio | Documentar dependencias de topics |
+| **Opinion Updater** | ✅ Operativo | opinionUpdater.ts | Medio | Monitorear performance |
+| **Security/RLS** | 🔴 Crítico | RLS v4 aplicado pero sin rate limiting | Alto | Implementar rate limiting ASAP |
+| **Operaciones/Rollout** | 🔴 Crítico | Dependencia de scripts manuales | Alto | Automatizar en UI/API |
+| **UX Comparación** | 🟡 Incompleto | No hay vista comparativa | Medio | Implementar antes de lanzamiento |
+| **Tests** | 🟡 Insuficiente | ~10% cobertura | Medio | Aumentar a 50% |
+| **Monitoreo** | 🔴 Crítico | Sin alertas ni métricas | Alto | Implementar observabilidad básica |
+| **Documentación** | ✅ Extensa | Múltiples docs en cadem-v3/ | Bajo | Consolidar índice navegable |
 
 ---
 
-## 7. CHECKLIST DE ACCIONES PRIORITARIAS
+## F. QUÉ FALTA PARA UNA EXPERIENCIA REAL DE CLIENTE
 
-### 🔴 Alta Prioridad (Semana 1)
+### Must Have (Bloqueantes para lanzamiento)
 
-- [ ] **Verificar JWT token** - Confirmar si es de demo o producción
-- [ ] **Implementar rate limiting** - En Kong API Gateway
-- [ ] **Agregar tests de integración** - Mínimo 5 tests críticos
-- [ ] **Configurar backups** - Automatizar backups de PostgreSQL
+1. **Seguridad**
+   - [ ] Rate limiting en Kong API Gateway
+   - [ ] MFA para usuarios admin
+   - [ ] Rotación automática de JWT secrets
+   - [ ] Auditoría de accesos
 
-### 🟡 Media Prioridad (Semanas 2-3)
+2. **Operación Sin Scripts**
+   - [ ] UI para crear encuestas (ahora requiere script)
+   - [ ] UI para rollout controlado (ahora requiere script)
+   - [ ] Dashboard de operaciones en tiempo real
+   - [ ] Runbooks automatizados
 
-- [ ] **Aumentar cobertura de tests** - Objetivo 50%
-- [ ] **Implementar Service Worker** - Para offline básico
-- [ ] **Configurar CDN** - Cloudflare o similar
-- [ ] **Agregar monitoreo** - Prometheus/Grafana o similar
+3. **UX de Comparación**
+   - [ ] Vista lado-a-lado: baseline vs escenario
+   - [ ] Métricas de delta (cambio porcentual)
+   - [ ] Visualización de oportunidad/pérdida
+   - [ ] Exportar comparación
 
-### 🟢 Baja Prioridad (Mes 2)
+4. **Monitoreo**
+   - [ ] Alertas de errores en producción
+   - [ ] Métricas de uso (encuestas, escenarios)
+   - [ ] Dashboard de salud del sistema
+   - [ ] Logs centralizados
 
-- [ ] **Tests E2E** - Playwright
-- [ ] **MFA para admins** - Autenticación de dos factores
-- [ ] **Code splitting** - Lazy loading por rutas
-- [ ] **Web Workers** - Para simulación
+### Nice to Have (Post-lanzamiento)
 
----
+1. **UX Scenario Builder**
+   - [ ] Editar escenarios existentes
+   - [ ] Duplicar escenario
+   - [ ] Filtros y búsqueda en lista
+   - [ ] Ordenamiento por fecha/categoría
 
-## 8. COMPARATIVO: AUDITORÍA ANTERIOR vs ACTUAL
+2. **Features Adicionales**
+   - [ ] Compartir escenarios entre usuarios
+   - [ ] Templates predefinidos
+   - [ ] Historial de simulaciones
+   - [ ] Exportar resultados a CSV/PDF
 
-| Aspecto | Marzo 14 (v0.1.0) | Marzo 23 (v0.9.1) | Cambio |
-|---------|-------------------|-------------------|--------|
-| Routing | ❌ No | ✅ 12 páginas | ✅ Implementado |
-| Tests | ❌ 0% | 🟡 ~15% | ✅ Progreso |
-| Data Pipeline | ❌ No | ✅ Completo | ✅ Implementado |
-| Auth | ❌ No | ✅ JWT + localStorage | ✅ Implementado |
-| Backend | ❌ No | ✅ Supabase | ✅ Implementado |
-| Performance | ❌ No | ✅ Full/Lite mode | ✅ Implementado |
-| Deploy | ❌ No | ✅ Docker + CI/CD | ✅ Implementado |
-| Documentation | 🟡 Básica | ✅ Exhaustiva | ✅ Mejorada |
+3. **Testing**
+   - [ ] Tests E2E con Playwright
+   - [ ] Cobertura >70%
+   - [ ] Tests de carga
+   - [ ] Chaos engineering básico
 
----
-
-## 9. CONCLUSIÓN
-
-### Estado General: ✅ EXCELENTE
-
-El proyecto ha evolucionado de una demo simple a una aplicación completa y lista para producción. La arquitectura es sólida, la documentación es ejemplar, y las funcionalidades implementadas cubren el MVP completo.
-
-### Fortalezas Clave
-
-1. **Arquitectura limpia** - Modular, escalable, bien documentada
-2. **Data pipeline completo** - Desde ingesta hasta validación
-3. **UX pulida** - Modo de calidad, responsive, tema cyberpunk
-4. **DevOps maduro** - Docker, CI/CD, self-hosting
-5. **Documentación exhaustiva** - GUARDRAILS, CHECKPOINTS, AUDITORIA
-
-### Riesgos a Mitigar
-
-1. **Seguridad** - Rate limiting, JWT rotation, HTTPS
-2. **Testing** - Cobertura insuficiente, sin E2E
-3. **Operaciones** - Backups, monitoreo, alertas
-
-### Próximo Paso Recomendado
-
-**Prioridad 1:** Implementar rate limiting y verificar JWT tokens
-**Prioridad 2:** Aumentar cobertura de tests a 50%
-**Prioridad 3:** Configurar backups automatizados
+4. **Performance**
+   - [ ] Service Worker para offline
+   - [ ] CDN para assets
+   - [ ] Caché de queries Supabase
+   - [ ] Web Workers para simulación
 
 ---
 
-## ANEXO: Métricas de Código
+## G. ROADMAP RECOMENDADO
 
-| Métrica | Valor |
-|---------|-------|
-| Líneas de código TypeScript | ~8,000+ |
-| Archivos .ts | 80+ |
-| Páginas | 12 |
-| Componentes | 15+ |
-| Tests | 2 archivos |
-| Dependencias de producción | 3 (maplibre-gl, supabase-js, tslib) |
-| Dependencias de desarrollo | 6 |
-| Bundle size (gzip) | ~350 KB |
-| Tiempo de build | ~500ms |
-| Cobertura de tests | ~15% |
-| Documentación | Extensa |
+### Próximos 30 Días (Prioridad 1: Seguridad)
+
+**Semana 1-2: Seguridad Crítica**
+- Implementar rate limiting en Kong (100 req/min por IP, 1000 req/min por usuario)
+- Mover JWT secrets a vault (Doppler o similar)
+- Configurar HTTPS obligatorio
+- Revisar y rotar tokens expuestos
+
+**Semana 3-4: Operación Básica**
+- Crear UI simple para crear encuestas (reemplaza scripts)
+- Implementar dashboard de operaciones (estado de encuestas, escenarios)
+- Documentar runbooks de emergencia
+- Configurar backups automatizados de PostgreSQL
+
+### Próximos 60 Días (Prioridad 2: Operación Sin Scripts)
+
+**Semana 5-6: Automatización**
+- UI para rollout controlado de encuestas
+- Automatizar validaciones de datos (reemplaza scripts de audit)
+- API de gestión para operaciones core
+- Sistema de notificaciones para operadores
+
+**Semana 7-8: UX de Comparación**
+- Implementar vista comparativa baseline vs escenario
+- Métricas de delta y oportunidad
+- Exportar comparaciones
+- Validar con usuarios de prueba
+
+### Mes 3 (Prioridad 3: Monitoreo y Testing)
+
+**Semana 9-10: Observabilidad**
+- Implementar métricas básicas (Prometheus/Grafana o similar)
+- Alertas de errores críticos
+- Dashboard de salud del sistema
+- Logs centralizados
+
+**Semana 11-12: Testing**
+- Tests E2E críticos (login, crear escenario, simular)
+- Aumentar cobertura a 50%
+- Tests de integración con Supabase
+- Validación de seguridad (pentest básico)
+
+### Mes 4+ (Mejoras Continuas)
+
+- Features nice-to-have de Scenario Builder
+- Optimización de performance
+- Escalabilidad (sharding, caché)
+- Integraciones adicionales
 
 ---
 
-*Documento actualizado el 23 de marzo de 2026*
-*Versión: 2.0*
+## H. CONCLUSIÓN
+
+### Estado Real de la App
+
+La aplicación ha evolucionado significativamente desde marzo. El **Scenario Builder MVP está operativo y conectado al motor real**, no usa mocks. Ha pasado validaciones internas exitosas y está listo para validación con usuarios.
+
+Sin embargo, la plataforma tiene **deuda técnica grave en seguridad y operación** que debe atenderse antes de escalar:
+
+1. **Seguridad:** Sin rate limiting, sin MFA, secrets expuestos
+2. **Operación:** Dependencia crítica de scripts manuales
+3. **UX:** Falta comparación visual que demuestre valor
+
+### Nivel de Madurez Actual
+
+- **Motor de opinión:** v1.2 - Producción controlada ✅
+- **Scenario Builder:** MVP - Validación con usuarios 🟡
+- **Seguridad:** Pre-producción - No listo para escalar 🔴
+- **Operación:** Manual - Riesgo operacional alto 🔴
+- **UX:** Funcional - Falta diferenciador clave 🟡
+
+### Recomendación Final
+
+**No escalar hasta resolver seguridad y operación.** El Scenario Builder está listo para validación con usuarios, pero la plataforma necesita:
+
+1. **Inmediato (esta semana):** Rate limiting, revisión de secrets
+2. **30 días:** UI de operaciones básicas, backups automatizados
+3. **60 días:** UX de comparación, monitoreo básico
+
+**Si se resuelven estos puntos, la plataforma estará lista para producción controlada y escalamiento gradual.**
+
+---
+
+*Documento actualizado el 30 de marzo de 2026*
+*Versión: 3.0*
 *Auditor realizada por: Claude (AI Assistant)*

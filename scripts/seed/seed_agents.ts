@@ -2,11 +2,15 @@
 /**
  * Seed script for synthetic_agents table
  * Loads agents from data/processed/synthetic_agents_v1.json
+ * 
+ * ⚠️ REQUIERE: SUPABASE_SERVICE_KEY en .env.scripts
+ * NO usar ANON_KEY - el seeding requiere privilegios de service_role
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { SupabaseClient } from '@supabase/supabase-js';
+import { serviceClient } from '../utils/serviceClient';
 
 // Types matching the JSON structure
 interface AgentData {
@@ -285,17 +289,9 @@ async function verifyAgents(supabase: SupabaseClient): Promise<void> {
 async function main() {
   console.log('🌱 Starting agents seed...\n');
 
-  // Get Supabase credentials from environment
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    console.error('❌ Missing Supabase credentials. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
-    process.exit(1);
-  }
-
-  console.log(`🔗 Connecting to: ${supabaseUrl}`);
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  // Usar serviceClient que ya está validado y configurado con SERVICE_KEY
+  const supabase = serviceClient;
+  console.log('🔗 Usando serviceClient con SERVICE_KEY');
 
   // Run seed
   const result = await seedAgents(supabase);

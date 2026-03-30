@@ -7,7 +7,7 @@
  * y el MOTOR CADEM REAL calibrado
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { serviceClient } from '../utils/serviceClient';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -67,16 +67,8 @@ if (![1, 2, 3].includes(WAVE)) {
   process.exit(1);
 }
 
-// Configuración Supabase
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const supabaseKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ Error: Variables de entorno VITE_SUPABASE_URL y VITE_SUPABASE_SERVICE_KEY/VITE_SUPABASE_ANON_KEY son requeridas');
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Cliente Supabase centralizado (valida entorno automáticamente)
+const supabase = serviceClient;
 
 // Cargar catálogo canónico
 const CATALOG_PATH = path.resolve('data/surveys/cadem_question_catalog_v1.json');

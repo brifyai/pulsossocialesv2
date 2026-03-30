@@ -12,6 +12,7 @@ import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { getServiceClientConfig } from '../utils/validateScriptEnv';
 
 // Importar motor CADEM
 import { buildInitialTopicStates } from '../../src/app/opinionEngine/topicStateSeed';
@@ -29,15 +30,8 @@ const __dirname = path.dirname(__filename);
 
 const SAMPLE_SIZE = parseInt(process.argv.find(a => a.startsWith('--sample-size='))?.split('=')[1] || '200');
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const supabaseKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ Error: Variables de entorno VITE_SUPABASE_URL y VITE_SUPABASE_SERVICE_KEY son requeridas');
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Validar y obtener configuración de entorno (requiere SERVICE_KEY)
+const { url: supabaseUrl, key: supabaseKey } = getServiceClientConfig();
 
 // ============================================================================
 // TIPOS

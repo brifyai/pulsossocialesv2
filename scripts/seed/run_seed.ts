@@ -2,31 +2,23 @@
 /**
  * Master seed script for Pulsos Sociales database
  * Runs territories seed first, then agents seed
+ * 
+ * ⚠️ REQUIERE: SUPABASE_SERVICE_KEY en .env.scripts
+ * NO usar ANON_KEY - el seeding requiere privilegios de service_role
  */
 
-import { createClient } from '@supabase/supabase-js';
-import { seedTerritories } from './seed_territories.ts';
-import { seedAgents } from './seed_agents.ts';
+import { serviceClient } from '../utils/serviceClient';
+import { seedTerritories } from './seed_territories';
+import { seedAgents } from './seed_agents';
 
 async function main() {
   console.log('╔════════════════════════════════════════════════════════════════╗');
   console.log('║     🌱 PULSOS SOCIALES - DATABASE SEED                        ║');
   console.log('╚════════════════════════════════════════════════════════════════╝\n');
 
-  // Get Supabase credentials from environment
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    console.error('❌ Missing Supabase credentials.');
-    console.error('   Set environment variables:');
-    console.error('   - SUPABASE_URL or VITE_SUPABASE_URL');
-    console.error('   - SUPABASE_SERVICE_ROLE_KEY or VITE_SUPABASE_ANON_KEY');
-    process.exit(1);
-  }
-
-  console.log(`🔗 Connecting to: ${supabaseUrl}\n`);
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  // El cliente serviceClient ya está validado y configurado con SERVICE_KEY
+  const supabase = serviceClient;
+  console.log(`🔗 Usando serviceClient con SERVICE_KEY\n`);
 
   // Track results
   const results = {

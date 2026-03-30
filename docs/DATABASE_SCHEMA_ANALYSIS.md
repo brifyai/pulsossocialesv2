@@ -186,8 +186,11 @@ sql_batches/
 - `created_at` / `updated_at` - Timestamps
 
 **Volumen Esperado a Futuro:**
-- Producción: 1-5 millones de agentes
-- Considerar particionamiento por región en producción
+- **Actual: 25,000 agentes sintéticos en Supabase** (cifra oficial operativa)
+- Escalabilidad probada: hasta 500 agentes por encuesta en validaciones
+- Considerar particionamiento por región si se escala más allá de 100,000 agentes
+
+**Nota:** Las referencias a "200 agentes" o "500 agentes" en documentación de test se refieren a muestras de validación, no al universo total de 25,000 agentes.
 
 **Instrucciones de Carga:**
 Ver guía completa en: `/Users/camiloalegria/Desktop/AIntelligence/Simulador 1MM usuarios/output/sql_batches/GUIA_CARGA_SUPABASE.md`
@@ -836,11 +839,13 @@ INSERT INTO territories (level, code, name, population_total, source, source_yea
 ### 10.1 Tablas Grandes
 | Tabla | Registros Esperados | Estrategia |
 |-------|---------------------|------------|
-| `synthetic_agents` | 1-5 millones | Índices en campos de filtro, considerar particionamiento |
-| `survey_responses` | Millones | Particionamiento por survey_id, política de retención |
+| `synthetic_agents` | **25,000 agentes** (cifra oficial operativa) | Índices en campos de filtro, sin particionamiento necesario actualmente |
+| `survey_responses` | ~75,000 (25,000 agentes × 3 preguntas promedio) | Índices compuestos, monitorear crecimiento |
 | `territories` | ~360 | Sin problemas de rendimiento |
-| `survey_definitions` | < 1000 | Sin problemas |
+| `survey_definitions` | < 100 | Sin problemas |
 | `benchmarks` | < 100 | Sin problemas |
+
+**Nota:** Las referencias a "200 agentes" o "500 agentes" en documentación de test se refieren a muestras de validación, no al universo total de 25,000 agentes.
 
 ### 10.2 Consultas Frecuentes
 - Filtrar agentes por región/comuna → Índices en `region_code`, `comuna_code`

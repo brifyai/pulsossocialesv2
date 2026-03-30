@@ -384,6 +384,8 @@ function fromDbSurveyRun(db: DbSurveyRun): SurveyRun {
       segmentMatched: db.agents_matched,
       sampleSizeRequested: db.sample_size_requested,
       sampleSizeActual: db.sample_size_actual,
+      // Incluir results_summary si existe
+      resultsSummary: db.results_summary,
     },
   };
 }

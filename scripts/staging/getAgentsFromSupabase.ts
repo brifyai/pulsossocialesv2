@@ -1,10 +1,13 @@
-const { createClient } = require('@supabase/supabase-js');
-const fs = require('fs');
+/**
+ * Script para obtener agentes desde Supabase (migrado de .cjs a .ts)
+ * Usa serviceClient centralizado - NO hardcodea credenciales
+ */
 
-const supabaseUrl = 'https://supabase.pulsossociales.com';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q';
+import { serviceClient } from '../utils/serviceClient';
+import * as fs from 'fs';
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Cliente Supabase centralizado (valida entorno automáticamente)
+const supabase = serviceClient;
 
 async function getAgents() {
   console.log('🔍 Buscando agentes en Supabase...\n');

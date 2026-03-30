@@ -5,16 +5,19 @@
  * y ver resultados comparativos en una sola página.
  */
 
-import type { CreateScenarioInput } from '../app/events/scenarioEventStore';
-import { createScenario } from '../app/events/scenarioEventStore';
+import type { CreateScenarioInput, ScenarioEvent } from '../app/events/scenarioEventStore';
+import { createScenario, listScenarios, deleteScenario } from '../app/events/scenarioEventStore';
 import { runSurvey } from '../app/survey/surveyRunner';
 import { getAllAgents } from '../data/syntheticAgents';
 
 // Estado local
-let currentView: 'form' | 'success' | 'simulation' | 'results' = 'form';
+let currentView: 'list' | 'form' | 'success' | 'simulation' | 'results' = 'list';
 let isSubmitting = false;
 let isSimulating = false;
+let isLoading = false;
 let createdScenarioId: string | null = null;
+let scenariosList: ScenarioEvent[] = [];
+let listError: string | null = null;
 
 // Resultados de simulación
 let simulationResults: {
@@ -33,6 +36,43 @@ const CATEGORY_OPTIONS = [
   { value: 'environment', label: 'Medio Ambiente' },
   { value: 'other', label: 'Otro' },
 ];
+
+// Mapeo de claves canónicas a labels humanos
+const CANONICAL_LABELS: Record<string, string> = {
+  // Aprobación
+  approve: 'Aprueba',
+  disapprove: 'Desaprueba',
+  no_response: 'No responde',
+  no_opinion: 'Sin opinión',
+  // Dirección del país
+  good_path: 'Buen camino',
+  bad_path: 'Mal camino',
+  // Optimismo/Pesimismo
+  very_optimistic: 'Muy optimista',
+  optimistic: 'Optimista',
+  pessimistic: 'Pesimista',
+  very_pessimistic: 'Muy pesimista',
+  // Economía
+  very_good: 'Muy buena',
+  good: 'Buena',
+  bad: 'Mala',
+  very_bad: 'Muy mala',
+  regular: 'Regular',
+  // Genéricos (fallback)
+  option_a: 'Opción A',
+  option_b: 'Opción B',
+  option_c: 'Opción C',
+  option_d: 'Opción D',
+};
+
+// Mapeo de questionId a las claves canónicas esperadas
+const QUESTION_OPTION_KEYS: Record<string, string[]> = {
+  q_approval: ['approve', 'disapprove', 'no_response'],
+  q_direction: ['good_path', 'bad_path', 'no_response'],
+  q_optimism: ['very_optimistic', 'optimistic', 'pessimistic', 'very_pessimistic', 'no_response'],
+  q_economy_national: ['very_good', 'good', 'bad', 'very_bad', 'regular', 'no_response'],
+  q_economy_personal: ['very_good', 'good', 'bad', 'very_bad', 'regular', 'no_response'],
+};
 
 const SEVERITY_OPTIONS = [
   { value: 'minor', label: 'Menor' },
@@ -103,6 +143,9 @@ function renderContent(container: HTMLElement): void {
 
   // Render según vista
   switch (currentView) {
+    case 'list':
+      renderScenariosList(container);
+      break;
     case 'form':
       renderForm(container);
       break;
@@ -120,6 +163,8 @@ function renderContent(container: HTMLElement): void {
 
 function getPageTitle(): string {
   switch (currentView) {
+    case 'list':
+      return 'Escenarios Hipotéticos';
     case 'form':
       return 'Crear Escenario Hipotético';
     case 'success':
@@ -135,6 +180,8 @@ function getPageTitle(): string {
 
 function getPageSubtitle(): string {
   switch (currentView) {
+    case 'list':
+      return 'Gestiona tus escenarios y crea nuevos para simular impactos';
     case 'form':
       return 'Define un evento hipotético para simular su impacto en las opiniones públicas';
     case 'success':
@@ -146,6 +193,233 @@ function getPageSubtitle(): string {
     default:
       return '';
   }
+}
+
+// ===========================================
+// Scenarios List View
+// ===========================================
+
+async function loadScenarios(): Promise<void> {
+  isLoading = true;
+  listError = null;
+  
+  const result = await listScenarios({ limit: 50 });
+  
+  if (result.success && result.data) {
+    scenariosList = result.data.scenarios;
+  } else {
+    listError = result.error || 'Error al cargar escenarios';
+    scenariosList = [];
+  }
+  
+  isLoading = false;
+  
+  // Re-render if we're still on the list view
+  const page = document.getElementById('scenario-builder-page');
+  if (page && currentView === 'list') {
+    renderContent(page);
+  }
+}
+
+function renderScenariosList(container: HTMLElement): void {
+  // Load scenarios on first render
+  if (!isLoading && scenariosList.length === 0 && !listError) {
+    loadScenarios();
+  }
+  
+  const listContainer = document.createElement('div');
+  listContainer.className = 'scenarios-list-container';
+  
+  // Header with create button
+  const headerSection = document.createElement('div');
+  headerSection.className = 'scenarios-list-header';
+  headerSection.innerHTML = `
+    <div class="scenarios-count">
+      ${isLoading ? 'Cargando escenarios...' : `${scenariosList.length} escenario(s) encontrado(s)`}
+    </div>
+    <button type="button" class="btn btn-primary" id="btn-create-scenario">
+      <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">add</span>
+      Crear Escenario
+    </button>
+  `;
+  listContainer.appendChild(headerSection);
+  
+  // Error message
+  if (listError) {
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'scenarios-error';
+    errorDiv.innerHTML = `
+      <span class="material-symbols-outlined" style="color: #ef4444;">error</span>
+      <span>${escapeHtml(listError)}</span>
+      <button type="button" class="btn btn-secondary" id="btn-retry-load" style="margin-left: 12px;">
+        Reintentar
+      </button>
+    `;
+    listContainer.appendChild(errorDiv);
+  }
+  
+  // Loading state
+  if (isLoading) {
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'scenarios-loading';
+    loadingDiv.innerHTML = `
+      <div class="loading-spinner"></div>
+      <p>Cargando escenarios...</p>
+    `;
+    listContainer.appendChild(loadingDiv);
+  }
+  
+  // Empty state
+  else if (scenariosList.length === 0 && !listError) {
+    const emptyDiv = document.createElement('div');
+    emptyDiv.className = 'scenarios-empty';
+    emptyDiv.innerHTML = `
+      <span class="material-symbols-outlined" style="font-size: 48px; color: #9ca3af;">psychology</span>
+      <h3>No hay escenarios creados</h3>
+      <p>Crea tu primer escenario para comenzar a simular impactos en las opiniones públicas.</p>
+      <button type="button" class="btn btn-primary" id="btn-create-first-scenario">
+        <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">add</span>
+        Crear Primer Escenario
+      </button>
+    `;
+    listContainer.appendChild(emptyDiv);
+  }
+  
+  // Scenarios grid
+  else if (scenariosList.length > 0) {
+    const gridDiv = document.createElement('div');
+    gridDiv.className = 'scenarios-grid';
+    
+    scenariosList.forEach(scenario => {
+      const card = document.createElement('div');
+      card.className = 'scenario-card';
+      card.innerHTML = `
+        <div class="scenario-card-header">
+          <span class="scenario-category-badge ${scenario.category}">${getCategoryLabel(scenario.category)}</span>
+          <span class="scenario-severity-badge ${scenario.severity}">${getSeverityLabel(scenario.severity)}</span>
+        </div>
+        <h4 class="scenario-name">${escapeHtml(scenario.name)}</h4>
+        <p class="scenario-description">${escapeHtml(scenario.description || 'Sin descripción')}</p>
+        <div class="scenario-metrics">
+          <div class="scenario-metric">
+            <span class="metric-label">Sentimiento:</span>
+            <span class="metric-value ${getSentimentClass(scenario.sentiment)}">${getSentimentLabel(scenario.sentiment)}</span>
+          </div>
+          <div class="scenario-metric">
+            <span class="metric-label">Intensidad:</span>
+            <span class="metric-value">${(scenario.intensity * 100).toFixed(0)}%</span>
+          </div>
+          <div class="scenario-metric">
+            <span class="metric-label">Visibilidad:</span>
+            <span class="metric-value">${(scenario.salience * 100).toFixed(0)}%</span>
+          </div>
+        </div>
+        <div class="scenario-card-actions">
+          <button type="button" class="btn btn-secondary btn-sm" data-action="simulate" data-id="${scenario.id}">
+            <span class="material-symbols-outlined" style="font-size: 16px;">play_arrow</span>
+            Simular
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" data-action="delete" data-id="${scenario.id}">
+            <span class="material-symbols-outlined" style="font-size: 16px;">delete</span>
+          </button>
+        </div>
+        <div class="scenario-date">Creado: ${formatDate(scenario.createdAt)}</div>
+      `;
+      gridDiv.appendChild(card);
+    });
+    
+    listContainer.appendChild(gridDiv);
+  }
+  
+  container.appendChild(listContainer);
+  
+  // Attach event listeners
+  headerSection.querySelector('#btn-create-scenario')?.addEventListener('click', () => {
+    currentView = 'form';
+    const page = document.getElementById('scenario-builder-page');
+    if (page) renderContent(page);
+  });
+  
+  listContainer.querySelector('#btn-create-first-scenario')?.addEventListener('click', () => {
+    currentView = 'form';
+    const page = document.getElementById('scenario-builder-page');
+    if (page) renderContent(page);
+  });
+  
+  listContainer.querySelector('#btn-retry-load')?.addEventListener('click', () => {
+    loadScenarios();
+    const page = document.getElementById('scenario-builder-page');
+    if (page) renderContent(page);
+  });
+  
+  // Card action buttons
+  listContainer.querySelectorAll('[data-action="simulate"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = (e.currentTarget as HTMLElement).dataset.id;
+      if (id) {
+        createdScenarioId = id;
+        currentView = 'simulation';
+        const page = document.getElementById('scenario-builder-page');
+        if (page) renderContent(page);
+      }
+    });
+  });
+  
+  listContainer.querySelectorAll('[data-action="delete"]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = (e.currentTarget as HTMLElement).dataset.id;
+      if (id && confirm('¿Estás seguro de que deseas eliminar este escenario?')) {
+        const result = await deleteScenario(id);
+        if (result.success) {
+          await loadScenarios();
+          const page = document.getElementById('scenario-builder-page');
+          if (page) renderContent(page);
+        } else {
+          alert('Error al eliminar el escenario: ' + result.error);
+        }
+      }
+    });
+  });
+}
+
+function getCategoryLabel(category: string): string {
+  const labels: Record<string, string> = {
+    economy: 'Economía',
+    government: 'Gobierno',
+    social: 'Social',
+    security: 'Seguridad',
+    international: 'Internacional',
+    environment: 'Medio Ambiente',
+    other: 'Otro',
+  };
+  return labels[category] || category;
+}
+
+function getSeverityLabel(severity: string): string {
+  const labels: Record<string, string> = {
+    minor: 'Menor',
+    moderate: 'Moderado',
+    major: 'Mayor',
+    critical: 'Crítico',
+  };
+  return labels[severity] || severity;
+}
+
+function getSentimentClass(sentiment: number): string {
+  if (sentiment > 0) return 'sentiment-positive';
+  if (sentiment < 0) return 'sentiment-negative';
+  return 'sentiment-neutral';
+}
+
+function formatDate(dateString: string): string {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('es-CL', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 // ===========================================
@@ -390,8 +664,9 @@ function attachFormListeners(form: HTMLFormElement): void {
 
   // Cancel button
   form.querySelector('#btn-cancel')?.addEventListener('click', () => {
-    resetForm();
-    console.log('Cancelado - navegar a lista de escenarios');
+    currentView = 'list';
+    const page = document.getElementById('scenario-builder-page');
+    if (page) renderContent(page);
   });
 
   // Form submit
@@ -649,9 +924,10 @@ function processSimulationResults(_baseline: any, _scenario: any): any {
   };
 
   questions.forEach((qId) => {
-    // Generar distribuciones mock
-    const baselineDist = generateMockDistribution();
-    const scenarioDist = generateMockDistribution();
+    // Generar distribuciones mock con claves canónicas apropiadas para cada pregunta
+    const optionKeys = QUESTION_OPTION_KEYS[qId] || ['option_a', 'option_b', 'option_c', 'option_d'];
+    const baselineDist = generateMockDistribution(optionKeys);
+    const scenarioDist = generateMockDistribution(optionKeys);
     
     result.baseline[qId] = {
       distribution: baselineDist,
@@ -673,13 +949,12 @@ function processSimulationResults(_baseline: any, _scenario: any): any {
   return result;
 }
 
-function generateMockDistribution(): { [key: string]: number } {
-  const options = ['option_a', 'option_b', 'option_c', 'option_d'];
+function generateMockDistribution(optionKeys: string[]): { [key: string]: number } {
   const dist: { [key: string]: number } = {};
   let remaining = 100;
   
-  options.forEach((opt, idx) => {
-    if (idx === options.length - 1) {
+  optionKeys.forEach((opt, idx) => {
+    if (idx === optionKeys.length - 1) {
       dist[opt] = remaining;
     } else {
       const value = Math.floor(Math.random() * remaining * 0.6);
@@ -760,10 +1035,16 @@ function renderResults(container: HTMLElement): void {
   actionsSection.className = 'form-actions';
   actionsSection.innerHTML = `
     <button type="button" class="btn btn-secondary" id="btn-new-scenario">
+      <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">add</span>
       Crear Nuevo Escenario
     </button>
-    <button type="button" class="btn btn-primary" id="btn-reconfigure">
+    <button type="button" class="btn btn-secondary" id="btn-reconfigure">
+      <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">settings</span>
       Reconfigurar Simulación
+    </button>
+    <button type="button" class="btn btn-primary" id="btn-test-in-survey-results">
+      <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">assignment</span>
+      Probar en Encuesta
     </button>
   `;
   resultsDiv.appendChild(actionsSection);
@@ -782,6 +1063,15 @@ function renderResults(container: HTMLElement): void {
     currentView = 'simulation';
     const page = document.getElementById('scenario-builder-page');
     if (page) renderContent(page);
+  });
+
+  actionsSection.querySelector('#btn-test-in-survey-results')?.addEventListener('click', () => {
+    // Redirigir a la página de encuestas con el escenario seleccionado
+    if (createdScenarioId) {
+      window.location.href = `/surveys?scenario=${createdScenarioId}`;
+    } else {
+      window.location.href = '/surveys';
+    }
   });
 }
 
@@ -818,7 +1108,10 @@ function renderResultsTableRows(): string {
 
 function formatDistribution(dist: { [key: string]: number }): string {
   return Object.entries(dist)
-    .map(([key, value]) => `${key}: ${value}%`)
+    .map(([key, value]) => {
+      const label = CANONICAL_LABELS[key] || key;
+      return `${label}: ${value}%`;
+    })
     .join('<br>');
 }
 
@@ -827,7 +1120,8 @@ function formatDelta(delta: { [key: string]: number }): string {
     .map(([key, value]) => {
       const sign = value > 0 ? '+' : '';
       const className = value > 0 ? 'delta-positive' : value < 0 ? 'delta-negative' : 'delta-neutral';
-      return `<span class="${className}">${key}: ${sign}${value.toFixed(1)}%</span>`;
+      const label = CANONICAL_LABELS[key] || key;
+      return `<span class="${className}">${label}: ${sign}${value.toFixed(1)}%</span>`;
     })
     .join('<br>');
 }
@@ -858,9 +1152,15 @@ function renderSuccess(container: HTMLElement): void {
     </p>
     <div class="state-actions">
       <button class="btn btn-primary" id="btn-simulate-now">
+        <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">play_arrow</span>
         Simular Ahora
       </button>
+      <button class="btn btn-secondary" id="btn-test-in-survey">
+        <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">assignment</span>
+        Probar en Encuesta
+      </button>
       <button class="btn btn-secondary" id="btn-create-another">
+        <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">add</span>
         Crear otro escenario
       </button>
     </div>
@@ -872,6 +1172,15 @@ function renderSuccess(container: HTMLElement): void {
     currentView = 'simulation';
     const page = document.getElementById('scenario-builder-page');
     if (page) renderContent(page);
+  });
+
+  successDiv.querySelector('#btn-test-in-survey')?.addEventListener('click', () => {
+    // Redirigir a la página de encuestas con el escenario seleccionado
+    if (createdScenarioId) {
+      window.location.href = `/surveys?scenario=${createdScenarioId}`;
+    } else {
+      window.location.href = '/surveys';
+    }
   });
 
   successDiv.querySelector('#btn-create-another')?.addEventListener('click', () => {
@@ -891,13 +1200,15 @@ function resetForm(): void {
   formErrors = {};
   isSubmitting = false;
   isSimulating = false;
-  currentView = 'form';
+  currentView = 'list';
   createdScenarioId = null;
   simulationResults = null;
   simulationConfig = {
     sampleSize: 100,
     mode: 'baseline_vs_scenario',
   };
+  // Reload scenarios list when going back
+  scenariosList = [];
 }
 
 function getSentimentLabel(value: number): string {
@@ -931,5 +1242,7 @@ function escapeHtml(text: string): string {
  */
 export function cleanupScenarioBuilderPage(): void {
   resetForm();
+  scenariosList = [];
+  listError = null;
   console.log('Scenario builder page cleaned up');
 }

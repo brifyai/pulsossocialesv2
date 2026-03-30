@@ -7,7 +7,7 @@ import { authService } from '../services/auth';
 
 // Route types
 export type PublicRoute = 'landing' | 'login' | 'methodology';
-export type ProtectedRoute = 'home' | 'map' | 'territory' | 'region' | 'agents' | 'surveys' | 'benchmarks' | 'profile' | 'settings' | 'scenarios';
+export type ProtectedRoute = 'home' | 'map' | 'territory' | 'region' | 'agents' | 'surveys' | 'benchmarks' | 'profile' | 'settings' | 'scenarios' | 'operations';
 export type Route = PublicRoute | ProtectedRoute;
 
 interface RouterState {
@@ -28,7 +28,7 @@ const listeners: Set<(route: Route) => void> = new Set();
 const publicRoutes: PublicRoute[] = ['landing', 'login', 'methodology'];
 
 // Protected routes that require authentication
-const protectedRoutes: ProtectedRoute[] = ['home', 'map', 'territory', 'region', 'agents', 'surveys', 'benchmarks', 'profile', 'settings', 'scenarios'];
+const protectedRoutes: ProtectedRoute[] = ['home', 'map', 'territory', 'region', 'agents', 'surveys', 'benchmarks', 'profile', 'settings', 'scenarios', 'operations'];
 
 // All valid routes
 const validRoutes: Route[] = [...publicRoutes, ...protectedRoutes];

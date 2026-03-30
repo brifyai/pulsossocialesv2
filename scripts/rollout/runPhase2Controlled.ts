@@ -11,7 +11,7 @@
  * Fase 2: Escalamiento de 100 a 500 agentes, mismas 3 preguntas que Fase 1
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { serviceClient } from '../utils/serviceClient';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -22,6 +22,9 @@ import { resolveQuestionByFamily } from '../../src/app/opinionEngine/questionRes
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Cliente Supabase centralizado (valida entorno automáticamente)
+const supabase = serviceClient;
 
 // ============================================================================
 // PARSEAR ARGUMENTOS
@@ -70,20 +73,6 @@ if (SAMPLE_SIZE > 1000) {
   console.error('   Para muestras mayores, usar Fase 3');
   process.exit(1);
 }
-
-// ============================================================================
-// CONFIGURACIÓN SUPABASE
-// ============================================================================
-
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const supabaseKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ Error: Variables de entorno VITE_SUPABASE_URL y VITE_SUPABASE_SERVICE_KEY son requeridas');
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ============================================================================
 // TIPOS

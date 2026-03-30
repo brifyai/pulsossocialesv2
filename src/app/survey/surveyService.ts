@@ -214,14 +214,35 @@ export async function deleteSurvey(id: string): Promise<boolean> {
 /**
  * Ejecuta una encuesta sobre agentes que coinciden con el segmento
  * Sprint 11B - Persiste la corrida en Supabase (sin respuestas)
+ * R1 - Soporta scenarioEventId opcional para vincular con escenarios
+ * R2 - Guarda metadata del escenario para trazabilidad
  */
-export async function runSurvey(surveyId: string): Promise<SurveyRun> {
+export async function runSurvey(surveyId: string, scenarioEventId?: string): Promise<SurveyRun> {
   const survey = await getSurvey(surveyId);
   if (!survey) {
     throw new Error(`Survey not found: ${surveyId}`);
   }
   
-  console.log(`🚀 Running survey: ${survey.name}`);
+  // R2 - Cargar información del escenario si se proporciona
+  let scenarioInfo: { name?: string; category?: string; severity?: import('../events/types').ImpactSeverity } = {};
+  if (scenarioEventId) {
+    try {
+      const { getScenarioById } = await import('../events/scenarioEventStore');
+      const scenarioResult = await getScenarioById(scenarioEventId);
+      if (scenarioResult.success && scenarioResult.data) {
+        scenarioInfo = {
+          name: scenarioResult.data.name,
+          category: scenarioResult.data.category,
+          severity: scenarioResult.data.severity,
+        };
+        console.log(`📋 Loaded scenario info: ${scenarioInfo.name} (${scenarioInfo.category})`);
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Could not load scenario info:', error);
+    }
+  }
+  
+  console.log(`🚀 Running survey: ${survey.name}${scenarioEventId ? ` (with scenario: ${scenarioEventId})` : ''}`);
   const startedAt = new Date().toISOString();
   
   // 1. Filtrar agentes según segmento
@@ -274,7 +295,14 @@ export async function runSurvey(surveyId: string): Promise<SurveyRun> {
     metadata: {
       segmentMatched: matchedAgents.length,
       sampleSizeRequested: survey.sampleSize,
-      sampleSizeActual: selectedAgents.length
+      sampleSizeActual: selectedAgents.length,
+      // R2 - Guardar metadata del escenario si existe
+      ...(scenarioEventId && {
+        scenarioEventId,
+        scenarioName: scenarioInfo.name,
+        scenarioCategory: scenarioInfo.category,
+        scenarioSeverity: scenarioInfo.severity,
+      }),
     },
     // CADEM v1.1 - Engine metadata
     engineMode: survey.engineMode || 'legacy',
@@ -1018,6 +1046,129 @@ function convertToCademQuestion(question: SurveyQuestion): import('./cademAdapte
 }
 
 /**
+ * Mapea valores internos del motor CADEM a valores de opciones de la pregunta
+ * Basado en la familia de la pregunta y las opciones disponibles
+ */
+function mapCademValueToOption(
+  cademValue: string,
+  question: SurveyQuestion
+): string | number {
+  // Si la pregunta no tiene opciones, devolver el valor tal cual
+  if (question.type !== 'single_choice' && question.type !== 'multiple_choice') {
+    return cademValue;
+  }
+
+  const q = question as { options: { label: string; value: string | number }[] };
+  const options = q.options;
+
+  // Mapeo para preguntas de aprobación (approval)
+  // Valores CADEM: 'approve', 'disapprove', 'no_response'
+  // Opciones típicas: ['Aprueba', 'Desaprueba', 'No responde']
+  if (cademValue === 'approve') {
+    // Buscar opción que contenga "aprueba" (case insensitive)
+    const opt = options.find(o => o.label.toLowerCase().includes('aprueba'));
+    if (opt) return opt.value;
+  }
+  if (cademValue === 'disapprove') {
+    const opt = options.find(o => o.label.toLowerCase().includes('desaprueba'));
+    if (opt) return opt.value;
+  }
+
+  // Mapeo para preguntas de dirección (direction)
+  // Valores CADEM: 'good_path', 'bad_path', 'no_response'
+  // Opciones típicas: ['Buen camino', 'Mal camino', 'No responde']
+  if (cademValue === 'good_path') {
+    const opt = options.find(o => o.label.toLowerCase().includes('buen'));
+    if (opt) return opt.value;
+  }
+  if (cademValue === 'bad_path') {
+    const opt = options.find(o => o.label.toLowerCase().includes('mal'));
+    if (opt) return opt.value;
+  }
+
+  // Mapeo para preguntas de optimismo (optimism)
+  // Valores CADEM: 'very_optimistic', 'optimistic', 'pessimistic', 'very_pessimistic', 'no_response'
+  // Opciones típicas: ['Muy optimista', 'Optimista', 'Pesimista', 'Muy pesimista', 'No responde']
+  if (cademValue === 'very_optimistic') {
+    const opt = options.find(o => o.label.toLowerCase().includes('muy optimista'));
+    if (opt) return opt.value;
+    // Fallback: buscar solo "optimista" y tomar la primera
+    const opts = options.filter(o => o.label.toLowerCase().includes('optimista'));
+    if (opts.length > 0) return opts[0].value;
+  }
+  if (cademValue === 'optimistic') {
+    const opt = options.find(o => 
+      o.label.toLowerCase() === 'optimista' || 
+      (o.label.toLowerCase().includes('optimista') && !o.label.toLowerCase().includes('muy'))
+    );
+    if (opt) return opt.value;
+  }
+  if (cademValue === 'pessimistic') {
+    const opt = options.find(o => 
+      o.label.toLowerCase() === 'pesimista' || 
+      (o.label.toLowerCase().includes('pesimista') && !o.label.toLowerCase().includes('muy'))
+    );
+    if (opt) return opt.value;
+  }
+  if (cademValue === 'very_pessimistic') {
+    const opt = options.find(o => o.label.toLowerCase().includes('muy pesimista'));
+    if (opt) return opt.value;
+    const opts = options.filter(o => o.label.toLowerCase().includes('pesimista'));
+    if (opts.length > 0) return opts[opts.length - 1].value;
+  }
+
+  // Mapeo para preguntas de percepción económica (economic_perception)
+  // Valores CADEM: 'very_good', 'good', 'bad', 'very_bad', 'no_response'
+  // Opciones típicas: ['Muy buena', 'Buena', 'Mala', 'Muy mala', 'No responde']
+  if (cademValue === 'very_good') {
+    const opt = options.find(o => o.label.toLowerCase().includes('muy buena') || o.label.toLowerCase().includes('muy bueno'));
+    if (opt) return opt.value;
+    const opts = options.filter(o => o.label.toLowerCase().includes('buena') || o.label.toLowerCase().includes('bueno'));
+    if (opts.length > 0) return opts[0].value;
+  }
+  if (cademValue === 'good') {
+    const opt = options.find(o => 
+      o.label.toLowerCase() === 'buena' || o.label.toLowerCase() === 'bueno' ||
+      ((o.label.toLowerCase().includes('buena') || o.label.toLowerCase().includes('bueno')) && 
+       !(o.label.toLowerCase().includes('muy')))
+    );
+    if (opt) return opt.value;
+  }
+  if (cademValue === 'bad') {
+    const opt = options.find(o => 
+      o.label.toLowerCase() === 'mala' || o.label.toLowerCase() === 'malo' ||
+      ((o.label.toLowerCase().includes('mala') || o.label.toLowerCase().includes('malo')) && 
+       !(o.label.toLowerCase().includes('muy')))
+    );
+    if (opt) return opt.value;
+  }
+  if (cademValue === 'very_bad') {
+    const opt = options.find(o => o.label.toLowerCase().includes('muy mala') || o.label.toLowerCase().includes('muy malo'));
+    if (opt) return opt.value;
+    const opts = options.filter(o => o.label.toLowerCase().includes('mala') || o.label.toLowerCase().includes('malo'));
+    if (opts.length > 0) return opts[opts.length - 1].value;
+  }
+
+  // Mapeo para no_response
+  if (cademValue === 'no_response') {
+    const opt = options.find(o => 
+      o.label.toLowerCase().includes('no responde') || 
+      o.label.toLowerCase().includes('no sabe') ||
+      o.label.toLowerCase().includes('no contesta')
+    );
+    if (opt) return opt.value;
+  }
+
+  // Si no se encontró mapeo, devolver el primer valor de opción como fallback
+  console.warn(`[SurveyService] No mapping found for CADEM value "${cademValue}" in question "${question.text.substring(0, 50)}...". Using fallback.`);
+  if (options.length > 0) {
+    return options[0].value;
+  }
+
+  return cademValue;
+}
+
+/**
  * Ejecuta encuesta con motor CADEM v1.1
  * Convierte tipos y delega al surveyRunner unificado
  */
@@ -1048,13 +1199,21 @@ async function runCademSurveyWithAgents(
   });
 
   // Convertir respuestas al formato AgentResponse
-  return result.responses.map(r => ({
-    agentId: r.agentId,
-    questionId: r.questionId,
-    value: r.value,
-    confidence: r.confidence,
-    reasoning: r.reasoning ?? '', // Ensure string, not undefined
-  }));
+  // Mapear los valores internos de CADEM a los valores de opciones de la pregunta
+  return result.responses.map(r => {
+    const question = survey.questions.find(q => q.id === r.questionId);
+    const mappedValue = question 
+      ? mapCademValueToOption(String(r.value), question)
+      : r.value;
+    
+    return {
+      agentId: r.agentId,
+      questionId: r.questionId,
+      value: mappedValue,
+      confidence: r.confidence,
+      reasoning: r.reasoning ?? '', // Ensure string, not undefined
+    };
+  });
 }
 
 // ===========================================

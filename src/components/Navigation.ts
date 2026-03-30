@@ -20,6 +20,7 @@ const navItems: NavItem[] = [
   { route: 'agents', label: 'Agentes', icon: 'groups' },
   { route: 'surveys', label: 'Encuestas', icon: 'assignment' },
   { route: 'scenarios', label: 'Escenarios', icon: 'psychology' },
+  { route: 'operations', label: 'Operaciones', icon: 'settings_suggest' },
   { route: 'benchmarks', label: 'Benchmarks', icon: 'insights' },
   { route: 'methodology', label: 'Metodología', icon: 'menu_book' },
 ];
