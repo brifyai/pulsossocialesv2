@@ -1229,7 +1229,24 @@ function renderQuestionResult(result: QuestionResult, number: number): string {
         };
       }
       return { key: numKey, count: 0, percentage: 0 };
-    }).filter(e => e.count > 0).sort((a, b) => (typeof a.key === 'number' && typeof b.key === 'number') ? a.key - b.key : 0);
+    }).sort((a, b) => (typeof a.key === 'number' && typeof b.key === 'number') ? a.key - b.key : 0);
+    
+    // Asegurar que todas las opciones de la escala Likert 1-5 estén presentes
+    const likertScale = [1, 2, 3, 4, 5];
+    const existingKeys = new Set(entries.map(e => e.key));
+    
+    likertScale.forEach(scaleValue => {
+      if (!existingKeys.has(scaleValue)) {
+        entries.push({
+          key: scaleValue,
+          count: 0,
+          percentage: 0
+        });
+      }
+    });
+    
+    // Re-ordenar después de agregar las opciones faltantes
+    entries.sort((a, b) => (typeof a.key === 'number' && typeof b.key === 'number') ? a.key - b.key : 0);
     
     // Labels estándar para escala Likert 1-5
     const likertLabels: Record<number, string> = {
