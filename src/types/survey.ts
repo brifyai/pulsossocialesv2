@@ -123,6 +123,8 @@ export interface SurveyRun {
   engineMode?: 'legacy' | 'cadem';
   engineVersion?: string;
   persistState?: boolean;
+  // Fixed sample - IDs of selected agents for reproducible comparisons
+  selectedAgentIds?: string[];
 }
 
 // ===========================================

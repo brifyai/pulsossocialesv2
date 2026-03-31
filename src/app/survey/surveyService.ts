@@ -217,8 +217,13 @@ export async function deleteSurvey(id: string): Promise<boolean> {
  * Sprint 11B - Persiste la corrida en Supabase (sin respuestas)
  * R1 - Soporta scenarioEventId opcional para vincular con escenarios
  * R2 - Guarda metadata del escenario para trazabilidad
+ * Fixed Sample - Soporta fixedAgentIds para comparaciones reproducibles baseline vs escenario
  */
-export async function runSurvey(surveyId: string, scenarioEventId?: string): Promise<SurveyRun> {
+export async function runSurvey(
+  surveyId: string, 
+  scenarioEventId?: string,
+  fixedAgentIds?: string[]
+): Promise<SurveyRun> {
   const survey = await getSurvey(surveyId);
   if (!survey) {
     throw new Error(`Survey not found: ${surveyId}`);
@@ -243,7 +248,7 @@ export async function runSurvey(surveyId: string, scenarioEventId?: string): Pro
     }
   }
   
-  console.log(`🚀 Running survey: ${survey.name}${scenarioEventId ? ` (with scenario: ${scenarioEventId})` : ''}`);
+  console.log(`🚀 Running survey: ${survey.name}${scenarioEventId ? ` (with scenario: ${scenarioEventId})` : ''}${fixedAgentIds ? ` (with ${fixedAgentIds.length} fixed agents)` : ''}`);
   const startedAt = new Date().toISOString();
   
   // 1. Filtrar agentes según segmento
@@ -262,12 +267,32 @@ export async function runSurvey(surveyId: string, scenarioEventId?: string): Pro
   
   // 2. Samplear si es necesario
   let selectedAgents: SyntheticAgent[];
-  if (survey.sampleSize > 0 && survey.sampleSize < matchedAgents.length) {
+  let selectedAgentIds: string[] | undefined;
+  
+  if (fixedAgentIds && fixedAgentIds.length > 0) {
+    // Usar agentes fijos para comparaciones reproducibles
+    selectedAgents = matchedAgents.filter(agent => fixedAgentIds.includes(agent.agent_id));
+    selectedAgentIds = fixedAgentIds;
+    console.log(`  🔒 Using ${selectedAgents.length} fixed agents from baseline`);
+    
+    if (selectedAgents.length === 0) {
+      console.warn('[SurveyService] No agents matched the fixedAgentIds. Falling back to normal sampling.');
+      // Fallback: usar sampling normal si no hay match
+      if (survey.sampleSize > 0 && survey.sampleSize < matchedAgents.length) {
+        selectedAgents = sampleFromArray(matchedAgents, survey.sampleSize);
+      } else {
+        selectedAgents = matchedAgents;
+      }
+      selectedAgentIds = selectedAgents.map(a => a.agent_id);
+    }
+  } else if (survey.sampleSize > 0 && survey.sampleSize < matchedAgents.length) {
     // Sampleo aleatorio simple usando Fisher-Yates para distribución uniforme
     selectedAgents = sampleFromArray(matchedAgents, survey.sampleSize);
+    selectedAgentIds = selectedAgents.map(a => a.agent_id);
     console.log(`  🎲 Sampled ${selectedAgents.length} agents`);
   } else {
     selectedAgents = matchedAgents;
+    selectedAgentIds = selectedAgents.map(a => a.agent_id);
   }
   
   // 3. Generar respuestas sintéticas
@@ -306,7 +331,9 @@ export async function runSurvey(surveyId: string, scenarioEventId?: string): Pro
     // CADEM v1.1 - Engine metadata
     engineMode: survey.engineMode || 'legacy',
     engineVersion: useCademEngine ? 'cadem-v1.1' : 'legacy-v1',
-    persistState: survey.persistState || false
+    persistState: survey.persistState || false,
+    // Fixed Sample - Guardar IDs de agentes seleccionados para comparaciones reproducibles
+    selectedAgentIds: selectedAgentIds || selectedAgents.map(a => a.agent_id)
   };
   
   // 5. Intentar persistir en DB (Sprint 11B)
@@ -1494,6 +1521,100 @@ async function runCademSurveyWithAgents(
       reasoning: r.reasoning ?? '', // Ensure string, not undefined
     };
   });
+}
+
+// ===========================================
+// Fixed Sample Comparison Functions
+// ===========================================
+
+export interface RunComparisonOptions {
+  surveyId: string;
+  baselineRunId: string;
+  scenarioEventId?: string;
+}
+
+export interface RunComparisonResult {
+  baselineRun: SurveyRun;
+  scenarioRun: SurveyRun;
+  comparison: SurveyComparison | null;
+}
+
+/**
+ * Ejecuta una encuesta con los mismos agentes que un baseline run existente.
+ * Esto permite comparaciones válidas baseline vs escenario donde la única
+ * diferencia es el escenario, no la muestra de agentes.
+ * 
+ * @param options - Opciones de comparación
+ * @returns Resultado de la comparación con ambos runs
+ */
+export async function runSurveyWithFixedAgents(
+  options: RunComparisonOptions
+): Promise<RunComparisonResult> {
+  const { surveyId, baselineRunId, scenarioEventId } = options;
+  
+  // 1. Obtener el baseline run
+  const baselineRun = await getSurveyRun(baselineRunId);
+  if (!baselineRun) {
+    throw new Error(`Baseline run not found: ${baselineRunId}`);
+  }
+  
+  // 2. Extraer los agent IDs del baseline
+  const fixedAgentIds = baselineRun.selectedAgentIds;
+  if (!fixedAgentIds || fixedAgentIds.length === 0) {
+    throw new Error(`Baseline run ${baselineRunId} does not have selectedAgentIds. Cannot perform fixed sample comparison.`);
+  }
+  
+  console.log(`🔒 Running survey with fixed sample from baseline ${baselineRunId}`);
+  console.log(`   Using ${fixedAgentIds.length} agents from baseline`);
+  
+  // 3. Ejecutar el survey con los agentes fijos y el escenario
+  const scenarioRun = await runSurvey(surveyId, scenarioEventId, fixedAgentIds);
+  
+  // 4. Generar la comparación
+  const comparison = await compareSurveyRuns(surveyId, baselineRunId, scenarioRun.id);
+  
+  return {
+    baselineRun,
+    scenarioRun,
+    comparison
+  };
+}
+
+/**
+ * Ejecuta un baseline y luego un escenario con los mismos agentes.
+ * Función de conveniencia para hacer comparaciones de una sola vez.
+ * 
+ * @param surveyId - ID de la encuesta
+ * @param scenarioEventId - ID del escenario (opcional, si no se proporciona solo se ejecuta baseline)
+ * @returns Resultado con baseline y escenario (si se proporcionó scenarioEventId)
+ */
+export async function runBaselineAndScenario(
+  surveyId: string,
+  scenarioEventId?: string
+): Promise<{ baselineRun: SurveyRun; scenarioRun?: SurveyRun; comparison?: SurveyComparison | null }> {
+  console.log(`🔄 Running baseline${scenarioEventId ? ' + scenario' : ''} for survey ${surveyId}`);
+  
+  // 1. Ejecutar baseline (sin escenario, sin agentes fijos)
+  const baselineRun = await runSurvey(surveyId);
+  console.log(`✅ Baseline completed: ${baselineRun.id} with ${baselineRun.totalAgents} agents`);
+  
+  // Si no hay escenario, retornar solo el baseline
+  if (!scenarioEventId) {
+    return { baselineRun };
+  }
+  
+  // 2. Ejecutar escenario con los mismos agentes del baseline
+  const scenarioRun = await runSurvey(surveyId, scenarioEventId, baselineRun.selectedAgentIds);
+  console.log(`✅ Scenario completed: ${scenarioRun.id} with ${scenarioRun.totalAgents} agents`);
+  
+  // 3. Generar comparación
+  const comparison = await compareSurveyRuns(surveyId, baselineRun.id, scenarioRun.id);
+  
+  return {
+    baselineRun,
+    scenarioRun,
+    comparison
+  };
 }
 
 // ===========================================
