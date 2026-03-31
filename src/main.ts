@@ -23,7 +23,6 @@ import './styles/operations.css';
 import { 
   initRouter, 
   onRouteChange, 
-  getCurrentRoute, 
   isPublicRoute, 
   isProtectedRoute,
   isAuthenticated,
