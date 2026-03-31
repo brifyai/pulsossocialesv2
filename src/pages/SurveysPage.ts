@@ -238,51 +238,110 @@ async function renderSurveyList(container: HTMLElement): Promise<void> {
       const card = document.createElement('div');
       card.className = 'survey-card';
       card.innerHTML = `
+        <!-- Header: Título + Estado -->
         <div class="survey-card-header">
-          <div class="survey-title-section">
-            <h3 class="survey-name">${escapeHtml(survey.name)}</h3>
-            <span class="survey-date">${formatDate(survey.createdAt)}</span>
-          </div>
-          <div class="survey-badges">
-            ${hasRuns ? `<span class="badge badge-success"><span class="material-symbols-outlined" style="font-size: 12px; vertical-align: middle;">check_circle</span> Ejecutada</span>` : '<span class="badge badge-pending"><span class="material-symbols-outlined" style="font-size: 12px; vertical-align: middle;">schedule</span> Pendiente</span>'}
-          </div>
+          <h3 class="survey-name">${escapeHtml(survey.name)}</h3>
+          ${hasRuns 
+            ? `<span class="survey-status-badge status-executed"><span class="material-symbols-outlined">check_circle</span> Ejecutada</span>` 
+            : `<span class="survey-status-badge status-pending"><span class="material-symbols-outlined">schedule</span> Pendiente</span>`
+          }
         </div>
+        
+        <!-- Fecha de creación -->
+        <div class="survey-date-row">
+          <span class="material-symbols-outlined">calendar_today</span>
+          <span>Creada el ${formatDate(survey.createdAt)}</span>
+        </div>
+        
+        <!-- Descripción -->
         <p class="survey-description">${escapeHtml(survey.description || 'Sin descripción')}</p>
         
+        <!-- Metadata con iconos -->
         <div class="survey-meta">
-          <span class="meta-item" title="Preguntas"><span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">assignment</span> ${survey.questions.length} preguntas</span>
-          <span class="meta-item" title="Tamaño de muestra"><span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">groups</span> Muestra: ${survey.sampleSize}</span>
-          <span class="meta-item" title="Segmento"><span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">filter_alt</span> ${formatSegment(survey.segment)}</span>
-          ${hasRuns ? `<span class="meta-item" title="Ejecuciones"><span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">replay</span> ${runs.length} ejecución${runs.length > 1 ? 'es' : ''}</span>` : ''}
+          <div class="meta-row">
+            <span class="meta-item" title="Preguntas">
+              <span class="material-symbols-outlined">quiz</span>
+              <span class="meta-value">${survey.questions.length}</span>
+              <span class="meta-label">preguntas</span>
+            </span>
+            <span class="meta-item" title="Tamaño de muestra">
+              <span class="material-symbols-outlined">groups</span>
+              <span class="meta-value">${survey.sampleSize}</span>
+              <span class="meta-label">muestra</span>
+            </span>
+            <span class="meta-item" title="Segmento">
+              <span class="material-symbols-outlined">tune</span>
+              <span class="meta-label">${formatSegment(survey.segment)}</span>
+            </span>
+            ${hasRuns ? `
+              <span class="meta-item" title="Ejecuciones">
+                <span class="material-symbols-outlined">replay</span>
+                <span class="meta-value">${runs.length}</span>
+                <span class="meta-label">ejecución${runs.length > 1 ? 'es' : ''}</span>
+              </span>
+            ` : ''}
+          </div>
         </div>
         
+        <!-- Última ejecución -->
         ${hasRuns && lastRun ? `
           <div class="survey-last-run">
-            <span class="last-run-label">Última ejecución:</span>
-            <span class="last-run-date">${formatDate(lastRun.completedAt)}</span>
-            <span class="last-run-stats">${lastRun.totalAgents} agentes, ${lastRun.metadata.resultsSummary?.total_responses || lastRun.responses.length || 0} respuestas</span>
+            <div class="last-run-header">
+              <span class="material-symbols-outlined">schedule</span>
+              <span class="last-run-title">Última ejecución</span>
+            </div>
+            <div class="last-run-details">
+              <span class="last-run-date">${formatDate(lastRun.completedAt)}</span>
+              <span class="last-run-divider">•</span>
+              <span class="last-run-agents">${lastRun.totalAgents} agentes</span>
+              <span class="last-run-divider">•</span>
+              <span class="last-run-responses">${lastRun.metadata.resultsSummary?.total_responses || lastRun.responses.length || 0} respuestas</span>
+            </div>
           </div>
         ` : ''}
         
+        <!-- Acciones -->
         <div class="survey-actions">
-          <button class="btn btn-primary btn-run" data-id="${survey.id}">
-            <span class="btn-icon material-symbols-outlined">play_arrow</span> Ejecutar
+          <button class="btn btn-primary btn-run" data-id="${survey.id}" title="Ejecutar encuesta">
+            <span class="btn-icon material-symbols-outlined">play_arrow</span>
+            <span class="btn-text">Ejecutar</span>
           </button>
+          
           ${hasRuns ? `
-            <button class="btn btn-secondary btn-view-results" data-id="${survey.id}">
-              <span class="btn-icon material-symbols-outlined">bar_chart</span> Ver Resultados
+            <button class="btn btn-secondary btn-view-results" data-id="${survey.id}" title="Ver resultados">
+              <span class="btn-icon material-symbols-outlined">bar_chart</span>
+              <span class="btn-text">Resultados</span>
             </button>
-            <button class="btn btn-secondary btn-view-runs" data-id="${survey.id}">
-              <span class="btn-icon material-symbols-outlined">history</span> Historial
+          ` : ''}
+          
+          <!-- Menú de acciones adicionales -->
+          <div class="survey-actions-menu">
+            <button class="btn btn-ghost btn-menu-toggle" data-id="${survey.id}" title="Más acciones">
+              <span class="material-symbols-outlined">more_vert</span>
             </button>
-          ` : `
-            <button class="btn btn-secondary btn-view" data-id="${survey.id}">
-              <span class="btn-icon material-symbols-outlined">visibility</span> Ver
-            </button>
-          `}
-          <button class="btn btn-danger btn-delete" data-id="${survey.id}">
-            <span class="btn-icon material-symbols-outlined">delete</span> Eliminar
-          </button>
+            <div class="survey-menu-dropdown" id="menu-${survey.id}">
+              ${hasRuns ? `
+                <button class="menu-item btn-view-runs" data-id="${survey.id}">
+                  <span class="material-symbols-outlined">history</span>
+                  <span>Historial</span>
+                </button>
+              ` : `
+                <button class="menu-item btn-view" data-id="${survey.id}">
+                  <span class="material-symbols-outlined">visibility</span>
+                  <span>Ver detalles</span>
+                </button>
+              `}
+              <button class="menu-item btn-duplicate" data-id="${survey.id}">
+                <span class="material-symbols-outlined">content_copy</span>
+                <span>Duplicar</span>
+              </button>
+              <div class="menu-divider"></div>
+              <button class="menu-item btn-delete menu-item-danger" data-id="${survey.id}">
+                <span class="material-symbols-outlined">delete</span>
+                <span>Eliminar</span>
+              </button>
+            </div>
+          </div>
         </div>
       `;
       list.appendChild(card);
@@ -351,6 +410,64 @@ function attachSurveyListListeners(list: HTMLElement): void {
       }
     });
   });
+  
+  // Menu toggle - mostrar/ocultar menú de acciones
+  list.querySelectorAll('.btn-menu-toggle').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = (e.currentTarget as HTMLElement).dataset.id;
+      if (!id) return;
+      
+      const dropdown = document.getElementById(`menu-${id}`);
+      if (!dropdown) return;
+      
+      // Cerrar otros menús abiertos
+      document.querySelectorAll('.survey-menu-dropdown.active').forEach(menu => {
+        if (menu !== dropdown) menu.classList.remove('active');
+      });
+      
+      // Toggle el menú actual
+      dropdown.classList.toggle('active');
+    });
+  });
+  
+  // Cerrar menú al hacer click fuera
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.survey-menu-dropdown.active').forEach(menu => {
+      menu.classList.remove('active');
+    });
+  });
+  
+  // Duplicar encuesta
+  list.querySelectorAll('.btn-duplicate').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = (e.currentTarget as HTMLElement).dataset.id;
+      if (!id) return;
+      
+      try {
+        const surveys = await getAllSurveys();
+        const survey = surveys.find(s => s.id === id);
+        if (!survey) {
+          alert('Encuesta no encontrada');
+          return;
+        }
+        
+        // Crear copia con nuevo nombre
+        await createSurvey({
+          name: `${survey.name} (Copia)`,
+          description: survey.description,
+          sampleSize: survey.sampleSize,
+          segment: survey.segment,
+          questions: survey.questions
+        });
+        
+        refreshPage();
+      } catch (error) {
+        console.error('Error duplicando encuesta:', error);
+        alert('Error al duplicar la encuesta');
+      }
+    });
+  });
 }
 
 // ===========================================
@@ -377,116 +494,384 @@ async function viewSurveyRunsHistory(surveyId: string): Promise<void> {
 }
 
 // ===========================================
-// Create Form View
+// Create Form View - Material UX Redesign
 // ===========================================
 
 function renderCreateForm(container: HTMLElement): void {
-  const form = document.createElement('form');
-  form.className = 'survey-form';
-  form.id = 'survey-create-form';
+  const wrapper = document.createElement('div');
+  wrapper.className = 'survey-builder';
   
-  form.innerHTML = `
-    <div class="form-section">
-      <h3>Información General</h3>
-      <div class="form-group">
-        <label for="survey-name">Nombre de la encuesta *</label>
-        <input type="text" id="survey-name" required placeholder="Ej: Satisfacción Ciudadana 2024">
+  wrapper.innerHTML = `
+    <!-- Header del builder -->
+    <div class="builder-header">
+      <div class="builder-breadcrumb">
+        <button class="breadcrumb-link" id="btn-back-to-list">
+          <span class="material-symbols-outlined">arrow_back</span>
+          <span>Mis Encuestas</span>
+        </button>
+        <span class="breadcrumb-separator">/</span>
+        <span class="breadcrumb-current">Nueva encuesta</span>
       </div>
-      <div class="form-group">
-        <label for="survey-description">Descripción</label>
-        <textarea id="survey-description" rows="2" placeholder="Describe el objetivo de la encuesta..."></textarea>
-      </div>
-      <div class="form-group">
-        <label for="sample-size">Tamaño de muestra *</label>
-        <input type="number" id="sample-size" required min="10" max="1000" value="100">
-        <span class="form-hint">Número de agentes sintéticos a encuestar</span>
-      </div>
+      <h1 class="builder-title">Crear Nueva Encuesta</h1>
+      <p class="builder-subtitle">Diseña una encuesta y ejecútala sobre agentes sintéticos calibrados</p>
     </div>
     
-    <div class="form-section">
-      <h3>Segmento Objetivo</h3>
-      <div class="form-row">
-        <div class="form-group">
-          <label for="segment-region">Región</label>
-          <select id="segment-region">
-            <option value="">Todas las regiones</option>
-            ${regions.map(r => `<option value="${r.code}">${r.name}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="segment-comuna">Comuna</label>
-          <select id="segment-comuna" disabled>
-            <option value="">Todas las comunas</option>
-          </select>
+    <!-- Layout de dos columnas -->
+    <div class="builder-layout">
+      <!-- Columna izquierda: Formulario -->
+      <div class="builder-form-column">
+        <form id="survey-create-form" class="builder-form">
+          
+          <!-- Sección 1: Información General -->
+          <div class="builder-card">
+            <div class="builder-card-header">
+              <span class="material-symbols-outlined">info</span>
+              <h3>Información General</h3>
+            </div>
+            <div class="builder-card-body">
+              <div class="form-field">
+                <label for="survey-name">Nombre de la encuesta *</label>
+                <div class="input-wrapper">
+                  <span class="material-symbols-outlined input-icon">edit</span>
+                  <input type="text" id="survey-name" required placeholder="Ej: Satisfacción Ciudadana 2024">
+                </div>
+              </div>
+              
+              <div class="form-field">
+                <label for="survey-description">Descripción</label>
+                <div class="input-wrapper">
+                  <span class="material-symbols-outlined input-icon">notes</span>
+                  <textarea id="survey-description" rows="2" placeholder="Describe el objetivo de la encuesta..."></textarea>
+                </div>
+              </div>
+              
+              <div class="form-field sample-size-field">
+                <label for="sample-size">Tamaño de muestra *</label>
+                <div class="sample-size-wrapper">
+                  <div class="input-wrapper">
+                    <span class="material-symbols-outlined input-icon">groups</span>
+                    <input type="number" id="sample-size" required min="10" max="1000" value="100">
+                  </div>
+                  <div class="sample-presets">
+                    <button type="button" class="preset-btn" data-value="100">100</button>
+                    <button type="button" class="preset-btn" data-value="300">300</button>
+                    <button type="button" class="preset-btn" data-value="500">500</button>
+                    <button type="button" class="preset-btn" data-value="1000">1000</button>
+                  </div>
+                </div>
+                <span class="field-hint">Número de agentes sintéticos a encuestar</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Sección 2: Segmento Objetivo -->
+          <div class="builder-card">
+            <div class="builder-card-header">
+              <span class="material-symbols-outlined">tune</span>
+              <h3>Segmento Objetivo</h3>
+            </div>
+            <div class="builder-card-body">
+              <div class="segment-summary" id="segment-summary">
+                <span class="material-symbols-outlined">public</span>
+                <span>Nacional · Todas las regiones · Todos los segmentos</span>
+              </div>
+              
+              <div class="segment-grid">
+                <div class="form-field">
+                  <label for="segment-region">Región</label>
+                  <div class="select-wrapper">
+                    <span class="material-symbols-outlined select-icon">location_on</span>
+                    <select id="segment-region">
+                      <option value="">Todas las regiones</option>
+                      ${regions.map(r => `<option value="${r.code}">${r.name}</option>`).join('')}
+                    </select>
+                  </div>
+                </div>
+                
+                <div class="form-field">
+                  <label for="segment-comuna">Comuna</label>
+                  <div class="select-wrapper">
+                    <span class="material-symbols-outlined select-icon">place</span>
+                    <select id="segment-comuna" disabled>
+                      <option value="">Todas las comunas</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div class="form-field">
+                  <label for="segment-sex">Sexo</label>
+                  <div class="select-wrapper">
+                    <span class="material-symbols-outlined select-icon">person</span>
+                    <select id="segment-sex">
+                      <option value="">Todos</option>
+                      <option value="male">Masculino</option>
+                      <option value="female">Femenino</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div class="form-field">
+                  <label for="segment-age">Grupo etario</label>
+                  <div class="select-wrapper">
+                    <span class="material-symbols-outlined select-icon">calendar_month</span>
+                    <select id="segment-age">
+                      <option value="">Todos</option>
+                      <option value="child">Niño</option>
+                      <option value="youth">Joven</option>
+                      <option value="adult">Adulto</option>
+                      <option value="middle_age">Adulto mayor</option>
+                      <option value="senior">Senior</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div class="form-field">
+                  <label for="segment-education">Educación</label>
+                  <div class="select-wrapper">
+                    <span class="material-symbols-outlined select-icon">school</span>
+                    <select id="segment-education">
+                      <option value="">Todos los niveles</option>
+                      <option value="none">Sin educación</option>
+                      <option value="primary">Primaria</option>
+                      <option value="secondary">Secundaria</option>
+                      <option value="technical">Técnica</option>
+                      <option value="university">Universitaria</option>
+                      <option value="postgraduate">Postgrado</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div class="form-field">
+                  <label for="segment-connectivity">Conectividad</label>
+                  <div class="select-wrapper">
+                    <span class="material-symbols-outlined select-icon">wifi</span>
+                    <select id="segment-connectivity">
+                      <option value="">Todos los niveles</option>
+                      <option value="none">Sin conectividad</option>
+                      <option value="low">Baja</option>
+                      <option value="medium">Media</option>
+                      <option value="high">Alta</option>
+                      <option value="very_high">Muy alta</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Sección 3: Preguntas -->
+          <div class="builder-card questions-card">
+            <div class="builder-card-header">
+              <span class="material-symbols-outlined">quiz</span>
+              <h3>Preguntas</h3>
+              <span class="question-count" id="question-count-badge">0 preguntas</span>
+            </div>
+            <div class="builder-card-body">
+              <div id="questions-container" class="questions-list"></div>
+              
+              <div class="add-question-section">
+                <button type="button" class="btn-add-question" id="btn-add-question">
+                  <span class="material-symbols-outlined">add</span>
+                  <span>Agregar pregunta</span>
+                </button>
+                <div class="question-templates">
+                  <button type="button" class="template-btn" data-type="single_choice">
+                    <span class="material-symbols-outlined">radio_button_checked</span>
+                    <span>Opción única</span>
+                  </button>
+                  <button type="button" class="template-btn" data-type="likert_scale">
+                    <span class="material-symbols-outlined">linear_scale</span>
+                    <span>Escala Likert</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+        </form>
+      </div>
+      
+      <!-- Columna derecha: Resumen sticky -->
+      <div class="builder-summary-column">
+        <div class="summary-card sticky">
+          <div class="summary-header">
+            <span class="material-symbols-outlined">summarize</span>
+            <h3>Resumen</h3>
+          </div>
+          
+          <div class="summary-content">
+            <div class="summary-item" id="summary-name">
+              <span class="summary-label">Nombre</span>
+              <span class="summary-value placeholder">Sin nombre</span>
+            </div>
+            
+            <div class="summary-item" id="summary-sample">
+              <span class="summary-label">Muestra</span>
+              <span class="summary-value">100 agentes</span>
+            </div>
+            
+            <div class="summary-item" id="summary-segment">
+              <span class="summary-label">Segmento</span>
+              <span class="summary-value">Nacional</span>
+            </div>
+            
+            <div class="summary-item" id="summary-questions">
+              <span class="summary-label">Preguntas</span>
+              <span class="summary-value">0</span>
+            </div>
+            
+            <div class="summary-divider"></div>
+            
+            <div class="summary-estimate">
+              <span class="material-symbols-outlined">schedule</span>
+              <span>Tiempo estimado: <strong>2-3 min</strong></span>
+            </div>
+          </div>
+          
+          <div class="summary-actions">
+            <button type="button" class="btn btn-secondary btn-cancel" id="btn-cancel-summary">
+              <span class="material-symbols-outlined">close</span>
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary btn-create" id="btn-create-survey" disabled>
+              <span class="material-symbols-outlined">check</span>
+              Crear encuesta
+            </button>
+          </div>
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label for="segment-sex">Sexo</label>
-          <select id="segment-sex">
-            <option value="">Todos</option>
-            <option value="male">Masculino</option>
-            <option value="female">Femenino</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="segment-age">Grupo etario</label>
-          <select id="segment-age">
-            <option value="">Todos</option>
-            <option value="child">Niño</option>
-            <option value="youth">Joven</option>
-            <option value="adult">Adulto</option>
-            <option value="middle_age">Adulto mayor</option>
-            <option value="senior">Senior</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label for="segment-education">Educación</label>
-          <select id="segment-education">
-            <option value="">Todos los niveles</option>
-            <option value="none">Sin educación</option>
-            <option value="primary">Primaria</option>
-            <option value="secondary">Secundaria</option>
-            <option value="technical">Técnica</option>
-            <option value="university">Universitaria</option>
-            <option value="postgraduate">Postgrado</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="segment-connectivity">Conectividad</label>
-          <select id="segment-connectivity">
-            <option value="">Todos los niveles</option>
-            <option value="none">Sin conectividad</option>
-            <option value="low">Baja</option>
-            <option value="medium">Media</option>
-            <option value="high">Alta</option>
-            <option value="very_high">Muy alta</option>
-          </select>
-        </div>
-      </div>
-    </div>
-    
-    <div class="form-section">
-      <h3>Preguntas</h3>
-      <div id="questions-container"></div>
-      <button type="button" class="btn btn-secondary" id="btn-add-question">+ Agregar Pregunta</button>
-    </div>
-    
-    <div class="form-actions">
-      <button type="button" class="btn btn-secondary" id="btn-cancel">Cancelar</button>
-      <button type="submit" class="btn btn-primary">Crear Encuesta</button>
     </div>
   `;
   
-  container.appendChild(form);
+  container.appendChild(wrapper);
   
-  // Attach listeners
-  attachFormListeners(form);
+  // Attach listeners - pasar el formulario, no el wrapper
+  const form = wrapper.querySelector('#survey-create-form') as HTMLFormElement;
+  if (form) {
+    attachFormListeners(form);
+  }
   
   // Add first question by default
   addQuestionField();
+  
+  // Update summary
+  updateBuilderSummary();
+}
+
+/**
+ * Actualiza el resumen del builder en tiempo real
+ */
+function updateBuilderSummary(): void {
+  const nameInput = document.getElementById('survey-name') as HTMLInputElement;
+  const sampleInput = document.getElementById('sample-size') as HTMLInputElement;
+  const questionsContainer = document.getElementById('questions-container');
+  const createBtn = document.getElementById('btn-create-survey') as HTMLButtonElement;
+  
+  // Actualizar nombre
+  const summaryName = document.querySelector('#summary-name .summary-value');
+  if (summaryName && nameInput) {
+    summaryName.textContent = nameInput.value || 'Sin nombre';
+    summaryName.classList.toggle('placeholder', !nameInput.value);
+  }
+  
+  // Actualizar muestra
+  const summarySample = document.querySelector('#summary-sample .summary-value');
+  if (summarySample && sampleInput) {
+    summarySample.textContent = `${sampleInput.value} agentes`;
+  }
+  
+  // Actualizar segmento
+  updateSegmentSummary();
+  
+  // Actualizar preguntas
+  const questionCount = questionsContainer?.children.length || 0;
+  const summaryQuestions = document.querySelector('#summary-questions .summary-value');
+  const questionBadge = document.getElementById('question-count-badge');
+  
+  if (summaryQuestions) {
+    summaryQuestions.textContent = String(questionCount);
+  }
+  if (questionBadge) {
+    questionBadge.textContent = `${questionCount} pregunta${questionCount !== 1 ? 's' : ''}`;
+  }
+  
+  // Habilitar/deshabilitar botón crear
+  if (createBtn) {
+    const hasName = nameInput?.value.trim() !== '';
+    const hasQuestions = questionCount > 0;
+    createBtn.disabled = !(hasName && hasQuestions);
+  }
+}
+
+/**
+ * Actualiza el resumen del segmento
+ */
+function updateSegmentSummary(): void {
+  const regionSelect = document.getElementById('segment-region') as HTMLSelectElement;
+  const comunaSelect = document.getElementById('segment-comuna') as HTMLSelectElement;
+  const sexSelect = document.getElementById('segment-sex') as HTMLSelectElement;
+  const ageSelect = document.getElementById('segment-age') as HTMLSelectElement;
+  const educationSelect = document.getElementById('segment-education') as HTMLSelectElement;
+  const connectivitySelect = document.getElementById('segment-connectivity') as HTMLSelectElement;
+  
+  const summarySegment = document.querySelector('#summary-segment .summary-value');
+  const segmentSummary = document.getElementById('segment-summary');
+  
+  const parts: string[] = [];
+  
+  if (regionSelect?.value) {
+    const region = regions.find(r => r.code === regionSelect.value);
+    parts.push(region?.name || `Región ${regionSelect.value}`);
+  } else {
+    parts.push('Nacional');
+  }
+  
+  if (comunaSelect?.value && !comunaSelect.disabled) {
+    const comuna = communes.find(c => c.code === comunaSelect.value);
+    parts.push(comuna?.name || comunaSelect.value);
+  }
+  
+  if (sexSelect?.value) {
+    const sexLabels: Record<string, string> = { male: 'Masculino', female: 'Femenino' };
+    parts.push(sexLabels[sexSelect.value] || sexSelect.value);
+  }
+  
+  if (ageSelect?.value) {
+    const ageLabels: Record<string, string> = {
+      child: 'Niños', youth: 'Jóvenes', adult: 'Adultos',
+      middle_age: 'Adultos mayores', senior: 'Seniors'
+    };
+    parts.push(ageLabels[ageSelect.value] || ageSelect.value);
+  }
+  
+  if (educationSelect?.value) {
+    const eduLabels: Record<string, string> = {
+      none: 'Sin educación', primary: 'Primaria', secondary: 'Secundaria',
+      technical: 'Técnica', university: 'Universitaria', postgraduate: 'Postgrado'
+    };
+    parts.push(eduLabels[educationSelect.value] || educationSelect.value);
+  }
+  
+  if (connectivitySelect?.value) {
+    const connLabels: Record<string, string> = {
+      none: 'Sin conectividad', low: 'Baja conectividad', medium: 'Media conectividad',
+      high: 'Alta conectividad', very_high: 'Muy alta conectividad'
+    };
+    parts.push(connLabels[connectivitySelect.value] || connectivitySelect.value);
+  }
+  
+  const summaryText = parts.join(' · ');
+  
+  if (summarySegment) {
+    summarySegment.textContent = summaryText;
+  }
+  
+  if (segmentSummary) {
+    segmentSummary.innerHTML = `
+      <span class="material-symbols-outlined">public</span>
+      <span>${summaryText}</span>
+    `;
+  }
 }
 
 // ===========================================
@@ -1008,91 +1393,137 @@ function addQuestionField(): void {
   if (!container) return;
   
   const questionId = `q_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-  const questionDiv = document.createElement('div');
-  questionDiv.className = 'question-field';
-  questionDiv.dataset.questionId = questionId;
+  const questionCard = document.createElement('div');
+  questionCard.className = 'question-card';
+  questionCard.dataset.questionId = questionId;
   
-  questionDiv.innerHTML = `
-    <div class="question-header">
-      <span class="question-number">Pregunta ${container.children.length + 1}</span>
-      <button type="button" class="btn-icon btn-remove-question" title="Eliminar">×</button>
-    </div>
-    <div class="form-group">
-      <input type="text" class="question-text-input" placeholder="Texto de la pregunta" required>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Tipo</label>
-        <select class="question-type">
-          <option value="single_choice">Opción única</option>
-          <option value="likert_scale">Escala Likert (1-5)</option>
-        </select>
+  const questionNumber = container.children.length + 1;
+  
+  questionCard.innerHTML = `
+    <!-- Header de la card -->
+    <div class="question-card-header">
+      <div class="question-card-title">
+        <span class="material-symbols-outlined question-icon">quiz</span>
+        <span class="question-number">Pregunta ${questionNumber}</span>
       </div>
-      <div class="form-group question-required">
-        <label>
-          <input type="checkbox" class="question-required-check" checked> Obligatoria
+      <div class="question-card-badges">
+        <span class="question-type-badge">Opción única</span>
+        <label class="question-required-toggle">
+          <input type="checkbox" class="question-required-check" checked>
+          <span class="required-label">Obligatoria</span>
         </label>
+        <button type="button" class="btn-icon btn-remove-question" title="Eliminar pregunta">
+          <span class="material-symbols-outlined">delete</span>
+        </button>
       </div>
     </div>
-    <div class="question-options-container">
-      <label>Opciones</label>
-      <div class="options-list">
-        <div class="option-row">
-          <input type="text" class="option-label" placeholder="Opción 1" required>
-          <input type="hidden" class="option-value" value="opt1">
-        </div>
-        <div class="option-row">
-          <input type="text" class="option-label" placeholder="Opción 2" required>
-          <input type="hidden" class="option-value" value="opt2">
+    
+    <!-- Cuerpo de la card -->
+    <div class="question-card-body">
+      <!-- Texto de la pregunta -->
+      <div class="question-field-group">
+        <label class="field-label">Texto de la pregunta</label>
+        <div class="input-wrapper">
+          <input type="text" class="question-text-input" placeholder="Ej: ¿Qué tan satisfecho está con el servicio?" required>
         </div>
       </div>
-      <button type="button" class="btn btn-small btn-add-option">+ Agregar opción</button>
-    </div>
-    <div class="likert-config" style="display: none;">
-      <div class="form-row">
-        <div class="form-group">
-          <label>Mínimo (etiqueta)</label>
-          <input type="text" class="likert-min-label" value="Muy en desacuerdo">
+      
+      <!-- Tipo de pregunta -->
+      <div class="question-field-group">
+        <label class="field-label">Tipo de pregunta</label>
+        <div class="select-wrapper">
+          <select class="question-type">
+            <option value="single_choice">Opción única</option>
+            <option value="likert_scale">Escala Likert (1-5)</option>
+          </select>
         </div>
-        <div class="form-group">
-          <label>Máximo (etiqueta)</label>
-          <input type="text" class="likert-max-label" value="Muy de acuerdo">
+      </div>
+      
+      <!-- Opciones -->
+      <div class="question-options-section">
+        <label class="field-label">Opciones</label>
+        <div class="options-list">
+          <div class="option-row">
+            <div class="option-input-wrapper">
+              <span class="option-bullet">•</span>
+              <input type="text" class="option-label" placeholder="Opción 1" required>
+            </div>
+            <input type="hidden" class="option-value" value="opt1">
+          </div>
+          <div class="option-row">
+            <div class="option-input-wrapper">
+              <span class="option-bullet">•</span>
+              <input type="text" class="option-label" placeholder="Opción 2" required>
+            </div>
+            <input type="hidden" class="option-value" value="opt2">
+          </div>
+        </div>
+        <button type="button" class="btn-add-option">
+          <span class="material-symbols-outlined">add</span>
+          <span>Agregar opción</span>
+        </button>
+      </div>
+      
+      <!-- Config Likert (oculto por defecto) -->
+      <div class="likert-config" style="display: none;">
+        <div class="likert-labels-row">
+          <div class="question-field-group">
+            <label class="field-label">Etiqueta mínima (1)</label>
+            <div class="input-wrapper">
+              <input type="text" class="likert-min-label" value="Muy en desacuerdo" placeholder="Ej: Muy malo">
+            </div>
+          </div>
+          <div class="question-field-group">
+            <label class="field-label">Etiqueta máxima (5)</label>
+            <div class="input-wrapper">
+              <input type="text" class="likert-max-label" value="Muy de acuerdo" placeholder="Ej: Muy bueno">
+            </div>
+          </div>
         </div>
       </div>
     </div>
   `;
   
-  container.appendChild(questionDiv);
+  container.appendChild(questionCard);
   
   // Attach listeners
-  const typeSelect = questionDiv.querySelector('.question-type') as HTMLSelectElement;
-  const optionsContainer = questionDiv.querySelector('.question-options-container') as HTMLElement;
-  const likertConfig = questionDiv.querySelector('.likert-config') as HTMLElement;
+  const typeSelect = questionCard.querySelector('.question-type') as HTMLSelectElement;
+  const optionsSection = questionCard.querySelector('.question-options-section') as HTMLElement;
+  const likertConfig = questionCard.querySelector('.likert-config') as HTMLElement;
+  const typeBadge = questionCard.querySelector('.question-type-badge') as HTMLElement;
   
   typeSelect?.addEventListener('change', () => {
     if (typeSelect.value === 'likert_scale') {
-      optionsContainer.style.display = 'none';
+      optionsSection.style.display = 'none';
       likertConfig.style.display = 'block';
+      typeBadge.textContent = 'Escala Likert';
     } else {
-      optionsContainer.style.display = 'block';
+      optionsSection.style.display = 'block';
       likertConfig.style.display = 'none';
+      typeBadge.textContent = 'Opción única';
     }
   });
   
-  questionDiv.querySelector('.btn-remove-question')?.addEventListener('click', () => {
-    questionDiv.remove();
+  questionCard.querySelector('.btn-remove-question')?.addEventListener('click', () => {
+    questionCard.remove();
     updateQuestionNumbers();
+    updateBuilderSummary();
   });
   
-  questionDiv.querySelector('.btn-add-option')?.addEventListener('click', () => {
-    const optionsList = questionDiv.querySelector('.options-list');
+  questionCard.querySelector('.btn-add-option')?.addEventListener('click', () => {
+    const optionsList = questionCard.querySelector('.options-list');
     const optionCount = optionsList?.children.length || 0;
     const optionRow = document.createElement('div');
     optionRow.className = 'option-row';
     optionRow.innerHTML = `
-      <input type="text" class="option-label" placeholder="Opción ${optionCount + 1}" required>
+      <div class="option-input-wrapper">
+        <span class="option-bullet">•</span>
+        <input type="text" class="option-label" placeholder="Opción ${optionCount + 1}" required>
+      </div>
       <input type="hidden" class="option-value" value="opt${optionCount + 1}">
-      <button type="button" class="btn-icon btn-remove-option">×</button>
+      <button type="button" class="btn-icon btn-remove-option" title="Eliminar opción">
+        <span class="material-symbols-outlined">close</span>
+      </button>
     `;
     optionsList?.appendChild(optionRow);
     
