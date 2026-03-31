@@ -18,6 +18,7 @@ import './styles/landing.css';
 import './styles/auth.css';
 import './styles/scenarios.css';
 import './styles/operations.css';
+import './styles/agents.css';
 
 // Router & Auth
 import { 

@@ -1,8 +1,8 @@
 /**
- * Scenario Builder Page - MVP del formulario para crear escenarios hipotéticos
+ * Scenario Builder Page - Panel moderno de gestión de escenarios
  *
  * Permite a usuarios crear escenarios de eventos, ejecutar simulaciones
- * y ver resultados comparativos en una sola página.
+ * y ver resultados comparativos en una interfaz profesional tipo dashboard.
  */
 
 import type { CreateScenarioInput, ScenarioEvent } from '../app/events/scenarioEventStore';
@@ -18,6 +18,11 @@ let isLoading = false;
 let createdScenarioId: string | null = null;
 let scenariosList: ScenarioEvent[] = [];
 let listError: string | null = null;
+
+  // Filtros y búsqueda
+  let searchQuery = '';
+  let selectedCategory: string | undefined = undefined;
+  let selectedSeverity: string | undefined = undefined;
 
 // Contador de renders para debugging
 let renderCount = 0;
@@ -68,9 +73,6 @@ const CANONICAL_LABELS: Record<string, string> = {
   option_d: 'Opción D',
 };
 
-// Nota: Las claves de opciones de preguntas canónicas se definen en el motor CADEM
-// y se obtienen dinámicamente según el tipo de pregunta
-
 const SEVERITY_OPTIONS = [
   { value: 'minor', label: 'Menor' },
   { value: 'moderate', label: 'Moderado' },
@@ -111,17 +113,17 @@ let formErrors: { [key: string]: string } = {};
 
 export async function createScenarioBuilderPage(): Promise<HTMLElement> {
   console.log('[SB] createScenarioBuilderPage START');
-  
+
   // Reset render counter for new page instance
   renderCount = 0;
-  
+
   const page = document.createElement('div');
   page.className = 'page scenario-builder-page';
   page.id = 'scenario-builder-page';
 
   // Always reset to list view when creating page to avoid stale state
   currentView = 'list';
-  
+
   // Load scenarios before first render
   await loadScenarios();
 
@@ -138,28 +140,13 @@ export async function createScenarioBuilderPage(): Promise<HTMLElement> {
 function renderContent(container: HTMLElement): void {
   renderCount++;
   console.log(`[SB] renderContent START #${renderCount} - view=${currentView}, container children before clear:`, container.children.length);
-  console.log(`[SB] renderContent #${renderCount} - container ID:`, container.id, 'container class:', container.className);
-  
+
   // Verificar si ya renderizamos recientemente (posible doble render)
   if (renderCount > 1) {
     console.warn(`[SB] renderContent #${renderCount} - WARNING: Multiple renders detected!`);
   }
-  
-  container.innerHTML = '';
-  console.log('[SB] renderContent - container cleared, now has:', container.children.length, 'children');
 
-  // Header
-  const header = document.createElement('div');
-  header.className = 'scenario-header';
-  header.innerHTML = `
-    <h1 class="page-title">
-      <span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 8px;">psychology</span>
-      ${getPageTitle()}
-    </h1>
-    <p class="page-subtitle">${getPageSubtitle()}</p>
-  `;
-  container.appendChild(header);
-  console.log('[SB] renderContent - header appended, container now has:', container.children.length, 'children');
+  container.innerHTML = '';
 
   // Render según vista
   switch (currentView) {
@@ -179,103 +166,175 @@ function renderContent(container: HTMLElement): void {
       renderResults(container);
       break;
   }
+
   console.log(`[SB] renderContent END #${renderCount} - container has:`, container.children.length, 'children');
 }
 
-function getPageTitle(): string {
-  switch (currentView) {
-    case 'list':
-      return 'Escenarios Hipotéticos';
-    case 'form':
-      return 'Crear Escenario Hipotético';
-    case 'success':
-      return 'Escenario Guardado';
-    case 'simulation':
-      return 'Configurar Simulación';
-    case 'results':
-      return 'Resultados de Simulación';
-    default:
-      return 'Scenario Builder';
-  }
-}
-
-function getPageSubtitle(): string {
-  switch (currentView) {
-    case 'list':
-      return 'Gestiona tus escenarios y crea nuevos para simular impactos';
-    case 'form':
-      return 'Define un evento hipotético para simular su impacto en las opiniones públicas';
-    case 'success':
-      return 'Tu escenario está listo para usar en simulaciones';
-    case 'simulation':
-      return 'Configura los parámetros de la simulación';
-    case 'results':
-      return 'Comparación entre baseline y escenario';
-    default:
-      return '';
-  }
-}
-
 // ===========================================
-// Scenarios List View
+// Scenarios List View - Dashboard Moderno
 // ===========================================
 
 async function loadScenarios(): Promise<void> {
   isLoading = true;
   listError = null;
-  
+
   const result = await listScenarios({ limit: 50 });
-  
+
   if (result.success && result.data) {
     scenariosList = result.data.scenarios;
   } else {
     listError = result.error || 'Error al cargar escenarios';
     scenariosList = [];
   }
-  
+
   isLoading = false;
-  
-  // NOTA: Ya no hacemos re-render aquí para evitar doble renderizado
-  // El render es responsabilidad de quien llama a loadScenarios
+}
+
+function getFilteredScenarios(): ScenarioEvent[] {
+  return scenariosList.filter(scenario => {
+    // Filtro de búsqueda
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesSearch =
+        scenario.name.toLowerCase().includes(query) ||
+        (scenario.description && scenario.description.toLowerCase().includes(query));
+      if (!matchesSearch) return false;
+    }
+
+    // Filtro de categoría
+    if (selectedCategory && scenario.category !== selectedCategory) {
+      return false;
+    }
+
+    // Filtro de severidad
+    if (selectedSeverity && scenario.severity !== selectedSeverity) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function getCategoryStats(): { [key: string]: number } {
+  const stats: { [key: string]: number } = {};
+  CATEGORY_OPTIONS.forEach(cat => {
+    stats[cat.value] = scenariosList.filter(s => s.category === cat.value).length;
+  });
+  return stats;
+}
+
+function getSeverityStats(): { [key: string]: number } {
+  const stats: { [key: string]: number } = {};
+  SEVERITY_OPTIONS.forEach(sev => {
+    stats[sev.value] = scenariosList.filter(s => s.severity === sev.value).length;
+  });
+  return stats;
 }
 
 function renderScenariosList(container: HTMLElement): void {
-  console.log('[SB] renderScenariosList START - container has', container.children.length, 'children, scenariosList.length:', scenariosList.length);
-  
-  // Note: Scenarios are now loaded in createScenarioBuilderPage before render
-  // This prevents duplicate loading and infinite loading state
-  
+  console.log('[SB] renderScenariosList START - scenariosList.length:', scenariosList.length);
+
   const listContainer = document.createElement('div');
   listContainer.className = 'scenarios-list-container';
-  
-  // Action bar with create button (not a header - the header is already in renderContent)
-  const actionBar = document.createElement('div');
-  actionBar.className = 'scenarios-list-header';
-  actionBar.innerHTML = `
-    <div class="scenarios-count">
-      ${isLoading ? 'Cargando escenarios...' : `${scenariosList.length} escenario(s) encontrado(s)`}
+
+  // Dashboard Header Moderno
+  const dashboardHeader = document.createElement('div');
+  dashboardHeader.className = 'scenarios-dashboard-header';
+  dashboardHeader.innerHTML = `
+    <div class="header-content">
+      <h1 class="header-title">
+        <div class="icon-wrapper">
+          <span class="material-symbols-outlined">psychology</span>
+        </div>
+        Escenarios Hipotéticos
+      </h1>
+      <p class="header-subtitle">Gestiona tus escenarios y simula impactos en las opiniones públicas</p>
     </div>
-    <button type="button" class="btn btn-primary" id="btn-create-scenario">
-      <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">add</span>
-      Crear Escenario
-    </button>
+    <div class="header-actions">
+      <button type="button" class="btn btn-primary btn-lg" id="btn-create-scenario">
+        <span class="material-symbols-outlined">add</span>
+        Crear Escenario
+      </button>
+    </div>
   `;
-  listContainer.appendChild(actionBar);
-  
+  listContainer.appendChild(dashboardHeader);
+
+  // Barra de herramientas con filtros
+  const filteredScenarios = getFilteredScenarios();
+  const categoryStats = getCategoryStats();
+  const severityStats = getSeverityStats();
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'scenarios-toolbar';
+  toolbar.innerHTML = `
+    <div class="toolbar-row top-row">
+      <div class="scenarios-stats">
+        <div class="stat-item">
+          <span class="stat-value">${filteredScenarios.length}</span>
+          <span class="stat-label">escenarios</span>
+        </div>
+        ${selectedCategory || selectedSeverity || searchQuery ? `
+          <div class="stat-item">
+            <span class="stat-value" style="color: var(--sb-primary);">${scenariosList.length}</span>
+            <span class="stat-label">total</span>
+          </div>
+        ` : ''}
+      </div>
+      <div class="search-box">
+        <span class="material-symbols-outlined search-icon">search</span>
+        <input
+          type="text"
+          id="scenario-search"
+          placeholder="Buscar escenarios..."
+          value="${escapeHtml(searchQuery)}"
+        />
+      </div>
+    </div>
+    <div class="toolbar-row">
+      <div class="filter-chips">
+        <span class="filter-label">Categorías:</span>
+        ${CATEGORY_OPTIONS.map(cat => `
+          <button type="button" class="chip ${selectedCategory === cat.value ? 'active' : ''}" data-filter="category" data-value="${cat.value}">
+            ${cat.label}
+            <span class="count">${categoryStats[cat.value] || 0}</span>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+    <div class="toolbar-row">
+      <div class="filter-chips">
+        <span class="filter-label">Severidad:</span>
+        ${SEVERITY_OPTIONS.map(sev => `
+          <button type="button" class="chip ${selectedSeverity === sev.value ? 'active' : ''}" data-filter="severity" data-value="${sev.value}">
+            ${sev.label}
+            <span class="count">${severityStats[sev.value] || 0}</span>
+          </button>
+        `).join('')}
+        ${selectedCategory || selectedSeverity ? `
+          <button type="button" class="chip" id="btn-clear-filters" style="margin-left: auto;">
+            <span class="material-symbols-outlined" style="font-size: 14px;">close</span>
+            Limpiar filtros
+          </button>
+        ` : ''}
+      </div>
+    </div>
+  `;
+  listContainer.appendChild(toolbar);
+
   // Error message
   if (listError) {
     const errorDiv = document.createElement('div');
     errorDiv.className = 'scenarios-error';
     errorDiv.innerHTML = `
-      <span class="material-symbols-outlined" style="color: #ef4444;">error</span>
+      <span class="material-symbols-outlined">error</span>
       <span>${escapeHtml(listError)}</span>
-      <button type="button" class="btn btn-secondary" id="btn-retry-load" style="margin-left: 12px;">
+      <button type="button" class="btn btn-secondary btn-sm" id="btn-retry-load" style="margin-left: 12px;">
         Reintentar
       </button>
     `;
     listContainer.appendChild(errorDiv);
   }
-  
+
   // Loading state
   if (isLoading) {
     const loadingDiv = document.createElement('div');
@@ -286,91 +345,151 @@ function renderScenariosList(container: HTMLElement): void {
     `;
     listContainer.appendChild(loadingDiv);
   }
-  
+
   // Empty state
-  else if (scenariosList.length === 0 && !listError) {
+  else if (filteredScenarios.length === 0 && !listError) {
     const emptyDiv = document.createElement('div');
     emptyDiv.className = 'scenarios-empty';
     emptyDiv.innerHTML = `
-      <span class="material-symbols-outlined" style="font-size: 48px; color: #9ca3af;">psychology</span>
-      <h3>No hay escenarios creados</h3>
-      <p>Crea tu primer escenario para comenzar a simular impactos en las opiniones públicas.</p>
-      <button type="button" class="btn btn-primary" id="btn-create-first-scenario">
-        <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">add</span>
-        Crear Primer Escenario
-      </button>
+      <div class="empty-icon">
+        <span class="material-symbols-outlined">psychology</span>
+      </div>
+      <h3>${searchQuery || selectedCategory || selectedSeverity ? 'No se encontraron escenarios' : 'No hay escenarios creados'}</h3>
+      <p>${searchQuery || selectedCategory || selectedSeverity
+        ? 'Intenta ajustar los filtros o la búsqueda para ver más resultados.'
+        : 'Crea tu primer escenario para comenzar a simular impactos en las opiniones públicas.'}</p>
+      ${!(searchQuery || selectedCategory || selectedSeverity) ? `
+        <button type="button" class="btn btn-primary btn-lg" id="btn-create-first-scenario">
+          <span class="material-symbols-outlined">add</span>
+          Crear Primer Escenario
+        </button>
+      ` : ''}
     `;
     listContainer.appendChild(emptyDiv);
   }
-  
+
   // Scenarios grid
-  else if (scenariosList.length > 0) {
+  else if (filteredScenarios.length > 0) {
     const gridDiv = document.createElement('div');
     gridDiv.className = 'scenarios-grid';
-    
-    scenariosList.forEach(scenario => {
+
+    filteredScenarios.forEach(scenario => {
       const card = document.createElement('div');
       card.className = 'scenario-card';
       card.innerHTML = `
         <div class="scenario-card-header">
-          <span class="scenario-category-badge ${scenario.category}">${getCategoryLabel(scenario.category)}</span>
-          <span class="scenario-severity-badge ${scenario.severity}">${getSeverityLabel(scenario.severity)}</span>
+          <div class="scenario-card-badges">
+            <span class="badge-category ${scenario.category}">${getCategoryLabel(scenario.category)}</span>
+            <span class="badge-severity ${scenario.severity}">${getSeverityLabel(scenario.severity)}</span>
+          </div>
         </div>
-        <h4 class="scenario-name">${escapeHtml(scenario.name)}</h4>
-        <p class="scenario-description">${escapeHtml(scenario.description || 'Sin descripción')}</p>
+        <div class="scenario-card-content">
+          <h4 class="scenario-name">${escapeHtml(scenario.name)}</h4>
+          <p class="scenario-description">${escapeHtml(scenario.description || 'Sin descripción')}</p>
+        </div>
         <div class="scenario-metrics">
-          <div class="scenario-metric">
-            <span class="metric-label">Sentimiento:</span>
-            <span class="metric-value ${getSentimentClass(scenario.sentiment)}">${getSentimentLabel(scenario.sentiment)}</span>
+          <div class="metric-box">
+            <span class="metric-icon material-symbols-outlined">sentiment_satisfied</span>
+            <span class="metric-value ${getSentimentClass(scenario.sentiment)}">${getSentimentShortLabel(scenario.sentiment)}</span>
+            <span class="metric-label">Sentimiento</span>
           </div>
-          <div class="scenario-metric">
-            <span class="metric-label">Intensidad:</span>
+          <div class="metric-box">
+            <span class="metric-icon material-symbols-outlined">speed</span>
             <span class="metric-value">${(scenario.intensity * 100).toFixed(0)}%</span>
+            <span class="metric-label">Intensidad</span>
           </div>
-          <div class="scenario-metric">
-            <span class="metric-label">Visibilidad:</span>
+          <div class="metric-box">
+            <span class="metric-icon material-symbols-outlined">visibility</span>
             <span class="metric-value">${(scenario.salience * 100).toFixed(0)}%</span>
+            <span class="metric-label">Visibilidad</span>
           </div>
         </div>
         <div class="scenario-card-actions">
-          <button type="button" class="btn btn-secondary btn-sm" data-action="simulate" data-id="${scenario.id}">
-            <span class="material-symbols-outlined" style="font-size: 16px;">play_arrow</span>
+          <button type="button" class="btn btn-primary btn-sm" data-action="simulate" data-id="${scenario.id}">
+            <span class="material-symbols-outlined">play_arrow</span>
             Simular
           </button>
-          <button type="button" class="btn btn-secondary btn-sm" data-action="delete" data-id="${scenario.id}">
-            <span class="material-symbols-outlined" style="font-size: 16px;">delete</span>
+          <button type="button" class="btn btn-secondary btn-sm" data-action="duplicate" data-id="${scenario.id}">
+            <span class="material-symbols-outlined">content_copy</span>
+            Duplicar
+          </button>
+          <button type="button" class="btn btn-ghost btn-icon" data-action="delete" data-id="${scenario.id}" title="Eliminar">
+            <span class="material-symbols-outlined">delete</span>
           </button>
         </div>
-        <div class="scenario-date">Creado: ${formatDate(scenario.createdAt)}</div>
+        <div class="scenario-card-footer">
+          <div class="scenario-date">
+            <span class="material-symbols-outlined" style="font-size: 14px;">schedule</span>
+            ${formatDate(scenario.createdAt)}
+          </div>
+        </div>
       `;
       gridDiv.appendChild(card);
     });
-    
+
     listContainer.appendChild(gridDiv);
   }
-  
+
   container.appendChild(listContainer);
-  console.log('[SB] renderScenariosList END - appended listContainer, container now has:', container.children.length, 'children');
-  
+  console.log('[SB] renderScenariosList END - container now has:', container.children.length, 'children');
+
   // Attach event listeners
-  actionBar.querySelector('#btn-create-scenario')?.addEventListener('click', () => {
+  dashboardHeader.querySelector('#btn-create-scenario')?.addEventListener('click', () => {
     currentView = 'form';
     const page = document.getElementById('scenario-builder-page');
     if (page) renderContent(page);
   });
-  
+
   listContainer.querySelector('#btn-create-first-scenario')?.addEventListener('click', () => {
     currentView = 'form';
     const page = document.getElementById('scenario-builder-page');
     if (page) renderContent(page);
   });
-  
+
   listContainer.querySelector('#btn-retry-load')?.addEventListener('click', () => {
     loadScenarios();
     const page = document.getElementById('scenario-builder-page');
     if (page) renderContent(page);
   });
-  
+
+  // Search input
+  const searchInput = listContainer.querySelector('#scenario-search') as HTMLInputElement;
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      searchQuery = (e.target as HTMLInputElement).value;
+      const page = document.getElementById('scenario-builder-page');
+      if (page) renderContent(page);
+    });
+  }
+
+  // Filter chips
+  listContainer.querySelectorAll('[data-filter="category"]').forEach(chip => {
+    chip.addEventListener('click', (e) => {
+      const value = (e.currentTarget as HTMLElement).dataset.value;
+      selectedCategory = selectedCategory === value ? undefined : value;
+      const page = document.getElementById('scenario-builder-page');
+      if (page) renderContent(page);
+    });
+  });
+
+  listContainer.querySelectorAll('[data-filter="severity"]').forEach(chip => {
+    chip.addEventListener('click', (e) => {
+      const value = (e.currentTarget as HTMLElement).dataset.value;
+      selectedSeverity = selectedSeverity === value ? undefined : value;
+      const page = document.getElementById('scenario-builder-page');
+      if (page) renderContent(page);
+    });
+  });
+
+  // Clear filters
+  listContainer.querySelector('#btn-clear-filters')?.addEventListener('click', () => {
+    searchQuery = '';
+    selectedCategory = undefined;
+    selectedSeverity = undefined;
+    const page = document.getElementById('scenario-builder-page');
+    if (page) renderContent(page);
+  });
+
   // Card action buttons
   listContainer.querySelectorAll('[data-action="simulate"]').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -383,7 +502,31 @@ function renderScenariosList(container: HTMLElement): void {
       }
     });
   });
-  
+
+  listContainer.querySelectorAll('[data-action="duplicate"]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = (e.currentTarget as HTMLElement).dataset.id;
+      if (id) {
+        const scenario = scenariosList.find(s => s.id === id);
+        if (scenario) {
+          formData = {
+            name: `${scenario.name} (copia)`,
+            description: scenario.description || '',
+            category: scenario.category,
+            sentiment: scenario.sentiment,
+            intensity: scenario.intensity,
+            salience: scenario.salience,
+            severity: scenario.severity,
+            targetEntities: scenario.targetEntities || [],
+          };
+          currentView = 'form';
+          const page = document.getElementById('scenario-builder-page');
+          if (page) renderContent(page);
+        }
+      }
+    });
+  });
+
   listContainer.querySelectorAll('[data-action="delete"]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       const id = (e.currentTarget as HTMLElement).dataset.id;
@@ -425,9 +568,17 @@ function getSeverityLabel(severity: string): string {
 }
 
 function getSentimentClass(sentiment: number): string {
-  if (sentiment > 0) return 'sentiment-positive';
-  if (sentiment < 0) return 'sentiment-negative';
-  return 'sentiment-neutral';
+  if (sentiment > 0) return 'positive';
+  if (sentiment < 0) return 'negative';
+  return 'neutral';
+}
+
+function getSentimentShortLabel(sentiment: number): string {
+  if (sentiment > 0.5) return 'Positivo';
+  if (sentiment > 0) return 'Leve +';
+  if (sentiment < -0.5) return 'Negativo';
+  if (sentiment < 0) return 'Leve -';
+  return 'Neutral';
 }
 
 function formatDate(dateString: string): string {
@@ -436,8 +587,6 @@ function formatDate(dateString: string): string {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
   });
 }
 
@@ -446,6 +595,18 @@ function formatDate(dateString: string): string {
 // ===========================================
 
 function renderForm(container: HTMLElement): void {
+  // Header del formulario
+  const header = document.createElement('div');
+  header.className = 'scenario-header';
+  header.innerHTML = `
+    <h1 class="page-title">
+      <span class="material-symbols-outlined">add_circle</span>
+      Crear Escenario
+    </h1>
+    <p class="page-subtitle">Define un evento hipotético para simular su impacto en las opiniones públicas</p>
+  `;
+  container.appendChild(header);
+
   const form = document.createElement('form');
   form.className = 'scenario-form';
   form.id = 'scenario-create-form';
@@ -453,7 +614,10 @@ function renderForm(container: HTMLElement): void {
   form.innerHTML = `
     <!-- Sección 1: Información Básica -->
     <div class="form-section">
-      <h3 class="section-title">Información Básica</h3>
+      <h3 class="section-title">
+        <span class="material-symbols-outlined">info</span>
+        Información Básica
+      </h3>
 
       <div class="form-group">
         <label for="scenario-name">Nombre del escenario *</label>
@@ -500,7 +664,10 @@ function renderForm(container: HTMLElement): void {
 
     <!-- Sección 2: Métricas del Evento -->
     <div class="form-section">
-      <h3 class="section-title">Métricas del Evento</h3>
+      <h3 class="section-title">
+        <span class="material-symbols-outlined">analytics</span>
+        Métricas del Evento
+      </h3>
 
       <!-- Sentiment Slider -->
       <div class="form-group">
@@ -601,9 +768,11 @@ function renderForm(container: HTMLElement): void {
     <!-- Botones de acción -->
     <div class="form-actions">
       <button type="button" class="btn btn-secondary" id="btn-cancel">
-        Cancelar
+        <span class="material-symbols-outlined">arrow_back</span>
+        Volver
       </button>
       <button type="submit" class="btn btn-primary" id="btn-submit" ${isSubmitting ? 'disabled' : ''}>
+        <span class="material-symbols-outlined">save</span>
         ${isSubmitting ? 'Guardando...' : 'Guardar y Simular'}
       </button>
     </div>
@@ -706,16 +875,16 @@ async function handleFormSubmit(e: Event): Promise<void> {
   const submitBtn = document.getElementById('btn-submit') as HTMLButtonElement;
   if (submitBtn) {
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Guardando...';
+    submitBtn.innerHTML = '<span class="material-symbols-outlined">hourglass_empty</span> Guardando...';
   }
 
   try {
     const result = await createScenario(formData);
-    
+
     if (!result.success || !result.data) {
       throw new Error(result.error || 'Failed to create scenario');
     }
-    
+
     const scenario = result.data;
     createdScenarioId = scenario.id;
     console.log('Escenario creado:', scenario);
@@ -731,7 +900,7 @@ async function handleFormSubmit(e: Event): Promise<void> {
     isSubmitting = false;
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Guardar y Simular';
+      submitBtn.innerHTML = '<span class="material-symbols-outlined">save</span> Guardar y Simular';
     }
   }
 }
@@ -769,10 +938,27 @@ function validateForm(): boolean {
 // ===========================================
 
 function renderSimulationConfig(container: HTMLElement): void {
+  // Header
+  const header = document.createElement('div');
+  header.className = 'scenario-header';
+  header.innerHTML = `
+    <h1 class="page-title">
+      <span class="material-symbols-outlined">settings</span>
+      Configurar Simulación
+    </h1>
+    <p class="page-subtitle">Ajusta los parámetros para ejecutar la simulación del escenario</p>
+  `;
+  container.appendChild(header);
+
   const section = document.createElement('div');
   section.className = 'form-section';
+  section.style.maxWidth = '800px';
+  section.style.margin = '0 auto';
   section.innerHTML = `
-    <h3 class="section-title">Configuración de Simulación</h3>
+    <h3 class="section-title">
+      <span class="material-symbols-outlined">tune</span>
+      Parámetros de Simulación
+    </h3>
 
     <div class="form-group">
       <label for="sim-sample-size">Tamaño de la muestra</label>
@@ -807,9 +993,11 @@ function renderSimulationConfig(container: HTMLElement): void {
 
     <div class="form-actions">
       <button type="button" class="btn btn-secondary" id="btn-back-to-form">
-        Volver al formulario
+        <span class="material-symbols-outlined">arrow_back</span>
+        Volver
       </button>
       <button type="button" class="btn btn-primary" id="btn-run-simulation" ${isSimulating ? 'disabled' : ''}>
+        <span class="material-symbols-outlined">play_arrow</span>
         ${isSimulating ? 'Ejecutando...' : 'Ejecutar Simulación'}
       </button>
     </div>
@@ -849,7 +1037,7 @@ async function handleRunSimulation(): Promise<void> {
   const btn = document.getElementById('btn-run-simulation') as HTMLButtonElement;
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Ejecutando...';
+    btn.innerHTML = '<span class="material-symbols-outlined">hourglass_empty</span> Ejecutando...';
   }
 
   try {
@@ -923,11 +1111,11 @@ async function handleRunSimulation(): Promise<void> {
   } catch (error) {
     console.error('Error en simulación:', error);
     alert('Error al ejecutar la simulación. Intenta nuevamente.');
-    
+
     isSimulating = false;
     if (btn) {
       btn.disabled = false;
-      btn.textContent = 'Ejecutar Simulación';
+      btn.innerHTML = '<span class="material-symbols-outlined">play_arrow</span> Ejecutar Simulación';
     }
   }
 }
@@ -972,7 +1160,7 @@ function processSimulationResults(baseline: any, scenario: any): any {
       result.delta[qId] = {};
       const baselineDist = result.baseline[qId].distribution;
       const scenarioDist = result.scenario[qId].distribution;
-      
+
       Object.keys(baselineDist).forEach((key) => {
         const baselineValue = baselineDist[key] || 0;
         const scenarioValue = scenarioDist[key] || 0;
@@ -986,9 +1174,9 @@ function processSimulationResults(baseline: any, scenario: any): any {
 
 function normalizeDistribution(distribution: any): { [key: string]: number } {
   if (!distribution) return {};
-  
+
   const normalized: { [key: string]: number } = {};
-  
+
   // Calcular total
   let total = 0;
   Object.entries(distribution).forEach(([_, value]: [string, any]) => {
@@ -1007,7 +1195,7 @@ function normalizeDistribution(distribution: any): { [key: string]: number } {
     } else if (typeof value === 'object' && value !== null && typeof value.count === 'number') {
       count = value.count;
     }
-    
+
     if (total > 0) {
       normalized[key] = Math.round((count / total) * 100);
     } else {
@@ -1023,8 +1211,39 @@ function normalizeDistribution(distribution: any): { [key: string]: number } {
 // ===========================================
 
 function renderResults(container: HTMLElement): void {
+  // Header
+  const header = document.createElement('div');
+  header.className = 'scenario-header';
+  header.innerHTML = `
+    <h1 class="page-title">
+      <span class="material-symbols-outlined">analytics</span>
+      Resultados de Simulación
+    </h1>
+    <p class="page-subtitle">Comparación entre baseline y escenario</p>
+  `;
+  container.appendChild(header);
+
   if (!simulationResults) {
-    container.innerHTML = '<p>No hay resultados disponibles</p>';
+    const emptyDiv = document.createElement('div');
+    emptyDiv.className = 'scenarios-empty';
+    emptyDiv.innerHTML = `
+      <div class="empty-icon">
+        <span class="material-symbols-outlined">analytics</span>
+      </div>
+      <h3>No hay resultados disponibles</h3>
+      <p>La simulación no generó resultados. Intenta nuevamente.</p>
+      <button type="button" class="btn btn-primary" id="btn-back-to-sim">
+        <span class="material-symbols-outlined">arrow_back</span>
+        Volver a Configuración
+      </button>
+    `;
+    container.appendChild(emptyDiv);
+
+    emptyDiv.querySelector('#btn-back-to-sim')?.addEventListener('click', () => {
+      currentView = 'simulation';
+      const page = document.getElementById('scenario-builder-page');
+      if (page) renderContent(page);
+    });
     return;
   }
 
@@ -1035,18 +1254,21 @@ function renderResults(container: HTMLElement): void {
   const summarySection = document.createElement('div');
   summarySection.className = 'form-section';
   summarySection.innerHTML = `
-    <h3 class="section-title">Resumen de Resultados</h3>
+    <h3 class="section-title">
+      <span class="material-symbols-outlined">summarize</span>
+      Resumen
+    </h3>
     <div class="results-summary">
       <div class="summary-item">
-        <span class="summary-label">Modo:</span>
+        <span class="summary-label">Modo</span>
         <span class="summary-value">${getModeLabel(simulationConfig.mode)}</span>
       </div>
       <div class="summary-item">
-        <span class="summary-label">Muestra:</span>
+        <span class="summary-label">Muestra</span>
         <span class="summary-value">${simulationConfig.sampleSize} agentes</span>
       </div>
       <div class="summary-item">
-        <span class="summary-label">Escenario:</span>
+        <span class="summary-label">Escenario</span>
         <span class="summary-value">${escapeHtml(formData.name)}</span>
       </div>
     </div>
@@ -1057,7 +1279,10 @@ function renderResults(container: HTMLElement): void {
   const tableSection = document.createElement('div');
   tableSection.className = 'form-section';
   tableSection.innerHTML = `
-    <h3 class="section-title">Comparación por Pregunta</h3>
+    <h3 class="section-title">
+      <span class="material-symbols-outlined">table_chart</span>
+      Comparación por Pregunta
+    </h3>
     <div class="results-table-container">
       <table class="results-table">
         <thead>
@@ -1079,17 +1304,19 @@ function renderResults(container: HTMLElement): void {
   // Acciones
   const actionsSection = document.createElement('div');
   actionsSection.className = 'form-actions';
+  actionsSection.style.maxWidth = '800px';
+  actionsSection.style.margin = '0 auto';
   actionsSection.innerHTML = `
-    <button type="button" class="btn btn-secondary" id="btn-new-scenario">
-      <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">add</span>
-      Crear Nuevo Escenario
+    <button type="button" class="btn btn-secondary" id="btn-back-to-list">
+      <span class="material-symbols-outlined">list</span>
+      Ver Escenarios
     </button>
     <button type="button" class="btn btn-secondary" id="btn-reconfigure">
-      <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">settings</span>
-      Reconfigurar Simulación
+      <span class="material-symbols-outlined">settings</span>
+      Reconfigurar
     </button>
     <button type="button" class="btn btn-primary" id="btn-test-in-survey-results">
-      <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">assignment</span>
+      <span class="material-symbols-outlined">assignment</span>
       Probar en Encuesta
     </button>
   `;
@@ -1098,9 +1325,9 @@ function renderResults(container: HTMLElement): void {
   container.appendChild(resultsDiv);
 
   // Attach listeners
-  actionsSection.querySelector('#btn-new-scenario')?.addEventListener('click', () => {
+  actionsSection.querySelector('#btn-back-to-list')?.addEventListener('click', () => {
     resetForm();
-    currentView = 'form';
+    currentView = 'list';
     const page = document.getElementById('scenario-builder-page');
     if (page) renderContent(page);
   });
@@ -1190,7 +1417,7 @@ function renderSuccess(container: HTMLElement): void {
   successDiv.className = 'state-container state-success';
   successDiv.innerHTML = `
     <div class="state-icon">
-      <span class="material-symbols-outlined" style="font-size: 64px; color: #10b981;">check_circle</span>
+      <span class="material-symbols-outlined">check_circle</span>
     </div>
     <h3 class="state-title">Escenario guardado exitosamente</h3>
     <p class="state-message">
@@ -1198,16 +1425,16 @@ function renderSuccess(container: HTMLElement): void {
     </p>
     <div class="state-actions">
       <button class="btn btn-primary" id="btn-simulate-now">
-        <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">play_arrow</span>
+        <span class="material-symbols-outlined">play_arrow</span>
         Simular Ahora
       </button>
       <button class="btn btn-secondary" id="btn-test-in-survey">
-        <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">assignment</span>
+        <span class="material-symbols-outlined">assignment</span>
         Probar en Encuesta
       </button>
       <button class="btn btn-secondary" id="btn-create-another">
-        <span class="material-symbols-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">add</span>
-        Crear otro escenario
+        <span class="material-symbols-outlined">add</span>
+        Crear otro
       </button>
     </div>
   `;
@@ -1246,15 +1473,13 @@ function resetForm(): void {
   formErrors = {};
   isSubmitting = false;
   isSimulating = false;
-  currentView = 'list';
   createdScenarioId = null;
   simulationResults = null;
   simulationConfig = {
     sampleSize: 100,
     mode: 'baseline_vs_scenario',
   };
-  // Reload scenarios list when going back
-  scenariosList = [];
+  // No resetear filtros de búsqueda al volver a la lista
 }
 
 function getSentimentLabel(value: number): string {
@@ -1290,5 +1515,8 @@ export function cleanupScenarioBuilderPage(): void {
   resetForm();
   scenariosList = [];
   listError = null;
+  searchQuery = '';
+  selectedCategory = undefined;
+  selectedSeverity = undefined;
   console.log('Scenario builder page cleaned up');
 }
