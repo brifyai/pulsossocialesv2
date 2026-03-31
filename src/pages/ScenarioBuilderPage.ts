@@ -19,6 +19,9 @@ let createdScenarioId: string | null = null;
 let scenariosList: ScenarioEvent[] = [];
 let listError: string | null = null;
 
+// Contador de renders para debugging
+let renderCount = 0;
+
 // Resultados de simulación
 let simulationResults: {
   baseline: { [questionId: string]: { distribution: { [option: string]: number }; confidence: number } };
@@ -65,14 +68,8 @@ const CANONICAL_LABELS: Record<string, string> = {
   option_d: 'Opción D',
 };
 
-// Mapeo de questionId a las claves canónicas esperadas
-const QUESTION_OPTION_KEYS: Record<string, string[]> = {
-  q_approval: ['approve', 'disapprove', 'no_response'],
-  q_direction: ['good_path', 'bad_path', 'no_response'],
-  q_optimism: ['very_optimistic', 'optimistic', 'pessimistic', 'very_pessimistic', 'no_response'],
-  q_economy_national: ['very_good', 'good', 'bad', 'very_bad', 'regular', 'no_response'],
-  q_economy_personal: ['very_good', 'good', 'bad', 'very_bad', 'regular', 'no_response'],
-};
+// Nota: Las claves de opciones de preguntas canónicas se definen en el motor CADEM
+// y se obtienen dinámicamente según el tipo de pregunta
 
 const SEVERITY_OPTIONS = [
   { value: 'minor', label: 'Menor' },
@@ -113,13 +110,25 @@ let formErrors: { [key: string]: string } = {};
 // ===========================================
 
 export async function createScenarioBuilderPage(): Promise<HTMLElement> {
+  console.log('[SB] createScenarioBuilderPage START');
+  
+  // Reset render counter for new page instance
+  renderCount = 0;
+  
   const page = document.createElement('div');
   page.className = 'page scenario-builder-page';
   page.id = 'scenario-builder-page';
 
+  // Always reset to list view when creating page to avoid stale state
+  currentView = 'list';
+  
+  // Load scenarios before first render
+  await loadScenarios();
+
   // Renderizar contenido
   renderContent(page);
 
+  console.log('[SB] createScenarioBuilderPage END - page children:', page.children.length, 'total renders:', renderCount);
   return page;
 }
 
@@ -127,7 +136,17 @@ export async function createScenarioBuilderPage(): Promise<HTMLElement> {
  * Renderiza el contenido según la vista actual
  */
 function renderContent(container: HTMLElement): void {
+  renderCount++;
+  console.log(`[SB] renderContent START #${renderCount} - view=${currentView}, container children before clear:`, container.children.length);
+  console.log(`[SB] renderContent #${renderCount} - container ID:`, container.id, 'container class:', container.className);
+  
+  // Verificar si ya renderizamos recientemente (posible doble render)
+  if (renderCount > 1) {
+    console.warn(`[SB] renderContent #${renderCount} - WARNING: Multiple renders detected!`);
+  }
+  
   container.innerHTML = '';
+  console.log('[SB] renderContent - container cleared, now has:', container.children.length, 'children');
 
   // Header
   const header = document.createElement('div');
@@ -140,6 +159,7 @@ function renderContent(container: HTMLElement): void {
     <p class="page-subtitle">${getPageSubtitle()}</p>
   `;
   container.appendChild(header);
+  console.log('[SB] renderContent - header appended, container now has:', container.children.length, 'children');
 
   // Render según vista
   switch (currentView) {
@@ -159,6 +179,7 @@ function renderContent(container: HTMLElement): void {
       renderResults(container);
       break;
   }
+  console.log(`[SB] renderContent END #${renderCount} - container has:`, container.children.length, 'children');
 }
 
 function getPageTitle(): string {
@@ -214,26 +235,23 @@ async function loadScenarios(): Promise<void> {
   
   isLoading = false;
   
-  // Re-render if we're still on the list view
-  const page = document.getElementById('scenario-builder-page');
-  if (page && currentView === 'list') {
-    renderContent(page);
-  }
+  // NOTA: Ya no hacemos re-render aquí para evitar doble renderizado
+  // El render es responsabilidad de quien llama a loadScenarios
 }
 
 function renderScenariosList(container: HTMLElement): void {
-  // Load scenarios on first render
-  if (!isLoading && scenariosList.length === 0 && !listError) {
-    loadScenarios();
-  }
+  console.log('[SB] renderScenariosList START - container has', container.children.length, 'children, scenariosList.length:', scenariosList.length);
+  
+  // Note: Scenarios are now loaded in createScenarioBuilderPage before render
+  // This prevents duplicate loading and infinite loading state
   
   const listContainer = document.createElement('div');
   listContainer.className = 'scenarios-list-container';
   
-  // Header with create button
-  const headerSection = document.createElement('div');
-  headerSection.className = 'scenarios-list-header';
-  headerSection.innerHTML = `
+  // Action bar with create button (not a header - the header is already in renderContent)
+  const actionBar = document.createElement('div');
+  actionBar.className = 'scenarios-list-header';
+  actionBar.innerHTML = `
     <div class="scenarios-count">
       ${isLoading ? 'Cargando escenarios...' : `${scenariosList.length} escenario(s) encontrado(s)`}
     </div>
@@ -242,7 +260,7 @@ function renderScenariosList(container: HTMLElement): void {
       Crear Escenario
     </button>
   `;
-  listContainer.appendChild(headerSection);
+  listContainer.appendChild(actionBar);
   
   // Error message
   if (listError) {
@@ -332,9 +350,10 @@ function renderScenariosList(container: HTMLElement): void {
   }
   
   container.appendChild(listContainer);
+  console.log('[SB] renderScenariosList END - appended listContainer, container now has:', container.children.length, 'children');
   
   // Attach event listeners
-  headerSection.querySelector('#btn-create-scenario')?.addEventListener('click', () => {
+  actionBar.querySelector('#btn-create-scenario')?.addEventListener('click', () => {
     currentView = 'form';
     const page = document.getElementById('scenario-builder-page');
     if (page) renderContent(page);
@@ -913,63 +932,90 @@ async function handleRunSimulation(): Promise<void> {
   }
 }
 
-function processSimulationResults(_baseline: any, _scenario: any): any {
-  // Mock results for MVP - en producción esto procesaría los resultados reales
-  const questions = ['q_approval', 'q_direction', 'q_optimism', 'q_economy_national', 'q_economy_personal'];
-  
+function processSimulationResults(baseline: any, scenario: any): any {
+  // Procesar resultados reales del motor CADEM
   const result: any = {
     baseline: {},
     scenario: {},
     delta: {},
   };
 
-  questions.forEach((qId) => {
-    // Generar distribuciones mock con claves canónicas apropiadas para cada pregunta
-    const optionKeys = QUESTION_OPTION_KEYS[qId] || ['option_a', 'option_b', 'option_c', 'option_d'];
-    const baselineDist = generateMockDistribution(optionKeys);
-    const scenarioDist = generateMockDistribution(optionKeys);
-    
-    result.baseline[qId] = {
-      distribution: baselineDist,
-      confidence: 0.75 + Math.random() * 0.2,
-    };
-    
-    result.scenario[qId] = {
-      distribution: scenarioDist,
-      confidence: 0.75 + Math.random() * 0.2,
-    };
-
-    // Calcular delta
-    result.delta[qId] = {};
-    Object.keys(baselineDist).forEach((key) => {
-      result.delta[qId][key] = scenarioDist[key] - baselineDist[key];
+  // Procesar baseline si existe
+  if (baseline?.results) {
+    baseline.results.forEach((questionResult: any) => {
+      const qId = questionResult.questionId;
+      if (questionResult.questionType === 'single_choice') {
+        result.baseline[qId] = {
+          distribution: normalizeDistribution(questionResult.distribution),
+          confidence: questionResult.confidence || 0.85,
+        };
+      }
     });
+  }
+
+  // Procesar scenario si existe
+  if (scenario?.results) {
+    scenario.results.forEach((questionResult: any) => {
+      const qId = questionResult.questionId;
+      if (questionResult.questionType === 'single_choice') {
+        result.scenario[qId] = {
+          distribution: normalizeDistribution(questionResult.distribution),
+          confidence: questionResult.confidence || 0.85,
+        };
+      }
+    });
+  }
+
+  // Calcular delta para preguntas que existen en ambos
+  Object.keys(result.baseline).forEach((qId) => {
+    if (result.scenario[qId]) {
+      result.delta[qId] = {};
+      const baselineDist = result.baseline[qId].distribution;
+      const scenarioDist = result.scenario[qId].distribution;
+      
+      Object.keys(baselineDist).forEach((key) => {
+        const baselineValue = baselineDist[key] || 0;
+        const scenarioValue = scenarioDist[key] || 0;
+        result.delta[qId][key] = scenarioValue - baselineValue;
+      });
+    }
   });
 
   return result;
 }
 
-function generateMockDistribution(optionKeys: string[]): { [key: string]: number } {
-  const dist: { [key: string]: number } = {};
-  let remaining = 100;
+function normalizeDistribution(distribution: any): { [key: string]: number } {
+  if (!distribution) return {};
   
-  optionKeys.forEach((opt, idx) => {
-    if (idx === optionKeys.length - 1) {
-      dist[opt] = remaining;
-    } else {
-      const value = Math.floor(Math.random() * remaining * 0.6);
-      dist[opt] = value;
-      remaining -= value;
+  const normalized: { [key: string]: number } = {};
+  
+  // Calcular total
+  let total = 0;
+  Object.entries(distribution).forEach(([_, value]: [string, any]) => {
+    if (typeof value === 'number') {
+      total += value;
+    } else if (typeof value === 'object' && value !== null && typeof value.count === 'number') {
+      total += value.count;
     }
   });
 
   // Normalizar a porcentajes
-  const total = Object.values(dist).reduce((a, b) => a + b, 0);
-  Object.keys(dist).forEach((key) => {
-    dist[key] = Math.round((dist[key] / total) * 100);
+  Object.entries(distribution).forEach(([key, value]: [string, any]) => {
+    let count = 0;
+    if (typeof value === 'number') {
+      count = value;
+    } else if (typeof value === 'object' && value !== null && typeof value.count === 'number') {
+      count = value.count;
+    }
+    
+    if (total > 0) {
+      normalized[key] = Math.round((count / total) * 100);
+    } else {
+      normalized[key] = 0;
+    }
   });
 
-  return dist;
+  return normalized;
 }
 
 // ===========================================

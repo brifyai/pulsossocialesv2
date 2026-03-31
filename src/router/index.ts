@@ -335,6 +335,10 @@ export function initRouter(): void {
     params: state.params,
     isAuthenticated: state.isAuthenticated 
   });
+
+  // Notify listeners of initial route
+  // This ensures the app renders the initial route
+  listeners.forEach(listener => listener(state.currentRoute));
 }
 
 /**
