@@ -1186,7 +1186,7 @@ function renderQuestionResult(result: QuestionResult, number: number): string {
             <div class="dist-bar-row">
               <span class="dist-label">${escapeHtml(entry.label)}</span>
               <div class="dist-bar-container">
-                <div class="dist-bar" style="width: ${maxCount > 0 ? (entry.count / maxCount * 100) : 0}%"></div>
+                <div class="dist-bar" style="width: ${entry.percentage}%"></div>
               </div>
               <span class="dist-value">${entry.count} (${entry.percentage}%)</span>
             </div>
@@ -1232,7 +1232,14 @@ function renderQuestionResult(result: QuestionResult, number: number): string {
       return { key: numKey, count: 0, percentage: 0 };
     }).filter(e => e.count > 0).sort((a, b) => (typeof a.key === 'number' && typeof b.key === 'number') ? a.key - b.key : 0);
     
-    const maxCount = entries.length > 0 ? Math.max(...entries.map(e => e.count)) : 0;
+    // Labels estándar para escala Likert 1-5
+    const likertLabels: Record<number, string> = {
+      1: likertResult.minLabel || 'Muy en desacuerdo',
+      2: 'En desacuerdo',
+      3: 'Neutral',
+      4: 'De acuerdo',
+      5: likertResult.maxLabel || 'Muy de acuerdo'
+    };
     
     console.log('📊 Processed likert entries:', entries);
     
@@ -1249,18 +1256,13 @@ function renderQuestionResult(result: QuestionResult, number: number): string {
       </div>
       <div class="distribution-bars">
         ${entries.map(entry => {
-          const keyStr = String(entry.key);
-          const minLabel = likertResult.minLabel || '';
-          const maxLabel = likertResult.maxLabel || '';
-          const min = 1;
-          const max = 5;
-          const labelSuffix = entry.key === min && minLabel ? ` (${minLabel})` : 
-                             entry.key === max && maxLabel ? ` (${maxLabel})` : '';
+          const keyNum = typeof entry.key === 'number' ? entry.key : parseInt(entry.key as string);
+          const label = likertLabels[keyNum] || String(entry.key);
           return `
             <div class="dist-bar-row">
-              <span class="dist-label">${keyStr}${labelSuffix}</span>
+              <span class="dist-label">${keyNum} - ${escapeHtml(label)}</span>
               <div class="dist-bar-container">
-                <div class="dist-bar" style="width: ${maxCount > 0 ? (entry.count / maxCount * 100) : 0}%"></div>
+                <div class="dist-bar" style="width: ${entry.percentage}%"></div>
               </div>
               <span class="dist-value">${entry.count} (${entry.percentage}%)</span>
             </div>
