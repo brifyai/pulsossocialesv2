@@ -55,6 +55,8 @@ let navigation: HTMLElement | null = null;
 let currentPage: HTMLElement | null = null;
 let appContainer: HTMLElement | null = null;
 let isAppShellCreated = false;
+let isRendering = false;
+let lastRenderedRoute: Route | null = null;
 
 /**
  * Initialize the application
@@ -70,22 +72,14 @@ async function initApp(): Promise<void> {
   appContainer.id = 'app';
   document.body.appendChild(appContainer);
 
-  // Initialize router (handles auth redirects)
-  initRouter();
-
-  // Render initial route
-  await renderRoute(getCurrentRoute());
-
-  // Subscribe to route changes (only for actual changes, not initial)
-  let isFirstRouteChange = true;
+  // Subscribe to route changes FIRST
+  // This ensures we catch the initial route notification from initRouter
   onRouteChange(async (route) => {
-    // Skip the first route change as it's already rendered by initRouter
-    if (isFirstRouteChange) {
-      isFirstRouteChange = false;
-      return;
-    }
     await renderRoute(route);
   });
+
+  // Initialize router (triggers initial route render via onRouteChange)
+  initRouter();
 
   console.log('✅ PULSOS SOCIALES initialized');
   console.log('🔒 Auth status:', isAuthenticated() ? 'Authenticated' : 'Not authenticated');
@@ -98,74 +92,98 @@ async function initApp(): Promise<void> {
 async function renderRoute(route: Route): Promise<void> {
   if (!appContainer) return;
 
+  // Prevent duplicate renders of the same route
+  if (isRendering) {
+    console.log(`⏭️ Skipping render of ${route} - already rendering`);
+    return;
+  }
+
+  // Skip if we're already on this route and have rendered it
+  if (lastRenderedRoute === route && currentPage) {
+    console.log(`⏭️ Skipping render of ${route} - already rendered`);
+    return;
+  }
+
+  isRendering = true;
+  lastRenderedRoute = route;
+
   const isPublic = isPublicRoute(route);
   const isProtected = isProtectedRoute(route);
   const hasAuth = isAuthenticated();
 
   console.log(`🎨 Rendering route: ${route}`, { isPublic, isProtected, hasAuth });
 
-  // Cleanup previous page
-  if (currentPage) {
-    currentPage.remove();
-    currentPage = null;
-  }
+  try {
+    // Cleanup previous page
+    if (currentPage) {
+      currentPage.remove();
+      currentPage = null;
+    }
 
-  // Cleanup map resources if leaving map routes
-  cleanupMapResources(route);
+    // Cleanup map resources if leaving map routes
+    cleanupMapResources(route);
 
-  // Handle public routes (landing, login, methodology-public)
-  // Special case: methodology shows with nav when authenticated, without when not
-  if (isPublic) {
-    // For methodology page: show with nav if authenticated, without if not
-    if (route === 'methodology' && hasAuth) {
-      // Ensure app shell exists for authenticated users
+    // Handle public routes (landing, login, methodology-public)
+    // Special case: methodology shows with nav when authenticated, without when not
+    if (isPublic) {
+      // For methodology page: show with nav if authenticated, without if not
+      if (route === 'methodology' && hasAuth) {
+        // Ensure app shell exists for authenticated users
+        if (!isAppShellCreated) {
+          createAppShell();
+        }
+        // Render methodology inside main content
+        const mainContent = document.getElementById('main-content');
+        if (mainContent) {
+          // LIMPIAR contenido anterior
+          mainContent.innerHTML = '';
+          currentPage = createMethodologyPage();
+          if (currentPage) {
+            mainContent.appendChild(currentPage);
+          }
+        }
+        return;
+      }
+
+      // Remove app shell if exists (for public routes we want clean layout)
+      if (isAppShellCreated) {
+        removeAppShell();
+      }
+
+      // Render public page
+      currentPage = renderPublicPage(route);
+      if (currentPage) {
+        appContainer.appendChild(currentPage);
+      }
+      return;
+    }
+
+    // Handle protected routes - require auth
+    if (isProtected) {
+      if (!hasAuth) {
+        console.log('🔒 Access denied to protected route, redirect handled by router');
+        return;
+      }
+
+      // Ensure app shell exists for protected routes
       if (!isAppShellCreated) {
         createAppShell();
       }
-      // Render methodology inside main content
+
+      // Render protected page inside main content
       const mainContent = document.getElementById('main-content');
       if (mainContent) {
-        currentPage = createMethodologyPage();
+        // LIMPIAR contenido anterior - evita acumulación de páginas
+        mainContent.innerHTML = '';
+        currentPage = await renderProtectedPage(route);
         if (currentPage) {
           mainContent.appendChild(currentPage);
         }
       }
-      return;
     }
-
-    // Remove app shell if exists (for public routes we want clean layout)
-    if (isAppShellCreated) {
-      removeAppShell();
-    }
-
-    // Render public page
-    currentPage = renderPublicPage(route);
-    if (currentPage) {
-      appContainer.appendChild(currentPage);
-    }
-    return;
-  }
-
-  // Handle protected routes - require auth
-  if (isProtected) {
-    if (!hasAuth) {
-      console.log('🔒 Access denied to protected route, redirect handled by router');
-      return;
-    }
-
-    // Ensure app shell exists for protected routes
-    if (!isAppShellCreated) {
-      createAppShell();
-    }
-
-    // Render protected page inside main content
-    const mainContent = document.getElementById('main-content');
-    if (mainContent) {
-      currentPage = await renderProtectedPage(route);
-      if (currentPage) {
-        mainContent.appendChild(currentPage);
-      }
-    }
+  } finally {
+    isRendering = false;
+    console.log(`✅ Finished rendering route: ${route}`);
   }
 }
 
