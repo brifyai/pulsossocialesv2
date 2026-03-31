@@ -1285,6 +1285,7 @@ function renderQuestionResult(result: QuestionResult, number: number): string {
           `;
         }).join('')}
       </div>
+      <div class="result-total">Total respuestas: ${total}</div>
     `;
   }
   
