@@ -1,9 +1,16 @@
 /**
  * Agents Page - Synthetic Agents Explorer
  * Sprint 10B: Integración con Supabase
+ * Sprint 20A: Rediseño visual - Explorador de Población
  * 
  * Vista para explorar la población sintética con filtros y ficha de detalle.
  * Ahora lee desde Supabase con fallback a datos locales.
+ * 
+ * CAMBIOS REDISEÑO:
+ * - Header con KPIs y acciones
+ * - Sidebar de filtros más compacto y visual
+ * - Tabla con mejor jerarquía
+ * - Panel de detalle mejorado
  */
 
 import type { SyntheticAgent } from '../types/agent';
@@ -11,7 +18,8 @@ import {
   getAgents, 
   getAgentById, 
   getUniqueRegions, 
-  getUniqueCommunes 
+  getUniqueCommunes,
+  getAgentStats
 } from '../services/supabase/repositories/agentRepository';
 import type { AgentFilters } from '../types/database';
 
@@ -41,10 +49,30 @@ const currentFilters = {
   agentType: ''
 };
 
+// KPIs calculados - ahora con datos reales de toda la población
+let kpis = {
+  totalAgents: 0,
+  dominantRegion: '-',
+  avgAge: 0,
+  dominantConnectivity: '-',
+  malePercentage: 0,
+  femalePercentage: 0
+};
+
+// Estadísticas reales de toda la población (desde Supabase)
+let realStats: {
+  totalAgents: number;
+  byRegion: Array<{ region_code: string; count: number }>;
+  bySex: Array<{ sex: string; count: number }>;
+  byAgeGroup: Array<{ age_group: string; count: number }>;
+  byAgentType: Array<{ agent_type: string; count: number }>;
+} | null = null;
+
 /**
  * Create the Agents page
  * Sprint 10B: Ahora usa agentRepository con fallback a datos locales
  * Sprint 12B: Mejoras de robustez - estados loading/error mejorados
+ * Sprint 20A: Rediseño visual completo
  */
 export async function createAgentsPage(): Promise<HTMLElement> {
   const page = document.createElement('div');
@@ -63,22 +91,35 @@ export async function createAgentsPage(): Promise<HTMLElement> {
 /**
  * Load agents data with error handling - LAZY LOADING
  * Solo carga la primera página de agentes, no todos
+ * AHORA también carga estadísticas reales de toda la población
  */
 async function loadAgentsData(page: HTMLElement): Promise<void> {
   try {
     isLoading = true;
     
+    // Cargar estadísticas reales de toda la población (en paralelo)
+    const statsPromise = getAgentStats();
+    
     // Cargar SOLO la primera página de agentes (server-side pagination)
-    const result = await getAgents({ 
+    const resultPromise = getAgents({ 
       page: 1, 
       pageSize: itemsPerPage,
       filters: {} 
     });
     
+    // Esperar ambas peticiones en paralelo
+    const [stats, result] = await Promise.all([statsPromise, resultPromise]);
+    
+    // Guardar estadísticas reales
+    realStats = stats;
+    
     agents = result.data;
     filteredAgents = [...agents];
     totalAgents = result.total;
     currentPage = 1;
+    
+    // Calcular KPIs usando estadísticas reales
+    await calculateKPIs();
     
     // Cargar regiones
     regions = await getUniqueRegions();
@@ -101,6 +142,7 @@ async function loadAgentsData(page: HTMLElement): Promise<void> {
     
     // Log para debugging
     console.log(`[AgentsPage] Cargados ${agents.length} agentes (página 1 de ${Math.ceil(totalAgents / itemsPerPage)}). Total en DB: ${totalAgents}`);
+    console.log(`[AgentsPage] Estadísticas reales:`, realStats);
     
   } catch (error) {
     console.error('[AgentsPage] Error cargando agentes:', error);
@@ -108,6 +150,130 @@ async function loadAgentsData(page: HTMLElement): Promise<void> {
     page.innerHTML = renderErrorState(error);
     attachRetryListener(page);
   }
+}
+
+/**
+ * Calcular KPIs de la población usando estadísticas REALES de Supabase
+ * Ahora muestra datos de toda la población, no solo la muestra visible
+ */
+async function calculateKPIs(): Promise<void> {
+  // Usar totalAgents del servidor como total
+  kpis.totalAgents = totalAgents;
+  
+  // Si tenemos estadísticas reales, usarlas
+  if (realStats) {
+    // Calcular porcentajes de género reales
+    const maleCount = realStats.bySex.find(s => s.sex === 'male')?.count || 0;
+    const femaleCount = realStats.bySex.find(s => s.sex === 'female')?.count || 0;
+    const totalSex = maleCount + femaleCount;
+    
+    if (totalSex > 0) {
+      kpis.malePercentage = Math.round((maleCount / totalSex) * 100);
+      kpis.femalePercentage = Math.round((femaleCount / totalSex) * 100);
+    } else {
+      kpis.malePercentage = 0;
+      kpis.femalePercentage = 0;
+    }
+    
+    // Encontrar región dominante (la que tiene más agentes)
+    const dominantRegionStat = realStats.byRegion
+      .sort((a, b) => b.count - a.count)[0];
+    
+    if (dominantRegionStat) {
+      // Buscar el nombre de la región en el caché de regiones
+      const regionName = await getRegionNameFromCode(dominantRegionStat.region_code);
+      kpis.dominantRegion = regionName;
+    } else {
+      kpis.dominantRegion = '-';
+    }
+    
+    // Para edad promedio y conectividad dominante, usamos la muestra visible
+    // (requeriría un endpoint adicional para calcular promedio de edad de toda la población)
+    calculateSampleKPIs();
+    
+    return;
+  }
+  
+  // Fallback: calcular de la muestra visible
+  calculateSampleKPIs();
+}
+
+/**
+ * Calcular KPIs de la muestra visible (fallback)
+ */
+function calculateSampleKPIs(): void {
+  if (filteredAgents.length === 0) {
+    kpis.avgAge = 0;
+    kpis.dominantConnectivity = '-';
+    return;
+  }
+  
+  // Calcular de los agentes visibles (muestra)
+  const connectivityCounts: Record<string, number> = {};
+  let totalAge = 0;
+  
+  filteredAgents.forEach(agent => {
+    // Conectividad
+    if (agent.connectivity_level) {
+      connectivityCounts[agent.connectivity_level] = (connectivityCounts[agent.connectivity_level] || 0) + 1;
+    }
+    
+    // Edad
+    if (agent.age) {
+      totalAge += agent.age;
+    }
+  });
+  
+  // Encontrar conectividad dominante
+  kpis.dominantConnectivity = Object.entries(connectivityCounts)
+    .sort((a, b) => b[1] - a[1])[0]?.[0] || '-';
+  
+  // Promedio de edad de la muestra
+  kpis.avgAge = filteredAgents.length > 0 ? Math.round(totalAge / filteredAgents.length) : 0;
+}
+
+/**
+ * Obtener nombre de región desde su código
+ */
+async function getRegionNameFromCode(regionCode: string): Promise<string> {
+  // Mapeo de códigos de región a nombres
+  const regionNames: Record<string, string> = {
+    'CL-15': 'Arica y Parinacota',
+    'CL-01': 'Tarapacá',
+    'CL-02': 'Antofagasta',
+    'CL-03': 'Atacama',
+    'CL-04': 'Coquimbo',
+    'CL-05': 'Valparaíso',
+    'CL-13': 'Metropolitana de Santiago',
+    'CL-06': "Libertador General Bernardo O'Higgins",
+    'CL-07': 'Maule',
+    'CL-16': 'Ñuble',
+    'CL-08': 'Biobío',
+    'CL-09': 'La Araucanía',
+    'CL-14': 'Los Ríos',
+    'CL-10': 'Los Lagos',
+    'CL-11': 'Aysén',
+    'CL-12': 'Magallanes',
+    // También soportar códigos cortos
+    '15': 'Arica y Parinacota',
+    '1': 'Tarapacá',
+    '2': 'Antofagasta',
+    '3': 'Atacama',
+    '4': 'Coquimbo',
+    '5': 'Valparaíso',
+    '13': 'Metropolitana de Santiago',
+    '6': "Libertador General Bernardo O'Higgins",
+    '7': 'Maule',
+    '16': 'Ñuble',
+    '8': 'Biobío',
+    '9': 'La Araucanía',
+    '14': 'Los Ríos',
+    '10': 'Los Lagos',
+    '11': 'Aysén',
+    '12': 'Magallanes',
+  };
+  
+  return regionNames[regionCode] || regionCode;
 }
 
 /**
@@ -128,112 +294,173 @@ function attachRetryListener(page: HTMLElement): void {
  */
 function renderPage(): string {
   if (isLoading) {
-    return `
-      <div class="agents-loading">
-        <div class="loading-spinner"></div>
-        <p>Cargando agentes sintéticos...</p>
-      </div>
-    `;
+    return renderLoadingState();
   }
 
   return `
-    <div class="agents-header">
-      <h1 class="agents-title">Agentes Sintéticos</h1>
-      <p class="agents-subtitle">Explora la población sintética generada por el pipeline de datos</p>
-    </div>
+    <!-- Header Principal -->
+    <header class="agents-header">
+      <div class="agents-header-content">
+        <div class="agents-header-title">
+          <h1 class="agents-title">
+            <span class="title-icon">👥</span>
+            Agentes Sintéticos
+          </h1>
+          <p class="agents-subtitle">
+            Explora la población sintética generada con datos censales y socioeconómicos reales
+          </p>
+        </div>
+        <div class="agents-header-actions">
+          <button class="btn-header-action" id="export-agents-btn" title="Exportar segmento">
+            <span class="action-icon">download</span>
+            Exportar
+          </button>
+          <button class="btn-header-action btn-primary" id="clear-filters-btn" title="Limpiar todos los filtros">
+            <span class="action-icon">filter_alt_off</span>
+            Limpiar filtros
+          </button>
+        </div>
+      </div>
+    </header>
+    
+    <!-- KPIs Dashboard -->
+    <section class="agents-kpis">
+      ${renderKPICards()}
+    </section>
     
     <div class="agents-layout">
-      <!-- Sidebar: Filtros -->
+      <!-- Sidebar: Filtros Mejorado -->
       <aside class="agents-filters">
         <div class="filters-header">
-          <h2>Filtros</h2>
-          <button class="btn-reset-filters" id="reset-filters">Limpiar</button>
+          <h2>
+            <span class="filter-icon">filter_list</span>
+            Filtros
+          </h2>
+          <span class="filters-badge" id="active-filters-count">0 activos</span>
         </div>
         
-        <div class="filter-group">
-          <label for="filter-region">Región</label>
-          <select id="filter-region" class="filter-select">
-            <option value="">Todas las regiones</option>
-            ${regions.map(r => `<option value="${r.code}">${r.name}</option>`).join('')}
-          </select>
+        <!-- Resumen del segmento actual -->
+        <div class="filters-summary">
+          <h3>Segmento actual</h3>
+          <div class="summary-tags" id="filter-summary-tags">
+            ${renderFilterSummaryTags()}
+          </div>
         </div>
         
-        <div class="filter-group">
-          <label for="filter-comuna">Comuna</label>
-          <select id="filter-comuna" class="filter-select">
-            <option value="">Todas las comunas</option>
-            ${communes.map(c => `<option value="${c.code}">${c.name}</option>`).join('')}
-          </select>
+        <div class="filters-scroll">
+          <div class="filter-group">
+            <label for="filter-region">
+              <span class="filter-label-icon">location_on</span>
+              Región
+            </label>
+            <select id="filter-region" class="filter-select">
+              <option value="">Todas las regiones</option>
+              ${regions.map(r => `<option value="${r.code}">${r.name}</option>`).join('')}
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label for="filter-comuna">
+              <span class="filter-label-icon">place</span>
+              Comuna
+            </label>
+            <select id="filter-comuna" class="filter-select">
+              <option value="">Todas las comunas</option>
+              ${communes.map(c => `<option value="${c.code}">${c.name}</option>`).join('')}
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label for="filter-sex">
+              <span class="filter-label-icon">wc</span>
+              Sexo
+            </label>
+            <select id="filter-sex" class="filter-select">
+              <option value="">Todos</option>
+              <option value="male">Masculino</option>
+              <option value="female">Femenino</option>
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label for="filter-age-group">
+              <span class="filter-label-icon">calendar_today</span>
+              Grupo de edad
+            </label>
+            <select id="filter-age-group" class="filter-select">
+              <option value="">Todos</option>
+              <option value="child">Niño</option>
+              <option value="youth">Joven</option>
+              <option value="adult">Adulto</option>
+              <option value="middle_age">Mediana edad</option>
+              <option value="senior">Adulto mayor</option>
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label for="filter-income">
+              <span class="filter-label-icon">attach_money</span>
+              Decil de ingreso
+            </label>
+            <select id="filter-income" class="filter-select">
+              <option value="">Todos</option>
+              ${[1,2,3,4,5,6,7,8,9,10].map(d => `<option value="${d}">Decil ${d}</option>`).join('')}
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label for="filter-education">
+              <span class="filter-label-icon">school</span>
+              Nivel educativo
+            </label>
+            <select id="filter-education" class="filter-select">
+              <option value="">Todos</option>
+              <option value="none">Sin educación</option>
+              <option value="primary">Primaria</option>
+              <option value="secondary">Secundaria</option>
+              <option value="technical">Técnico</option>
+              <option value="university">Universitario</option>
+              <option value="postgraduate">Posgrado</option>
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label for="filter-connectivity">
+              <span class="filter-label-icon">wifi</span>
+              Conectividad
+            </label>
+            <select id="filter-connectivity" class="filter-select">
+              <option value="">Todos</option>
+              <option value="none">Sin conexión</option>
+              <option value="low">Bajo</option>
+              <option value="medium">Medio</option>
+              <option value="high">Alto</option>
+              <option value="very_high">Muy alto</option>
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label for="filter-agent-type">
+              <span class="filter-label-icon">person</span>
+              Tipo de agente
+            </label>
+            <select id="filter-agent-type" class="filter-select">
+              <option value="">Todos</option>
+              <option value="resident">Residente</option>
+              <option value="retiree">Jubilado</option>
+              <option value="student">Estudiante</option>
+              <option value="entrepreneur">Emprendedor</option>
+              <option value="worker">Trabajador</option>
+            </select>
+          </div>
         </div>
         
-        <div class="filter-group">
-          <label for="filter-sex">Sexo</label>
-          <select id="filter-sex" class="filter-select">
-            <option value="">Todos</option>
-            <option value="male">Masculino</option>
-            <option value="female">Femenino</option>
-          </select>
-        </div>
-        
-        <div class="filter-group">
-          <label for="filter-age-group">Grupo de edad</label>
-          <select id="filter-age-group" class="filter-select">
-            <option value="">Todos</option>
-            <option value="child">Niño</option>
-            <option value="youth">Joven</option>
-            <option value="adult">Adulto</option>
-            <option value="middle_age">Mediana edad</option>
-            <option value="senior">Adulto mayor</option>
-          </select>
-        </div>
-        
-        <div class="filter-group">
-          <label for="filter-income">Decil de ingreso</label>
-          <select id="filter-income" class="filter-select">
-            <option value="">Todos</option>
-            ${[1,2,3,4,5,6,7,8,9,10].map(d => `<option value="${d}">${d}</option>`).join('')}
-          </select>
-        </div>
-        
-        <div class="filter-group">
-          <label for="filter-education">Nivel educativo</label>
-          <select id="filter-education" class="filter-select">
-            <option value="">Todos</option>
-            <option value="none">Sin educación</option>
-            <option value="primary">Primaria</option>
-            <option value="secondary">Secundaria</option>
-            <option value="technical">Técnico</option>
-            <option value="university">Universitario</option>
-            <option value="postgraduate">Posgrado</option>
-          </select>
-        </div>
-        
-        <div class="filter-group">
-          <label for="filter-connectivity">Nivel de conectividad</label>
-          <select id="filter-connectivity" class="filter-select">
-            <option value="">Todos</option>
-            <option value="none">Sin conexión</option>
-            <option value="low">Bajo</option>
-            <option value="medium">Medio</option>
-            <option value="high">Alto</option>
-            <option value="very_high">Muy alto</option>
-          </select>
-        </div>
-        
-        <div class="filter-group">
-          <label for="filter-agent-type">Tipo de agente</label>
-          <select id="filter-agent-type" class="filter-select">
-            <option value="">Todos</option>
-            <option value="resident">Residente</option>
-            <option value="retiree">Jubilado</option>
-            <option value="student">Estudiante</option>
-            <option value="entrepreneur">Emprendedor</option>
-            <option value="worker">Trabajador</option>
-          </select>
-        </div>
-        
-        <div class="filters-results">
-          <span id="results-count">${filteredAgents.length.toLocaleString()} agentes</span>
+        <div class="filters-footer">
+          <div class="results-count">
+            <span class="results-icon">people</span>
+            <span id="results-count">${totalAgents.toLocaleString()}</span>
+            <span class="results-label">agentes</span>
+          </div>
         </div>
       </aside>
       
@@ -244,14 +471,14 @@ function renderPage(): string {
             <table class="agents-table">
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>Región</th>
-                  <th>Comuna</th>
-                  <th>Sexo</th>
-                  <th>Edad</th>
-                  <th>Grupo</th>
-                  <th>Tipo</th>
-                  <th>Conectividad</th>
+                  <th class="col-id">ID</th>
+                  <th class="col-region">Región</th>
+                  <th class="col-comuna">Comuna</th>
+                  <th class="col-sex">Sexo</th>
+                  <th class="col-age">Edad</th>
+                  <th class="col-group">Grupo</th>
+                  <th class="col-type">Tipo</th>
+                  <th class="col-connectivity">Conectividad</th>
                 </tr>
               </thead>
               <tbody id="agents-table-body">
@@ -261,7 +488,9 @@ function renderPage(): string {
             
             ${filteredAgents.length === 0 ? `
               <div class="no-results">
+                <div class="no-results-icon">search_off</div>
                 <p>No se encontraron agentes con los filtros seleccionados</p>
+                <button class="btn-clear-filters" id="clear-filters-no-results">Limpiar filtros</button>
               </div>
             ` : ''}
             
@@ -282,6 +511,100 @@ function renderPage(): string {
 }
 
 /**
+ * Render KPI Cards
+ */
+function renderKPICards(): string {
+  return `
+    <div class="kpi-card kpi-total">
+      <div class="kpi-icon">people</div>
+      <div class="kpi-content">
+        <div class="kpi-value">${kpis.totalAgents.toLocaleString()}</div>
+        <div class="kpi-label">Total agentes</div>
+      </div>
+    </div>
+    
+    <div class="kpi-card kpi-region">
+      <div class="kpi-icon">location_on</div>
+      <div class="kpi-content">
+        <div class="kpi-value">${kpis.dominantRegion}</div>
+        <div class="kpi-label">Región dominante</div>
+      </div>
+    </div>
+    
+    <div class="kpi-card kpi-age">
+      <div class="kpi-icon">calendar_today</div>
+      <div class="kpi-content">
+        <div class="kpi-value">${kpis.avgAge || '-'}</div>
+        <div class="kpi-label">Edad promedio</div>
+      </div>
+    </div>
+    
+    <div class="kpi-card kpi-connectivity">
+      <div class="kpi-icon">wifi</div>
+      <div class="kpi-content">
+        <div class="kpi-value">${formatConnectivityShort(kpis.dominantConnectivity)}</div>
+        <div class="kpi-label">Conectividad</div>
+      </div>
+    </div>
+    
+    <div class="kpi-card kpi-gender">
+      <div class="kpi-icon">wc</div>
+      <div class="kpi-content">
+        <div class="kpi-value">${kpis.malePercentage}% / ${kpis.femalePercentage}%</div>
+        <div class="kpi-label">Hombres / Mujeres</div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Render filter summary tags
+ */
+function renderFilterSummaryTags(): string {
+  const tags: string[] = [];
+  
+  if (currentFilters.regionCode) {
+    const region = regions.find(r => r.code === currentFilters.regionCode);
+    tags.push(`<span class="filter-tag">${region?.name || currentFilters.regionCode}</span>`);
+  }
+  
+  if (currentFilters.comunaCode) {
+    const comuna = communes.find(c => c.code === currentFilters.comunaCode);
+    tags.push(`<span class="filter-tag">${comuna?.name || currentFilters.comunaCode}</span>`);
+  }
+  
+  if (currentFilters.sex) {
+    tags.push(`<span class="filter-tag">${formatSex(currentFilters.sex)}</span>`);
+  }
+  
+  if (currentFilters.ageGroup) {
+    tags.push(`<span class="filter-tag">${formatAgeGroup(currentFilters.ageGroup)}</span>`);
+  }
+  
+  if (currentFilters.incomeDecile) {
+    tags.push(`<span class="filter-tag">Decil ${currentFilters.incomeDecile}</span>`);
+  }
+  
+  if (currentFilters.educationLevel) {
+    tags.push(`<span class="filter-tag">${formatEducationLevel(currentFilters.educationLevel)}</span>`);
+  }
+  
+  if (currentFilters.connectivityLevel) {
+    tags.push(`<span class="filter-tag">${formatConnectivity(currentFilters.connectivityLevel)}</span>`);
+  }
+  
+  if (currentFilters.agentType) {
+    tags.push(`<span class="filter-tag">${formatAgentType(currentFilters.agentType)}</span>`);
+  }
+  
+  if (tags.length === 0) {
+    return '<span class="filter-tag filter-tag-empty">Sin filtros activos</span>';
+  }
+  
+  return tags.join('');
+}
+
+/**
  * Render table rows - Los agentes ya vienen paginados del servidor
  */
 function renderTableRows(): string {
@@ -292,14 +615,24 @@ function renderTableRows(): string {
   
   return filteredAgents.map(agent => `
     <tr class="agent-row" data-agent-id="${agent.agent_id}">
-      <td class="agent-id">${agent.agent_id}</td>
-      <td>${agent.region_name}</td>
-      <td>${agent.comuna_name}</td>
-      <td>${formatSex(agent.sex)}</td>
-      <td>${agent.age}</td>
-      <td>${formatAgeGroup(agent.age_group)}</td>
-      <td>${formatAgentType(agent.agent_type)}</td>
-      <td>${formatConnectivity(agent.connectivity_level)}</td>
+      <td class="col-id">
+        <span class="agent-id-badge">${agent.agent_id}</span>
+      </td>
+      <td class="col-region">${agent.region_name}</td>
+      <td class="col-comuna">${agent.comuna_name}</td>
+      <td class="col-sex">
+        <span class="sex-badge sex-${agent.sex}">${formatSex(agent.sex)}</span>
+      </td>
+      <td class="col-age">${agent.age}</td>
+      <td class="col-group">${formatAgeGroup(agent.age_group)}</td>
+      <td class="col-type">
+        <span class="type-badge type-${agent.agent_type}">${formatAgentType(agent.agent_type)}</span>
+      </td>
+      <td class="col-connectivity">
+        <span class="connectivity-indicator connectivity-${agent.connectivity_level}">
+          ${formatConnectivityShort(agent.connectivity_level)}
+        </span>
+      </td>
     </tr>
   `).join('');
 }
@@ -315,29 +648,31 @@ function renderPagination(): string {
   return `
     <div class="pagination-container">
       <div class="pagination-info">
-        Mostrando <strong>${startItem.toLocaleString()}-${endItem.toLocaleString()}</strong> de <strong>${totalAgents.toLocaleString()}</strong> agentes
+        <span class="pagination-range">${startItem.toLocaleString()}-${endItem.toLocaleString()}</span>
+        <span class="pagination-of">de</span>
+        <span class="pagination-total">${totalAgents.toLocaleString()}</span>
+        <span class="pagination-label">agentes</span>
       </div>
       
       <div class="pagination-controls">
         <button class="pagination-btn" id="pagination-prev" ${currentPage === 1 || isLoadingPage ? 'disabled' : ''}>
-          ← Anterior
+          <span class="btn-icon">chevron_left</span>
         </button>
         
-        <span class="pagination-page">Página ${currentPage} de ${totalPages}</span>
+        <span class="pagination-page">${currentPage} / ${totalPages}</span>
         
         <button class="pagination-btn" id="pagination-next" ${currentPage >= totalPages || isLoadingPage ? 'disabled' : ''}>
-          Siguiente →
+          <span class="btn-icon">chevron_right</span>
         </button>
       </div>
       
       <div class="pagination-size">
-        <label for="items-per-page">Mostrar:</label>
         <select id="items-per-page" class="pagination-select" ${isLoadingPage ? 'disabled' : ''}>
           <option value="20" ${itemsPerPage === 20 ? 'selected' : ''}>20</option>
           <option value="50" ${itemsPerPage === 50 ? 'selected' : ''}>50</option>
           <option value="100" ${itemsPerPage === 100 ? 'selected' : ''}>100</option>
         </select>
-        <span>por página</span>
+        <span class="size-label">por página</span>
       </div>
       
       ${isLoadingPage ? '<div class="pagination-loading">Cargando...</div>' : ''}
@@ -351,13 +686,19 @@ function renderPagination(): string {
 function renderAgentDetail(agent: SyntheticAgent): string {
   return `
     <div class="detail-header">
-      <h2>${agent.agent_id}</h2>
+      <div class="detail-title">
+        <span class="detail-icon">person</span>
+        <h2>${agent.agent_id}</h2>
+      </div>
       <button class="btn-close-detail" id="close-detail">✕</button>
     </div>
     
     <div class="detail-content">
       <section class="detail-section">
-        <h3>Identidad / Metadata</h3>
+        <h3>
+          <span class="section-icon">badge</span>
+          Identidad
+        </h3>
         <dl class="detail-list">
           <dt>ID</dt><dd>${agent.agent_id}</dd>
           <dt>Batch</dt><dd>${agent.synthetic_batch_id}</dd>
@@ -367,7 +708,10 @@ function renderAgentDetail(agent: SyntheticAgent): string {
       </section>
       
       <section class="detail-section">
-        <h3>Territorio</h3>
+        <h3>
+          <span class="section-icon">location_on</span>
+          Territorio
+        </h3>
         <dl class="detail-list">
           <dt>País</dt><dd>${agent.country_code}</dd>
           <dt>Región</dt><dd>${agent.region_name} (${agent.region_code})</dd>
@@ -377,7 +721,10 @@ function renderAgentDetail(agent: SyntheticAgent): string {
       </section>
       
       <section class="detail-section">
-        <h3>Demografía</h3>
+        <h3>
+          <span class="section-icon">face</span>
+          Demografía
+        </h3>
         <dl class="detail-list">
           <dt>Sexo</dt><dd>${formatSex(agent.sex)}</dd>
           <dt>Edad</dt><dd>${agent.age} años</dd>
@@ -386,17 +733,23 @@ function renderAgentDetail(agent: SyntheticAgent): string {
       </section>
       
       <section class="detail-section">
-        <h3>Hogar</h3>
+        <h3>
+          <span class="section-icon">home</span>
+          Hogar
+        </h3>
         <dl class="detail-list">
-          <dt>Tamaño</dt><dd>${agent.household_size !== undefined && agent.household_size !== null ? agent.household_size : 'No disponible'} personas</dd>
+          <dt>Tamaño</dt><dd>${agent.household_size !== undefined && agent.household_size !== null ? agent.household_size : 'N/A'} personas</dd>
           <dt>Tipo</dt><dd>${formatHouseholdType(agent.household_type)}</dd>
         </dl>
       </section>
       
       <section class="detail-section">
-        <h3>Socioeconómico</h3>
+        <h3>
+          <span class="section-icon">attach_money</span>
+          Socioeconómico
+        </h3>
         <dl class="detail-list">
-          <dt>Decil ingreso</dt><dd>${agent.income_decile !== undefined && agent.income_decile !== null ? agent.income_decile : 'No disponible'}</dd>
+          <dt>Decil ingreso</dt><dd>${agent.income_decile !== undefined && agent.income_decile !== null ? agent.income_decile : 'N/A'}</dd>
           <dt>Pobreza</dt><dd>${formatPovertyStatus(agent.poverty_status)}</dd>
           <dt>Educación</dt><dd>${formatEducationLevel(agent.education_level)}</dd>
           <dt>Ocupación</dt><dd>${formatOccupationStatus(agent.occupation_status)}</dd>
@@ -405,7 +758,10 @@ function renderAgentDetail(agent: SyntheticAgent): string {
       </section>
       
       <section class="detail-section">
-        <h3>Digital</h3>
+        <h3>
+          <span class="section-icon">wifi</span>
+          Digital
+        </h3>
         <dl class="detail-list">
           <dt>Conectividad</dt><dd>${formatConnectivity(agent.connectivity_level)}</dd>
           <dt>Exposición digital</dt><dd>${formatDigitalExposure(agent.digital_exposure_level)}</dd>
@@ -414,20 +770,21 @@ function renderAgentDetail(agent: SyntheticAgent): string {
       </section>
       
       <section class="detail-section">
-        <h3>Funcional</h3>
+        <h3>
+          <span class="section-icon">category</span>
+          Funcional
+        </h3>
         <dl class="detail-list">
-          <dt>Tipo de agente</dt><dd>${formatAgentType(agent.agent_type) || 'No disponible'}</dd>
+          <dt>Tipo de agente</dt><dd>${formatAgentType(agent.agent_type) || 'N/A'}</dd>
         </dl>
       </section>
       
-      <section class="detail-section">
-        <h3>Trazabilidad</h3>
-        <dl class="detail-list">
-          <dt>Backbone key</dt><dd>${agent.backbone_key !== undefined && agent.backbone_key !== null ? agent.backbone_key : 'No disponible'}</dd>
-          <dt>SUBTEL profile</dt><dd>${agent.subtel_profile_key !== undefined && agent.subtel_profile_key !== null ? agent.subtel_profile_key : 'No disponible'}</dd>
-          <dt>CASEN profile</dt><dd>${agent.casen_profile_key !== undefined && agent.casen_profile_key !== null ? agent.casen_profile_key : 'No disponible'}</dd>
-          <dt>Notas</dt><dd class="notes">${agent.generation_notes !== undefined && agent.generation_notes !== null ? agent.generation_notes : 'Sin notas'}</dd>
-        </dl>
+      <section class="detail-section detail-section-notes">
+        <h3>
+          <span class="section-icon">notes</span>
+          Notas
+        </h3>
+        <p class="detail-notes">${agent.generation_notes !== undefined && agent.generation_notes !== null ? agent.generation_notes : 'Sin notas de generación'}</p>
       </section>
     </div>
   `;
@@ -441,6 +798,7 @@ function renderLoadingState(): string {
     <div class="state-container state-loading">
       <div class="state-spinner"></div>
       <p class="state-message">Cargando agentes sintéticos...</p>
+      <p class="state-hint">Esto puede tomar unos segundos</p>
     </div>
   `;
 }
@@ -451,11 +809,14 @@ function renderLoadingState(): string {
 function renderErrorState(error: unknown): string {
   return `
     <div class="state-container state-error">
-      <div class="state-icon">⚠️</div>
+      <div class="state-icon">error_outline</div>
       <h3 class="state-title">Error al cargar agentes</h3>
       <p class="state-message">${error instanceof Error ? error.message : 'Error desconocido'}</p>
       <p class="state-hint">Asegúrate de haber ejecutado el pipeline: npm run pipeline</p>
-      <button class="btn btn-primary state-action" id="retry-agents-btn">Reintentar</button>
+      <button class="btn btn-primary state-action" id="retry-agents-btn">
+        <span class="btn-icon">refresh</span>
+        Reintentar
+      </button>
     </div>
   `;
 }
@@ -466,11 +827,14 @@ function renderErrorState(error: unknown): string {
 function renderEmptyState(): string {
   return `
     <div class="state-container state-empty">
-      <div class="state-icon">👤</div>
+      <div class="state-icon">people_outline</div>
       <h3 class="state-title">No hay agentes disponibles</h3>
       <p class="state-message">No se encontraron agentes sintéticos en el sistema.</p>
       <p class="state-hint">Ejecuta el pipeline para generar la población sintética.</p>
-      <button class="btn btn-primary state-action" id="retry-agents-btn">Reintentar</button>
+      <button class="btn btn-primary state-action" id="retry-agents-btn">
+        <span class="btn-icon">refresh</span>
+        Reintentar
+      </button>
     </div>
   `;
 }
@@ -532,38 +896,40 @@ function attachEventListeners(page: HTMLElement): void {
     }
   });
   
-  // Reset filters button
-  const resetBtn = page.querySelector('#reset-filters');
-  if (resetBtn) {
-    resetBtn.addEventListener('click', async () => {
-      currentFilters.regionCode = '';
-      currentFilters.comunaCode = '';
-      currentFilters.sex = '';
-      currentFilters.ageGroup = '';
-      currentFilters.incomeDecile = '';
-      currentFilters.educationLevel = '';
-      currentFilters.connectivityLevel = '';
-      currentFilters.agentType = '';
-      
-      // Reset selects
-      (page.querySelectorAll('.filter-select') as NodeListOf<HTMLSelectElement>).forEach(select => {
-        select.value = '';
+  // Clear filters buttons
+  const clearFiltersBtns = page.querySelectorAll('#clear-filters-btn, #clear-filters-no-results');
+  clearFiltersBtns.forEach(btn => {
+    if (btn) {
+      btn.addEventListener('click', async () => {
+        currentFilters.regionCode = '';
+        currentFilters.comunaCode = '';
+        currentFilters.sex = '';
+        currentFilters.ageGroup = '';
+        currentFilters.incomeDecile = '';
+        currentFilters.educationLevel = '';
+        currentFilters.connectivityLevel = '';
+        currentFilters.agentType = '';
+        
+        // Reset selects
+        (page.querySelectorAll('.filter-select') as NodeListOf<HTMLSelectElement>).forEach(select => {
+          select.value = '';
+        });
+        
+        // Recargar todas las comunas
+        communes = await getUniqueCommunes();
+        const comunaSelect = page.querySelector('#filter-comuna') as HTMLSelectElement;
+        if (comunaSelect) {
+          comunaSelect.innerHTML = `
+            <option value="">Todas las comunas</option>
+            ${communes.map(c => `<option value="${c.code}">${c.name}</option>`).join('')}
+          `;
+        }
+        
+        // Apply filters (all) - this will also reset pagination to page 1
+        await applyFilters(page);
       });
-      
-      // Recargar todas las comunas
-      communes = await getUniqueCommunes();
-      const comunaSelect = page.querySelector('#filter-comuna') as HTMLSelectElement;
-      if (comunaSelect) {
-        comunaSelect.innerHTML = `
-          <option value="">Todas las comunas</option>
-          ${communes.map(c => `<option value="${c.code}">${c.name}</option>`).join('')}
-        `;
-      }
-      
-      // Apply filters (all) - this will also reset pagination to page 1
-      await applyFilters(page);
-    });
-  }
+    }
+  });
   
   // Attach pagination listeners
   attachPaginationListeners(page);
@@ -600,6 +966,14 @@ function attachEventListeners(page: HTMLElement): void {
       updateDetailPanel(page);
     });
   }
+  
+  // Export button (placeholder)
+  const exportBtn = page.querySelector('#export-agents-btn');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+      alert('Exportación de agentes - Funcionalidad en desarrollo');
+    });
+  }
 }
 
 /**
@@ -628,13 +1002,36 @@ async function applyFilters(page: HTMLElement): Promise<void> {
   filteredAgents = result.data;
   totalAgents = result.total;
   
+  // Recalcular KPIs
+  await calculateKPIs();
+  
   // Reset to page 1 when filters change
   currentPage = 1;
   
   // Update results count
   const resultsCount = page.querySelector('#results-count');
   if (resultsCount) {
-    resultsCount.textContent = `${totalAgents.toLocaleString()} agentes`;
+    resultsCount.textContent = totalAgents.toLocaleString();
+  }
+  
+  // Update active filters count
+  const activeFiltersCount = Object.values(currentFilters).filter(v => v !== '').length;
+  const filtersBadge = page.querySelector('#active-filters-count');
+  if (filtersBadge) {
+    filtersBadge.textContent = `${activeFiltersCount} activo${activeFiltersCount !== 1 ? 's' : ''}`;
+    filtersBadge.classList.toggle('has-filters', activeFiltersCount > 0);
+  }
+  
+  // Update filter summary tags
+  const summaryTags = page.querySelector('#filter-summary-tags');
+  if (summaryTags) {
+    summaryTags.innerHTML = renderFilterSummaryTags();
+  }
+  
+  // Update KPIs
+  const kpisSection = page.querySelector('.agents-kpis');
+  if (kpisSection) {
+    kpisSection.innerHTML = renderKPICards();
   }
   
   // Update table and pagination
@@ -828,12 +1225,12 @@ function updateDetailPanel(page: HTMLElement): void {
 // ===========================================
 
 function formatSex(sex: string | null): string {
-  if (!sex) return 'No disponible';
+  if (!sex) return 'N/A';
   return sex === 'male' ? 'Masculino' : 'Femenino';
 }
 
 function formatAgeGroup(ageGroup: string | null): string {
-  if (!ageGroup) return 'No disponible';
+  if (!ageGroup) return 'N/A';
   const map: Record<string, string> = {
     child: 'Niño',
     youth: 'Joven',
@@ -845,7 +1242,7 @@ function formatAgeGroup(ageGroup: string | null): string {
 }
 
 function formatAgentType(type: string | null): string {
-  if (!type) return 'No disponible';
+  if (!type) return 'N/A';
   const map: Record<string, string> = {
     resident: 'Residente',
     retiree: 'Jubilado',
@@ -857,7 +1254,7 @@ function formatAgentType(type: string | null): string {
 }
 
 function formatConnectivity(level: string | null): string {
-  if (!level) return 'No disponible';
+  if (!level) return 'N/A';
   const map: Record<string, string> = {
     none: 'Sin conexión',
     low: 'Bajo',
@@ -868,8 +1265,20 @@ function formatConnectivity(level: string | null): string {
   return map[level] || level;
 }
 
+function formatConnectivityShort(level: string | null): string {
+  if (!level) return '-';
+  const map: Record<string, string> = {
+    none: 'Sin',
+    low: 'Bajo',
+    medium: 'Medio',
+    high: 'Alto',
+    very_high: 'Muy alto'
+  };
+  return map[level] || level;
+}
+
 function formatDigitalExposure(level: string | null): string {
-  if (!level) return 'No disponible';
+  if (!level) return 'N/A';
   const map: Record<string, string> = {
     none: 'Sin exposición',
     low: 'Baja',
@@ -881,7 +1290,7 @@ function formatDigitalExposure(level: string | null): string {
 }
 
 function formatSurveyChannel(channel: string | null): string {
-  if (!channel) return 'No disponible';
+  if (!channel) return 'N/A';
   const map: Record<string, string> = {
     phone: 'Teléfono',
     online: 'En línea',
@@ -906,7 +1315,8 @@ function formatHouseholdType(t: string): string {
 }
 
 function formatPovertyStatus(s: string | null): string {
-  if (!s) return 'No disponible';
+  // Manejar valores nulos, undefined, o strings como "NULL", "null", "NaN"
+  if (!s || s === 'NULL' || s === 'null' || s === 'NaN' || s === 'undefined') return 'N/A';
   const map: Record<string, string> = {
     extreme_poverty: 'Pobreza extrema',
     poverty: 'Pobreza',
@@ -919,7 +1329,7 @@ function formatPovertyStatus(s: string | null): string {
 }
 
 function formatEducationLevel(l: string | null): string {
-  if (!l) return 'No disponible';
+  if (!l) return 'N/A';
   const map: Record<string, string> = {
     none: 'Sin educación',
     primary: 'Primaria',
@@ -932,7 +1342,8 @@ function formatEducationLevel(l: string | null): string {
 }
 
 function formatOccupationStatus(s: string | null): string {
-  if (!s) return 'No disponible';
+  // Manejar valores nulos, undefined, o strings como "NULL", "null", "NaN"
+  if (!s || s === 'NULL' || s === 'null' || s === 'NaN' || s === 'undefined') return 'N/A';
   const map: Record<string, string> = {
     employed: 'Empleado',
     unemployed: 'Desempleado',
@@ -945,7 +1356,7 @@ function formatOccupationStatus(s: string | null): string {
 }
 
 function formatSocioeconomicLevel(l: string | null): string {
-  if (!l) return 'No disponible';
+  if (!l) return 'N/A';
   const map: Record<string, string> = {
     low: 'Bajo',
     medium: 'Medio',
@@ -982,4 +1393,12 @@ export function cleanupAgentsPage(): void {
   isLoadingPage = false;
   currentPage = 1;
   totalAgents = 0;
+  kpis = {
+    totalAgents: 0,
+    dominantRegion: '-',
+    avgAge: 0,
+    dominantConnectivity: '-',
+    malePercentage: 0,
+    femalePercentage: 0
+  };
 }
