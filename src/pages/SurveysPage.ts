@@ -1173,7 +1173,6 @@ function renderQuestionResult(result: QuestionResult, number: number): string {
     
     // Filter out entries with no count
     const validEntries = entries.filter(e => e.count > 0);
-    const maxCount = validEntries.length > 0 ? Math.max(...validEntries.map(e => e.count)) : 0;
     
     console.log('📊 Processed entries:', validEntries);
     
