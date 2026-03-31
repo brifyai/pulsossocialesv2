@@ -18,6 +18,7 @@ import type {
 } from '../../types/survey';
 import { filterAgents } from '../../data/syntheticAgents';
 import { generateSurveyResponses, calculateConfidenceStats } from './syntheticResponseEngine';
+import { sampleFromArray } from '../../utils/random';
 // CADEM v1.1 - Import unified survey runner
 import { runSurvey as runUnifiedSurvey } from './surveyRunner';
 import type { CademAdapterAgent, CademSurveyDefinition } from './cademAdapter';
@@ -262,10 +263,8 @@ export async function runSurvey(surveyId: string, scenarioEventId?: string): Pro
   // 2. Samplear si es necesario
   let selectedAgents: SyntheticAgent[];
   if (survey.sampleSize > 0 && survey.sampleSize < matchedAgents.length) {
-    // Sampleo aleatorio simple
-    selectedAgents = matchedAgents
-      .sort(() => Math.random() - 0.5)
-      .slice(0, survey.sampleSize);
+    // Sampleo aleatorio simple usando Fisher-Yates para distribución uniforme
+    selectedAgents = sampleFromArray(matchedAgents, survey.sampleSize);
     console.log(`  🎲 Sampled ${selectedAgents.length} agents`);
   } else {
     selectedAgents = matchedAgents;
