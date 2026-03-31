@@ -33,6 +33,18 @@ services:
           exposed_headers:
             - "*"
           max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 60
+          hour: 1000
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+          redis_timeout: 2000
+          redis_database: 0
+          limit_by: ip
+          header_name: null
+          block_on_first_violation: false
 
   - name: rest
     url: http://rest:3000
@@ -62,6 +74,18 @@ services:
           exposed_headers:
             - "*"
           max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 120
+          hour: 3000
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+          redis_timeout: 2000
+          redis_database: 0
+          limit_by: ip
+          header_name: null
+          block_on_first_violation: false
 
   - name: realtime
     url: http://realtime:4000
@@ -91,6 +115,18 @@ services:
           exposed_headers:
             - "*"
           max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 30
+          hour: 500
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+          redis_timeout: 2000
+          redis_database: 0
+          limit_by: ip
+          header_name: null
+          block_on_first_violation: false
 
   - name: storage
     url: http://storage:5000
@@ -120,6 +156,18 @@ services:
           exposed_headers:
             - "*"
           max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 60
+          hour: 1000
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+          redis_timeout: 2000
+          redis_database: 0
+          limit_by: ip
+          header_name: null
+          block_on_first_violation: false
 
   - name: meta
     url: http://meta:8080

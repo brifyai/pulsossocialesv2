@@ -687,6 +687,287 @@ export function getRunConfidenceStats(runId: string): {
 }
 
 // ===========================================
+// Comparison Functions - Baseline vs Scenario
+// ===========================================
+
+export interface ComparisonOptions {
+  baselineRunId: string;
+  scenarioRunId: string;
+}
+
+export interface QuestionComparison {
+  questionId: string;
+  questionText: string;
+  questionType: string;
+  baseline: {
+    totalResponses: number;
+    distribution: Record<string, { count: number; percentage: number; label: string }>;
+    average?: number;
+    median?: number;
+  };
+  scenario: {
+    totalResponses: number;
+    distribution: Record<string, { count: number; percentage: number; label: string }>;
+    average?: number;
+    median?: number;
+  };
+  delta: {
+    totalResponses: number;
+    distribution: Record<string, { countDelta: number; percentageDelta: number; percentagePoints: number }>;
+    averageDelta?: number;
+    medianDelta?: number;
+  };
+  impact: {
+    level: 'high' | 'medium' | 'low' | 'none';
+    score: number; // 0-1, higher means more impact
+    description: string;
+  };
+}
+
+export interface SurveyComparison {
+  surveyId: string;
+  surveyName: string;
+  baselineRunId: string;
+  scenarioRunId: string;
+  baselineRunName: string;
+  scenarioRunName: string;
+  scenarioEventId?: string;
+  scenarioName?: string;
+  generatedAt: string;
+  summary: {
+    totalQuestions: number;
+    questionsWithHighImpact: number;
+    questionsWithMediumImpact: number;
+    questionsWithLowImpact: number;
+    averageImpactScore: number;
+  };
+  comparisons: QuestionComparison[];
+}
+
+/**
+ * Compara dos ejecuciones de encuesta: baseline vs escenario
+ * Genera un análisis detallado de diferencias e impacto
+ */
+export async function compareSurveyRuns(
+  surveyId: string,
+  baselineRunId: string,
+  scenarioRunId: string
+): Promise<SurveyComparison | null> {
+  // Obtener la encuesta
+  const survey = await getSurvey(surveyId);
+  if (!survey) {
+    console.error(`[SurveyService] Survey not found: ${surveyId}`);
+    return null;
+  }
+
+  // Obtener los runs
+  const baselineRun = await getSurveyRun(baselineRunId);
+  const scenarioRun = await getSurveyRun(scenarioRunId);
+
+  if (!baselineRun || !scenarioRun) {
+    console.error(`[SurveyService] Run not found: baseline=${baselineRunId}, scenario=${scenarioRunId}`);
+    return null;
+  }
+
+  // Obtener resultados
+  const baselineResults = await getSurveyResultsByRun(baselineRunId);
+  const scenarioResults = await getSurveyResultsByRun(scenarioRunId);
+
+  if (!baselineResults || !scenarioResults) {
+    console.error(`[SurveyService] Results not found`);
+    return null;
+  }
+
+  // Generar comparaciones por pregunta
+  const comparisons: QuestionComparison[] = [];
+  let highImpactCount = 0;
+  let mediumImpactCount = 0;
+  let lowImpactCount = 0;
+  let totalImpactScore = 0;
+
+  for (const baselineResult of baselineResults.results) {
+    const scenarioResult = scenarioResults.results.find(
+      r => r.questionId === baselineResult.questionId
+    );
+
+    if (!scenarioResult) continue;
+
+    const comparison = compareQuestionResults(baselineResult, scenarioResult);
+    comparisons.push(comparison);
+
+    // Contar impactos
+    if (comparison.impact.level === 'high') highImpactCount++;
+    else if (comparison.impact.level === 'medium') mediumImpactCount++;
+    else if (comparison.impact.level === 'low') lowImpactCount++;
+
+    totalImpactScore += comparison.impact.score;
+  }
+
+  const totalQuestions = comparisons.length;
+  const averageImpactScore = totalQuestions > 0 ? totalImpactScore / totalQuestions : 0;
+
+  return {
+    surveyId: survey.id,
+    surveyName: survey.name,
+    baselineRunId,
+    scenarioRunId,
+    baselineRunName: `Baseline (${formatDate(baselineRun.completedAt)})`,
+    scenarioRunName: scenarioRun.metadata.scenarioName 
+      ? `${scenarioRun.metadata.scenarioName} (${formatDate(scenarioRun.completedAt)})`
+      : `Escenario (${formatDate(scenarioRun.completedAt)})`,
+    scenarioEventId: scenarioRun.metadata.scenarioEventId,
+    scenarioName: scenarioRun.metadata.scenarioName,
+    generatedAt: new Date().toISOString(),
+    summary: {
+      totalQuestions,
+      questionsWithHighImpact: highImpactCount,
+      questionsWithMediumImpact: mediumImpactCount,
+      questionsWithLowImpact: lowImpactCount,
+      averageImpactScore: Math.round(averageImpactScore * 100) / 100,
+    },
+    comparisons,
+  };
+}
+
+/**
+ * Compara los resultados de una pregunta entre baseline y escenario
+ */
+function compareQuestionResults(
+  baseline: QuestionResult,
+  scenario: QuestionResult
+): QuestionComparison {
+  const baselineDist = getNormalizedDistribution(baseline);
+  const scenarioDist = getNormalizedDistribution(scenario);
+
+  // Calcular delta de distribución
+  const allKeys = new Set([...Object.keys(baselineDist), ...Object.keys(scenarioDist)]);
+  const deltaDistribution: Record<string, { countDelta: number; percentageDelta: number; percentagePoints: number }> = {};
+
+  let maxPercentagePointChange = 0;
+
+  for (const key of allKeys) {
+    const baselineValue = baselineDist[key] || { count: 0, percentage: 0, label: key };
+    const scenarioValue = scenarioDist[key] || { count: 0, percentage: 0, label: key };
+
+    const countDelta = scenarioValue.count - baselineValue.count;
+    const percentageDelta = baselineValue.percentage > 0 
+      ? ((scenarioValue.percentage - baselineValue.percentage) / baselineValue.percentage)
+      : 0;
+    const percentagePoints = scenarioValue.percentage - baselineValue.percentage;
+
+    deltaDistribution[key] = {
+      countDelta,
+      percentageDelta: Math.round(percentageDelta * 1000) / 10,
+      percentagePoints: Math.round(percentagePoints * 10) / 10,
+    };
+
+    maxPercentagePointChange = Math.max(maxPercentagePointChange, Math.abs(percentagePoints));
+  }
+
+  // Calcular delta de estadísticas (para Likert)
+  let averageDelta: number | undefined;
+  let medianDelta: number | undefined;
+
+  if (baseline.questionType === 'likert_scale' && scenario.questionType === 'likert_scale') {
+    const baselineLikert = baseline as LikertResult;
+    const scenarioLikert = scenario as LikertResult;
+
+    if (baselineLikert.average !== undefined && scenarioLikert.average !== undefined) {
+      averageDelta = Math.round((scenarioLikert.average - baselineLikert.average) * 100) / 100;
+    }
+    if (baselineLikert.median !== undefined && scenarioLikert.median !== undefined) {
+      medianDelta = scenarioLikert.median - baselineLikert.median;
+    }
+  }
+
+  // Calcular nivel de impacto
+  const impactScore = Math.min(maxPercentagePointChange / 20, 1); // 20 percentage points = max impact
+  let impactLevel: 'high' | 'medium' | 'low' | 'none';
+  let impactDescription: string;
+
+  if (impactScore >= 0.5) {
+    impactLevel = 'high';
+    impactDescription = 'Impacto significativo detectado';
+  } else if (impactScore >= 0.25) {
+    impactLevel = 'medium';
+    impactDescription = 'Impacto moderado detectado';
+  } else if (impactScore >= 0.1) {
+    impactLevel = 'low';
+    impactDescription = 'Impacto leve detectado';
+  } else {
+    impactLevel = 'none';
+    impactDescription = 'Sin impacto significativo';
+  }
+
+  return {
+    questionId: baseline.questionId,
+    questionText: baseline.questionText,
+    questionType: baseline.questionType,
+    baseline: {
+      totalResponses: baseline.totalResponses,
+      distribution: baselineDist,
+      ...(baseline.questionType === 'likert_scale' && {
+        average: (baseline as LikertResult).average,
+        median: (baseline as LikertResult).median,
+      }),
+    },
+    scenario: {
+      totalResponses: scenario.totalResponses,
+      distribution: scenarioDist,
+      ...(scenario.questionType === 'likert_scale' && {
+        average: (scenario as LikertResult).average,
+        median: (scenario as LikertResult).median,
+      }),
+    },
+    delta: {
+      totalResponses: scenario.totalResponses - baseline.totalResponses,
+      distribution: deltaDistribution,
+      ...(averageDelta !== undefined && { averageDelta }),
+      ...(medianDelta !== undefined && { medianDelta }),
+    },
+    impact: {
+      level: impactLevel,
+      score: Math.round(impactScore * 100) / 100,
+      description: impactDescription,
+    },
+  };
+}
+
+/**
+ * Normaliza la distribución de resultados al formato estándar
+ */
+function getNormalizedDistribution(result: QuestionResult): Record<string, { count: number; percentage: number; label: string }> {
+  if (result.questionType === 'single_choice') {
+    return (result as SingleChoiceResult).distribution;
+  }
+
+  if (result.questionType === 'likert_scale') {
+    const likert = result as LikertResult;
+    const normalized: Record<string, { count: number; percentage: number; label: string }> = {};
+    
+    for (const [key, value] of Object.entries(likert.distribution)) {
+      normalized[key] = {
+        count: value.count,
+        percentage: value.percentage,
+        label: `Escala ${key}`,
+      };
+    }
+    return normalized;
+  }
+
+  return {};
+}
+
+function formatDate(isoString: string): string {
+  return new Date(isoString).toLocaleDateString('es-CL', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+// ===========================================
 // Export Functions - Sprint 13 - Enhanced Reporting
 // ===========================================
 

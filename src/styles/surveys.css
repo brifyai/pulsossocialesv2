@@ -475,6 +475,340 @@
   border-radius: 4px;
 }
 
+/* ============================================
+   Comparison View Styles
+   ============================================ */
+
+.comparison-header {
+  background: linear-gradient(135deg, rgba(0, 255, 255, 0.05), rgba(255, 0, 255, 0.05));
+}
+
+.comparison-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.comparison-summary .summary-card {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--border-radius);
+  padding: 20px;
+  text-align: center;
+  transition: var(--transition);
+}
+
+.comparison-summary .summary-card.impact-high {
+  border-color: rgba(255, 100, 100, 0.3);
+  background: rgba(255, 100, 100, 0.1);
+}
+
+.comparison-summary .summary-card.impact-medium {
+  border-color: rgba(255, 193, 7, 0.3);
+  background: rgba(255, 193, 7, 0.1);
+}
+
+.comparison-summary .summary-card.impact-low {
+  border-color: rgba(0, 255, 136, 0.3);
+  background: rgba(0, 255, 136, 0.1);
+}
+
+.comparison-legend {
+  display: flex;
+  gap: 24px;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  margin-top: 16px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+.legend-color.baseline {
+  background: linear-gradient(135deg, #00ff88, #00cc6a);
+}
+
+.legend-color.scenario {
+  background: linear-gradient(135deg, var(--color-accent-cyan), var(--color-accent-magenta));
+}
+
+.legend-label {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.comparisons-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.comparison-card {
+  background: var(--color-bg-panel);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--border-radius);
+  padding: 24px;
+  transition: var(--transition);
+}
+
+.comparison-card.impact-high {
+  border-color: rgba(255, 100, 100, 0.3);
+  background: linear-gradient(135deg, rgba(255, 100, 100, 0.05), transparent);
+}
+
+.comparison-card.impact-medium {
+  border-color: rgba(255, 193, 7, 0.3);
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.05), transparent);
+}
+
+.comparison-card.impact-low {
+  border-color: rgba(0, 255, 136, 0.3);
+  background: linear-gradient(135deg, rgba(0, 255, 136, 0.05), transparent);
+}
+
+.comparison-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.question-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.impact-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.impact-badge-high {
+  background: rgba(255, 100, 100, 0.15);
+  border: 1px solid rgba(255, 100, 100, 0.3);
+  color: #ff6464;
+}
+
+.impact-badge-medium {
+  background: rgba(255, 193, 7, 0.15);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  color: #ffc107;
+}
+
+.impact-badge-low {
+  background: rgba(0, 255, 136, 0.15);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  color: #00ff88;
+}
+
+.impact-badge-none {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--color-text-secondary);
+}
+
+.impact-icon {
+  font-size: 1rem;
+}
+
+.impact-score {
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+.comparison-stats {
+  display: flex;
+  gap: 30px;
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+}
+
+.comparison-stats .stat-item {
+  text-align: center;
+}
+
+.comparison-stats .stat-item.positive {
+  color: #00ff88;
+}
+
+.comparison-stats .stat-item.negative {
+  color: #ff6464;
+}
+
+.comparison-stats .stat-item.neutral {
+  color: var(--color-text-secondary);
+}
+
+.comparison-stats .stat-label {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.comparison-stats .stat-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.comparison-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comparison-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 100px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.comparison-label {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.comparison-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.comparison-bar-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bar-baseline {
+  height: 20px;
+  background: linear-gradient(90deg, #00ff88, #00cc6a);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+  min-width: 4px;
+}
+
+.bar-scenario {
+  height: 20px;
+  background: linear-gradient(90deg, var(--color-accent-cyan), var(--color-accent-magenta));
+  border-radius: 4px;
+  transition: width 0.5s ease;
+  min-width: 4px;
+}
+
+.bar-value {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  min-width: 80px;
+}
+
+.comparison-delta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.comparison-delta.positive {
+  background: rgba(0, 255, 136, 0.15);
+  color: #00ff88;
+}
+
+.comparison-delta.negative {
+  background: rgba(255, 100, 100, 0.15);
+  color: #ff6464;
+}
+
+.comparison-delta.neutral {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-secondary);
+}
+
+.delta-icon {
+  font-size: 1rem;
+}
+
+.delta-value {
+  font-weight: 600;
+}
+
+/* Comparison selector modal */
+.comparison-hint {
+  margin-top: 16px;
+  padding: 12px;
+  background: #fef3c7;
+  border-radius: 8px;
+  color: #92400e;
+}
+
+/* Responsive for comparison */
+@media (max-width: 768px) {
+  .comparison-summary {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  
+  .comparison-legend {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .comparison-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  
+  .comparison-label {
+    text-align: center;
+  }
+  
+  .comparison-delta {
+    justify-content: center;
+  }
+  
+  .comparison-stats {
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .comparison-card-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+}
+
+
 .run-info {
   display: flex;
   align-items: center;

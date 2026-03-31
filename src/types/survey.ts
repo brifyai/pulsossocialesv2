@@ -200,7 +200,8 @@ export interface ResponseHeuristic {
 // Survey State (for UI)
 // ===========================================
 
-export type SurveyViewMode = 'list' | 'create' | 'configure' | 'results';
+export type SurveyViewMode = 'list' | 'create' | 'configure' | 'results' | 'comparison';
+
 
 export interface SurveyState {
   surveys: SurveyDefinition[];

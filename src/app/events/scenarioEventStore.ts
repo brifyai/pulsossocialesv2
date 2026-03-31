@@ -8,6 +8,7 @@
  */
 
 import { getSupabaseClient } from '../../services/supabase/client.ts';
+import { getCurrentUser } from '../../services/auth/index.ts';
 import type {
   EventCategory,
   ImpactSeverity,
@@ -172,7 +173,14 @@ export async function createScenario(
       return { success: false, error: 'Supabase not available' };
     }
 
+    // Obtener el usuario actual para RLS
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return { success: false, error: 'User not authenticated' };
+    }
+
     const insertData = {
+      user_id: currentUser.id,
       name: input.name,
       description: input.description,
       category: input.category,

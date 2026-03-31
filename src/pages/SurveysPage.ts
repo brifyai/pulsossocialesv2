@@ -18,8 +18,12 @@ import {
   exportResultsToCsv,
   generateExportFilename,
   downloadFile,
-  getSurveyRun
+  getSurveyRun,
+  compareSurveyRuns,
+  type SurveyComparison,
+  type QuestionComparison
 } from '../app/survey/surveyService';
+
 import { getUniqueRegions, getUniqueCommunes } from '../data/syntheticAgents';
 // R1 - Import scenario event store
 import { listScenarios, type ScenarioEvent } from '../app/events/scenarioEventStore';
@@ -37,6 +41,9 @@ let pendingSurveyId: string | null = null;
 let availableScenarios: ScenarioEvent[] = [];
 // R2 - Estado para escenario pre-seleccionado desde query param
 let preSelectedScenarioId: string | null = null;
+// Comparison view state
+let comparisonData: SurveyComparison | null = null;
+
 
 // ===========================================
 // Main Page Component
@@ -162,7 +169,11 @@ function renderContent(container: HTMLElement): void {
     case 'results':
       renderResults(content);
       break;
+    case 'comparison':
+      renderComparison(content);
+      break;
   }
+
   
   // Attach event listeners
   attachTabListeners(tabs);
@@ -560,6 +571,9 @@ async function renderResults(container: HTMLElement): Promise<void> {
           <p class="results-subtitle">${escapeHtml(currentSurvey.description || '')}</p>
         </div>
         <div class="results-actions">
+          <button class="btn btn-secondary btn-compare" title="Comparar ejecuciones">
+            <span class="btn-icon material-symbols-outlined">compare_arrows</span> Comparar
+          </button>
           <button class="btn btn-secondary btn-export-json" title="Exportar JSON">
             <span class="btn-icon material-symbols-outlined">description</span> JSON
           </button>
@@ -567,6 +581,7 @@ async function renderResults(container: HTMLElement): Promise<void> {
             <span class="btn-icon material-symbols-outlined">table</span> CSV
           </button>
         </div>
+
       </div>
       
       ${surveyRuns.length > 1 ? `
@@ -656,6 +671,11 @@ function attachResultsListeners(header: HTMLElement): void {
       currentRunId = runId;
       refreshPage();
     }
+  });
+  
+  // Compare button
+  header.querySelector('.btn-compare')?.addEventListener('click', () => {
+    showComparisonSelector();
   });
   
   // Export JSON con nombre consistente
@@ -1824,6 +1844,328 @@ function formatSegment(segment: any): string {
   return parts.join(', ');
 }
 
+// ===========================================
+// Comparison View
+// ===========================================
+
+function showComparisonSelector(): void {
+  // Crear modal para seleccionar baseline y scenario
+  const modal = document.createElement('div');
+  modal.className = 'scenario-modal-overlay';
+  modal.id = 'comparison-selector-modal';
+  
+  // Separar runs en baseline y scenario
+  const baselineRuns = surveyRuns.filter(r => !r.metadata.scenarioEventId);
+  const scenarioRuns = surveyRuns.filter(r => r.metadata.scenarioEventId);
+  
+  modal.innerHTML = `
+    <div class="scenario-modal scenario-modal-enhanced">
+      <div class="scenario-modal-header">
+        <h3><span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 8px;">compare_arrows</span>Comparar Ejecuciones</h3>
+        <button class="btn-icon btn-close-modal" title="Cerrar">×</button>
+      </div>
+      <div class="scenario-modal-body">
+        <p class="scenario-modal-description">
+          Selecciona una ejecución baseline y una con escenario para comparar el impacto.
+        </p>
+        
+        <div class="form-section">
+          <h4>Baseline (sin escenario)</h4>
+          <select id="baseline-run-select" class="run-select">
+            ${baselineRuns.length === 0 ? '<option value="">No hay ejecuciones baseline</option>' : ''}
+            ${baselineRuns.map(run => `
+              <option value="${run.id}" ${run.id === currentRunId ? 'selected' : ''}>
+                ${formatDate(run.completedAt)} - ${run.totalAgents} agentes
+              </option>
+            `).join('')}
+          </select>
+        </div>
+        
+        <div class="form-section">
+          <h4>Con Escenario</h4>
+          <select id="scenario-run-select" class="run-select">
+            ${scenarioRuns.length === 0 ? '<option value="">No hay ejecuciones con escenario</option>' : ''}
+            ${scenarioRuns.map(run => `
+              <option value="${run.id}">
+                ${run.metadata.scenarioName || 'Escenario'} - ${formatDate(run.completedAt)} - ${run.totalAgents} agentes
+              </option>
+            `).join('')}
+          </select>
+        </div>
+        
+        ${baselineRuns.length === 0 || scenarioRuns.length === 0 ? `
+          <div class="comparison-hint" style="margin-top: 16px; padding: 12px; background: #fef3c7; border-radius: 8px; color: #92400e;">
+            <span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 8px;">info</span>
+            Necesitas al menos una ejecución baseline y una con escenario para comparar.
+          </div>
+        ` : ''}
+      </div>
+      <div class="scenario-modal-footer">
+        <button class="btn btn-secondary btn-cancel-modal">Cancelar</button>
+        <button class="btn btn-primary btn-confirm-comparison" ${baselineRuns.length === 0 || scenarioRuns.length === 0 ? 'disabled' : ''}>
+          <span class="btn-icon material-symbols-outlined">compare_arrows</span>
+          Comparar
+        </button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Event listeners
+  const closeModal = () => {
+    modal.remove();
+  };
+  
+  modal.querySelector('.btn-close-modal')?.addEventListener('click', closeModal);
+  modal.querySelector('.btn-cancel-modal')?.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+  
+  // Confirm comparison
+  modal.querySelector('.btn-confirm-comparison')?.addEventListener('click', async () => {
+    const baselineSelect = modal.querySelector('#baseline-run-select') as HTMLSelectElement;
+    const scenarioSelect = modal.querySelector('#scenario-run-select') as HTMLSelectElement;
+    
+    const baselineId = baselineSelect?.value;
+    const scenarioId = scenarioSelect?.value;
+    
+    if (!baselineId || !scenarioId) {
+      alert('Selecciona ambas ejecuciones para comparar');
+      return;
+    }
+    
+    closeModal();
+    await loadComparison(baselineId, scenarioId);
+  });
+}
+
+async function loadComparison(baselineId: string, scenarioId: string): Promise<void> {
+  if (!currentSurvey) return;
+  
+  const loadingEl = document.createElement('div');
+  loadingEl.className = 'state-container state-loading';
+  loadingEl.innerHTML = `
+    <div class="state-spinner"></div>
+    <p class="state-message">Generando comparación...</p>
+  `;
+  
+  const content = document.getElementById('surveys-content');
+  if (content) {
+    content.innerHTML = '';
+    content.appendChild(loadingEl);
+  }
+  
+  try {
+    const comparison = await compareSurveyRuns(currentSurvey.id, baselineId, scenarioId);
+    if (comparison) {
+      comparisonData = comparison;
+      currentView = 'comparison';
+      refreshPage();
+    } else {
+      alert('No se pudo generar la comparación');
+      currentView = 'results';
+      refreshPage();
+    }
+  } catch (error) {
+    console.error('Error loading comparison:', error);
+    alert('Error al generar la comparación');
+    currentView = 'results';
+    refreshPage();
+  }
+}
+
+async function renderComparison(container: HTMLElement): Promise<void> {
+  if (!comparisonData || !currentSurvey) {
+    container.appendChild(createErrorStateElement(
+      '<span class="material-symbols-outlined" style="font-size: 48px; color: #f59e0b;">warning</span>',
+      'No hay datos de comparación',
+      'Selecciona dos ejecuciones para comparar',
+      () => {
+        currentView = 'results';
+        refreshPage();
+      }
+    ));
+    return;
+  }
+  
+  const comparison = comparisonData;
+  
+  // Header de comparación
+  const header = document.createElement('div');
+  header.className = 'results-header comparison-header';
+  header.innerHTML = `
+    <div class="results-header-top">
+      <div class="results-title-section">
+        <h2 class="results-title">
+          <span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 8px;">compare_arrows</span>
+          Comparación: ${escapeHtml(comparison.surveyName)}
+        </h2>
+        <p class="results-subtitle">Baseline vs ${escapeHtml(comparison.scenarioName || 'Escenario')}</p>
+      </div>
+      <div class="results-actions">
+        <button class="btn btn-secondary btn-back-to-results">
+          <span class="btn-icon material-symbols-outlined">arrow_back</span> Volver a Resultados
+        </button>
+      </div>
+    </div>
+    
+    <!-- Summary Cards -->
+    <div class="comparison-summary">
+      <div class="summary-card impact-${comparison.summary.averageImpactScore >= 0.5 ? 'high' : comparison.summary.averageImpactScore >= 0.25 ? 'medium' : 'low'}">
+        <span class="summary-value">${(comparison.summary.averageImpactScore * 100).toFixed(0)}%</span>
+        <span class="summary-label">Impacto Promedio</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-value">${comparison.summary.questionsWithHighImpact}</span>
+        <span class="summary-label">Alto Impacto</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-value">${comparison.summary.questionsWithMediumImpact}</span>
+        <span class="summary-label">Impacto Medio</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-value">${comparison.summary.questionsWithLowImpact}</span>
+        <span class="summary-label">Impacto Bajo</span>
+      </div>
+    </div>
+    
+    <!-- Legend -->
+    <div class="comparison-legend">
+      <div class="legend-item">
+        <span class="legend-color baseline"></span>
+        <span class="legend-label">Baseline: ${escapeHtml(comparison.baselineRunName)}</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-color scenario"></span>
+        <span class="legend-label">Escenario: ${escapeHtml(comparison.scenarioRunName)}</span>
+      </div>
+    </div>
+  `;
+  container.appendChild(header);
+  
+  // Comparaciones por pregunta
+  const comparisonsList = document.createElement('div');
+  comparisonsList.className = 'comparisons-list';
+  
+  comparison.comparisons.forEach((comp, index) => {
+    const compCard = document.createElement('div');
+    compCard.className = `comparison-card impact-${comp.impact.level}`;
+    compCard.innerHTML = renderQuestionComparison(comp, index + 1);
+    comparisonsList.appendChild(compCard);
+  });
+  
+  container.appendChild(comparisonsList);
+  
+  // Event listeners
+  header.querySelector('.btn-back-to-results')?.addEventListener('click', () => {
+    currentView = 'results';
+    refreshPage();
+  });
+}
+
+function renderQuestionComparison(comp: QuestionComparison, number: number): string {
+  const isLikert = comp.questionType === 'likert_scale';
+  
+  // Calcular el máximo para las barras
+  const allKeys = new Set([...Object.keys(comp.baseline.distribution), ...Object.keys(comp.scenario.distribution)]);
+  let maxCount = 0;
+  allKeys.forEach(key => {
+    const baselineCount = comp.baseline.distribution[key]?.count || 0;
+    const scenarioCount = comp.scenario.distribution[key]?.count || 0;
+    maxCount = Math.max(maxCount, baselineCount, scenarioCount);
+  });
+  
+  // Generar filas de comparación
+  const sortedKeys = Array.from(allKeys).sort((a, b) => {
+    // Para Likert, ordenar numéricamente
+    if (isLikert) {
+      return parseInt(a) - parseInt(b);
+    }
+    // Para single_choice, ordenar por count total
+    const countA = (comp.baseline.distribution[a]?.count || 0) + (comp.scenario.distribution[a]?.count || 0);
+    const countB = (comp.baseline.distribution[b]?.count || 0) + (comp.scenario.distribution[b]?.count || 0);
+    return countB - countA;
+  });
+  
+  const comparisonRows = sortedKeys.map(key => {
+    const baselineData = comp.baseline.distribution[key] || { count: 0, percentage: 0, label: key };
+    const scenarioData = comp.scenario.distribution[key] || { count: 0, percentage: 0, label: key };
+    const deltaData = comp.delta.distribution[key] || { countDelta: 0, percentageDelta: 0, percentagePoints: 0 };
+    
+    const deltaClass = deltaData.percentagePoints > 0 ? 'positive' : deltaData.percentagePoints < 0 ? 'negative' : 'neutral';
+    const deltaIcon = deltaData.percentagePoints > 0 ? '↗' : deltaData.percentagePoints < 0 ? '↘' : '→';
+    
+    return `
+      <div class="comparison-row">
+        <div class="comparison-label">${escapeHtml(baselineData.label)}</div>
+        <div class="comparison-bars">
+          <div class="comparison-bar-group">
+            <div class="bar-baseline" style="width: ${maxCount > 0 ? (baselineData.count / maxCount * 100) : 0}%"></div>
+            <span class="bar-value">${baselineData.count} (${baselineData.percentage}%)</span>
+          </div>
+          <div class="comparison-bar-group">
+            <div class="bar-scenario" style="width: ${maxCount > 0 ? (scenarioData.count / maxCount * 100) : 0}%"></div>
+            <span class="bar-value">${scenarioData.count} (${scenarioData.percentage}%)</span>
+          </div>
+        </div>
+        <div class="comparison-delta ${deltaClass}">
+          <span class="delta-icon">${deltaIcon}</span>
+          <span class="delta-value">${deltaData.percentagePoints > 0 ? '+' : ''}${deltaData.percentagePoints}pp</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  // Estadísticas para Likert
+  let statsHtml = '';
+  if (isLikert && comp.baseline.average !== undefined && comp.scenario.average !== undefined) {
+    const avgDelta = comp.delta.averageDelta || 0;
+    const avgDeltaClass = avgDelta > 0 ? 'positive' : avgDelta < 0 ? 'negative' : 'neutral';
+    
+    statsHtml = `
+      <div class="comparison-stats">
+        <div class="stat-item">
+          <span class="stat-label">Promedio Baseline</span>
+          <span class="stat-value">${comp.baseline.average.toFixed(2)}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Promedio Escenario</span>
+          <span class="stat-value">${comp.scenario.average.toFixed(2)}</span>
+        </div>
+        <div class="stat-item ${avgDeltaClass}">
+          <span class="stat-label">Δ Promedio</span>
+          <span class="stat-value">${avgDelta > 0 ? '+' : ''}${avgDelta.toFixed(2)}</span>
+        </div>
+      </div>
+    `;
+  }
+  
+  // Badge de impacto
+  const impactBadgeClass = `impact-badge-${comp.impact.level}`;
+  const impactIcon = comp.impact.level === 'high' ? '🔴' : comp.impact.level === 'medium' ? '🟡' : comp.impact.level === 'low' ? '🟢' : '⚪';
+  
+  return `
+    <div class="comparison-card-header">
+      <div class="question-info">
+        <span class="question-number">${number}</span>
+        <span class="question-type-badge">${isLikert ? 'Escala Likert' : 'Opción única'}</span>
+      </div>
+      <div class="impact-badge ${impactBadgeClass}">
+        <span class="impact-icon">${impactIcon}</span>
+        <span class="impact-text">${comp.impact.description}</span>
+        <span class="impact-score">${(comp.impact.score * 100).toFixed(0)}%</span>
+      </div>
+    </div>
+    <h4 class="question-text">${escapeHtml(comp.questionText)}</h4>
+    ${statsHtml}
+    <div class="comparison-rows">
+      ${comparisonRows}
+    </div>
+  `;
+}
+
 /**
  * Cleanup function (required by main.ts)
  */
@@ -1832,5 +2174,7 @@ export function cleanupSurveysPage(): void {
   currentResults = null;
   currentRunId = null;
   surveyRuns = [];
+  comparisonData = null;
   console.log('Surveys page cleaned up');
 }
+
