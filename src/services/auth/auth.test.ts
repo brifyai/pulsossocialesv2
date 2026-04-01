@@ -2,17 +2,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { authService, type AuthSession } from './index';
 
 // Mock localStorage
+let localStorageStore: Record<string, string> = {};
+
 const localStorageMock = {
-  store: {} as Record<string, string>,
-  getItem: vi.fn((key: string) => localStorageMock.store[key] || null),
+  getItem: vi.fn((key: string) => localStorageStore[key] || null),
   setItem: vi.fn((key: string, value: string) => {
-    localStorageMock.store[key] = value;
+    localStorageStore[key] = value;
   }),
   removeItem: vi.fn((key: string) => {
-    delete localStorageMock.store[key];
+    delete localStorageStore[key];
   }),
   clear: vi.fn(() => {
-    localStorageMock.store = {};
+    localStorageStore = {};
   }),
 };
 
@@ -21,10 +22,35 @@ Object.defineProperty(window, 'localStorage', {
   writable: true,
 });
 
+// Mock userRepository
+vi.mock('../supabase/repositories/userRepository', () => ({
+  getUserByEmailWithPassword: vi.fn(),
+  getUserById: vi.fn(),
+  createUser: vi.fn(),
+  updateLastLogin: vi.fn(),
+  updatePassword: vi.fn(),
+  isEmailTaken: vi.fn(),
+}));
+
+// Mock passwordHasher
+vi.mock('./passwordHasher', () => ({
+  hashPassword: vi.fn(() => Promise.resolve('mocked-hash')),
+  verifyPassword: vi.fn(() => Promise.resolve(true)),
+  isLegacyHash: vi.fn(() => false),
+}));
+
+import {
+  getUserByEmailWithPassword,
+  getUserById,
+  // createUser e isEmailTaken no se usan directamente pero están disponibles en el mock
+} from '../supabase/repositories/userRepository';
+
+import { verifyPassword } from './passwordHasher';
+
 describe('Auth Service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorageMock.clear();
+    localStorageStore = {};
     // Sign out to reset state
     authService.signOut();
   });
@@ -40,28 +66,29 @@ describe('Auth Service', () => {
     });
 
     it('should load session from localStorage', async () => {
-      const mockSession: AuthSession = {
-        user: {
-          id: 'test-id',
-          email: 'test@example.com',
-          name: 'Test User',
-          role: 'user',
-        },
-        accessToken: 'test-token',
-        expiresAt: Date.now() + 3600000,
-        timestamp: Date.now(),
-      };
-      localStorageMock.setItem('pulsos_session', JSON.stringify(mockSession));
+      // First sign in to create a valid session
+      vi.mocked(getUserByEmailWithPassword).mockResolvedValue({
+        id: 'test-id',
+        email: 'test@example.com',
+        name: 'Test User',
+        role: 'user',
+        password_hash: 'pbkdf2_sha256$600000$test$salt+hash',
+        isActive: true,
+      } as any);
 
-      // Create a new session by signing in
       await authService.signIn('test@example.com', 'password');
 
+      // Verify session was saved to localStorage
+      const savedSession = localStorageStore['pulsossociales_session'];
+      expect(savedSession).toBeDefined();
+
+      // Verify the service is authenticated
       expect(authService.isAuthenticated()).toBe(true);
       expect(authService.getCurrentUser()?.email).toBe('test@example.com');
     });
 
     it('should handle invalid localStorage data gracefully', () => {
-      localStorageMock.setItem('pulsos_session', 'invalid json');
+      localStorageStore['pulsossociales_session'] = 'invalid json';
 
       // Should not throw and return false
       expect(authService.isAuthenticated()).toBe(false);
@@ -97,8 +124,53 @@ describe('Auth Service', () => {
       expect(result.error).toBe('El email es requerido');
     });
 
+    it('should successfully sign in with valid credentials', async () => {
+      // Mock user found in database with valid password
+      vi.mocked(getUserByEmailWithPassword).mockResolvedValue({
+        id: 'test-id',
+        email: 'test@example.com',
+        name: 'Test User',
+        role: 'user',
+        password_hash: 'pbkdf2_sha256$600000$test$salt+hash',
+        isActive: true,
+      } as any);
+
+      const result = await authService.signIn('test@example.com', 'password');
+
+      expect(result.success).toBe(true);
+      expect(result.user?.email).toBe('test@example.com');
+      expect(authService.isAuthenticated()).toBe(true);
+    });
+
+    it('should reject sign in with invalid credentials', async () => {
+      // Mock user found but password verification fails
+      vi.mocked(getUserByEmailWithPassword).mockResolvedValue({
+        id: 'test-id',
+        email: 'test@example.com',
+        name: 'Test User',
+        role: 'user',
+        password_hash: 'pbkdf2_sha256$600000$test$salt+hash',
+        isActive: true,
+      } as any);
+      vi.mocked(verifyPassword).mockResolvedValue(false);
+
+      const result = await authService.signIn('test@example.com', 'wrongpassword');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Email o contraseña incorrectos');
+    });
+
     it('should clear session on sign out', async () => {
-      // First sign in
+      // First set up a mock session
+      vi.mocked(getUserByEmailWithPassword).mockResolvedValue({
+        id: 'test-id',
+        email: 'test@example.com',
+        name: 'Test User',
+        role: 'user',
+        password_hash: 'pbkdf2_sha256$600000$test$salt+hash',
+        isActive: true,
+      } as any);
+
       await authService.signIn('test@example.com', 'password');
       expect(authService.isAuthenticated()).toBe(true);
 
@@ -119,6 +191,16 @@ describe('Auth Service', () => {
 
   describe('Session Validation', () => {
     it('should validate non-expired session', async () => {
+      // Set up a mock session first
+      vi.mocked(getUserByEmailWithPassword).mockResolvedValue({
+        id: 'test-id',
+        email: 'test@example.com',
+        name: 'Test User',
+        role: 'user',
+        password_hash: 'pbkdf2_sha256$600000$test$salt+hash',
+        isActive: true,
+      } as any);
+
       await authService.signIn('test@example.com', 'password');
 
       expect(authService.isSessionValid()).toBe(true);
@@ -136,13 +218,22 @@ describe('Auth Service', () => {
         expiresAt: Date.now() - 1000, // Expired 1 second ago
         timestamp: Date.now() - 1000000,
       };
-      localStorageMock.setItem('pulsos_session', JSON.stringify(expiredSession));
+      localStorageStore['pulsossociales_session'] = JSON.stringify(expiredSession);
 
-      // Force reload by creating a new sign in that will check validity
-      await authService.signIn('other@example.com', 'password');
+      // Mock getUserById to return the user (session restoration checks if user still exists)
+      vi.mocked(getUserById).mockResolvedValue({
+        id: 'test-id',
+        email: 'test@example.com',
+        name: 'Test User',
+        role: 'user',
+        isActive: true,
+      } as any);
 
-      // The new session should be valid
-      expect(authService.isSessionValid()).toBe(true);
+      // Initialize should check the expired session and clear it
+      await (authService as any).initialize();
+
+      // The expired session should be invalid
+      expect(authService.isSessionValid()).toBe(false);
     });
   });
 
@@ -150,8 +241,10 @@ describe('Auth Service', () => {
     it('should trim email on sign in', async () => {
       const result = await authService.signIn('  test@example.com  ', 'password');
 
-      // Should fail because Supabase is not available in test
+      // Should fail because user doesn't exist in database (not because of trim)
+      // The email should be trimmed before querying (normalizedEmail = email.trim().toLowerCase())
       expect(result.success).toBe(false);
+      expect(result.error).toBe('Email o contraseña incorrectos');
     });
 
     it('should trim name on sign up', async () => {
@@ -159,7 +252,8 @@ describe('Auth Service', () => {
         name: '  John Doe  ',
       });
 
-      // Should fail because Supabase is not available in test
+      // Should fail because database is not available in test
+      // But the name should be trimmed before saving (metadata?.name?.trim())
       expect(result.success).toBe(false);
     });
   });

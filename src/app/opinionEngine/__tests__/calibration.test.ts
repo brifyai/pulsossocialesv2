@@ -14,7 +14,6 @@ import { generateQuickResponse, type OpinionEngineAgent } from '../opinionEngine
 import { interpretQuestion, type RawSurveyQuestion } from '../questionInterpreter';
 import { buildInitialTopicStates } from '../topicStateSeed';
 import { CADEM_BENCHMARKS, runMultipleSimulations, isWithinTolerance, type SimulationResult } from './calibrationBenchmarks';
-import { CONFIDENCE_CONFIG } from '../engineConfig';
 
 // ============================================================================
 // HELPERS
@@ -33,19 +32,14 @@ function createRepresentativeAgent(index: number): OpinionEngineAgent {
   // Determinar edad basada en ponderación
   const ageRand = Math.random();
   let age: number;
-  let ageGroup: string;
   if (ageRand < weights.age['18-29']) {
     age = 18 + Math.floor(Math.random() * 12);
-    ageGroup = '18-29';
   } else if (ageRand < weights.age['18-29'] + weights.age['30-49']) {
     age = 30 + Math.floor(Math.random() * 20);
-    ageGroup = '30-49';
   } else if (ageRand < weights.age['18-29'] + weights.age['30-49'] + weights.age['50-69']) {
     age = 50 + Math.floor(Math.random() * 20);
-    ageGroup = '50-69';
   } else {
     age = 70 + Math.floor(Math.random() * 15);
-    ageGroup = '70+';
   }
 
   // Determinar zona/región

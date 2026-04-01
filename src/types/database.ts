@@ -20,6 +20,12 @@ export type DbPovertyStatus = 'extreme_poverty' | 'poverty' | 'vulnerable' | 'mi
 export type DbEducationLevel = 'none' | 'primary' | 'secondary' | 'technical' | 'university' | 'postgraduate';
 export type DbOccupationStatus = 'employed' | 'unemployed' | 'self_employed' | 'retired' | 'student' | 'homemaker';
 export type DbSocioeconomicLevel = 'low' | 'medium' | 'high';
+
+// CADEM-compatible types
+export type DbCademSocioeconomicLevel = 'ABC1' | 'C2' | 'C3' | 'D' | 'E';
+export type DbCademAgeGroup = '18-29' | '30-49' | '50-69' | '70+';
+export type DbCademRegionGroup = 'Metropolitana' | 'Norte' | 'Centro' | 'Sur';
+
 export type DbConnectivityLevel = 'none' | 'low' | 'medium' | 'high' | 'very_high';
 export type DbDigitalExposureLevel = 'none' | 'low' | 'medium' | 'high' | 'very_high';
 export type DbSurveyChannel = 'phone' | 'online' | 'in_person' | 'mixed';
@@ -142,6 +148,11 @@ export interface DbSyntheticAgent {
   occupation_status: DbOccupationStatus | null;
   occupation_group: string | null;
   socioeconomic_level: DbSocioeconomicLevel | null;
+  
+  // CADEM Demographics
+  cadem_socioeconomic_level: DbCademSocioeconomicLevel | null;
+  cadem_age_group: DbCademAgeGroup | null;
+  cadem_region_group: DbCademRegionGroup | null;
   
   // Digital
   connectivity_level: DbConnectivityLevel | null;

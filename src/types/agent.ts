@@ -77,6 +77,16 @@ export type PovertyStatus = 'extreme_poverty' | 'poverty' | 'vulnerable' | 'midd
 export type EducationLevel = 'none' | 'primary' | 'secondary' | 'technical' | 'university' | 'postgraduate';
 export type OccupationStatus = 'employed' | 'unemployed' | 'self_employed' | 'retired' | 'student' | 'homemaker';
 export type SocioeconomicLevel = 'low' | 'medium' | 'high';
+
+// CADEM-compatible socioeconomic classification
+export type CademSocioeconomicLevel = 'ABC1' | 'C2' | 'C3' | 'D' | 'E';
+
+// CADEM age groups for demographic analysis
+export type CademAgeGroup = '18-29' | '30-49' | '50-69' | '70+';
+
+// CADEM regional groupings
+export type CademRegionGroup = 'Metropolitana' | 'Norte' | 'Centro' | 'Sur';
+
 export type ConnectivityLevel = 'none' | 'low' | 'medium' | 'high' | 'very_high';
 export type DigitalExposureLevel = 'none' | 'low' | 'medium' | 'high' | 'very_high';
 export type SurveyChannel = 'phone' | 'online' | 'in_person' | 'mixed';
@@ -128,6 +138,11 @@ export interface SyntheticAgent {
   occupation_status: OccupationStatus | null;
   occupation_group: string | null;
   socioeconomic_level: SocioeconomicLevel | null;
+  
+  // CADEM fields (optional for backward compatibility with v1 data)
+  cadem_socioeconomic_level?: CademSocioeconomicLevel | null;
+  cadem_age_group?: CademAgeGroup | null;
+  cadem_region_group?: CademRegionGroup | null;
   
   // Digital
   connectivity_level: ConnectivityLevel | null;

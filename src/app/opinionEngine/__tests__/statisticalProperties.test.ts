@@ -93,24 +93,7 @@ function calculateEntropy(distribution: Record<string, number>): number {
   return -values.reduce((sum, p) => sum + p * Math.log2(p), 0);
 }
 
-/**
- * Calcula el índice de Gini (desigualdad) de una distribución.
- * 0 = perfectamente igual, 1 = máxima desigualdad.
- */
-function calculateGini(distribution: Record<string, number>): number {
-  const values = Object.values(distribution).sort((a, b) => a - b);
-  const n = values.length;
-  if (n === 0) return 0;
-
-  const sum = values.reduce((a, b) => a + b, 0);
-  const cumSum = values.reduce((acc, val, i) => {
-    acc.push((acc[i - 1] || 0) + val);
-    return acc;
-  }, [] as number[]);
-
-  const numerator = cumSum.reduce((sum, val, i) => sum + val, 0);
-  return (n + 1 - 2 * numerator / sum) / n;
-}
+// Nota: calculateGini removido - no se usa actualmente pero puede ser útil para análisis futuro
 
 // ============================================================================
 // TESTS DE PROPIEDADES ESTADÍSTICAS
