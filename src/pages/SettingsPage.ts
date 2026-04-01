@@ -1,16 +1,28 @@
 /**
  * Settings Page - Pulsos Sociales
- * Vista de configuración de usuario
+ * Vista de configuración de usuario 100% funcional con persistencia en Supabase
  */
 
 import { navigateTo } from '../router';
+import {
+  getUserSettings,
+  saveUserSettings,
+  defaultSettings,
+  type UserSettings,
+  applySettings,
+} from '../services/userSettingsService';
+
+// Estado actual de las configuraciones
+let currentSettings: UserSettings = { ...defaultSettings };
+let isLoading = true;
+let hasUnsavedChanges = false;
 
 interface SettingItem {
   id: string;
   label: string;
   description: string;
   type: 'toggle' | 'select' | 'button';
-  value?: boolean | string;
+  key: keyof UserSettings;
   options?: { value: string; label: string }[];
 }
 
@@ -24,23 +36,23 @@ const settingsGroups = [
         label: 'Modo oscuro',
         description: 'Usar tema oscuro en toda la aplicación',
         type: 'toggle' as const,
-        value: true
+        key: 'darkMode' as keyof UserSettings,
       },
       {
         id: 'high-contrast',
         label: 'Alto contraste',
         description: 'Aumentar el contraste para mejor legibilidad',
         type: 'toggle' as const,
-        value: false
+        key: 'highContrast' as keyof UserSettings,
       },
       {
         id: 'animations',
         label: 'Animaciones',
         description: 'Habilitar animaciones y transiciones',
         type: 'toggle' as const,
-        value: true
-      }
-    ]
+        key: 'animations' as keyof UserSettings,
+      },
+    ] as SettingItem[],
   },
   {
     title: 'Mapa y visualización',
@@ -51,28 +63,28 @@ const settingsGroups = [
         label: 'Modo calidad premium',
         description: 'Activar efectos visuales avanzados en el mapa',
         type: 'toggle' as const,
-        value: true
+        key: 'qualityMode' as keyof UserSettings,
       },
       {
         id: 'agent-density',
         label: 'Densidad de agentes',
         description: 'Cantidad de agentes visibles en la simulación',
         type: 'select' as const,
-        value: 'medium',
+        key: 'agentDensity' as keyof UserSettings,
         options: [
           { value: 'low', label: 'Baja (rendimiento)' },
           { value: 'medium', label: 'Media (balance)' },
-          { value: 'high', label: 'Alta (visual)' }
-        ]
+          { value: 'high', label: 'Alta (visual)' },
+        ],
       },
       {
         id: 'labels',
         label: 'Mostrar etiquetas',
         description: 'Mostrar nombres de calles y lugares en el mapa',
         type: 'toggle' as const,
-        value: true
-      }
-    ]
+        key: 'showLabels' as keyof UserSettings,
+      },
+    ] as SettingItem[],
   },
   {
     title: 'Notificaciones',
@@ -83,16 +95,16 @@ const settingsGroups = [
         label: 'Notificaciones por email',
         description: 'Recibir actualizaciones y alertas por correo',
         type: 'toggle' as const,
-        value: true
+        key: 'emailNotifications' as keyof UserSettings,
       },
       {
         id: 'survey-alerts',
         label: 'Alertas de encuestas',
         description: 'Notificar cuando se completen encuestas sintéticas',
         type: 'toggle' as const,
-        value: false
-      }
-    ]
+        key: 'surveyAlerts' as keyof UserSettings,
+      },
+    ] as SettingItem[],
   },
   {
     title: 'Datos y privacidad',
@@ -103,23 +115,24 @@ const settingsGroups = [
         label: 'Cache de datos',
         description: 'Almacenar datos territorialmente para acceso offline',
         type: 'toggle' as const,
-        value: true
+        key: 'dataCache' as keyof UserSettings,
       },
       {
         id: 'analytics',
         label: 'Compartir analytics',
         description: 'Ayudar a mejorar la plataforma con datos de uso anónimos',
         type: 'toggle' as const,
-        value: true
+        key: 'shareAnalytics' as keyof UserSettings,
       },
       {
         id: 'export-data',
         label: 'Exportar mis datos',
         description: 'Descargar una copia de todos tus datos',
-        type: 'button' as const
-      }
-    ]
-  }
+        type: 'button' as const,
+        key: 'dataCache' as keyof UserSettings, // placeholder, no se usa
+      },
+    ] as SettingItem[],
+  },
 ];
 
 /**
@@ -134,24 +147,18 @@ export function createSettingsPage(): HTMLElement {
       <div class="settings-header">
         <h1 class="settings-title">Configuración</h1>
         <p class="settings-subtitle">Personaliza tu experiencia en Pulsos Sociales</p>
+        <div class="settings-status" id="settings-status">
+          <span class="loading-spinner"></span>
+          Cargando preferencias...
+        </div>
       </div>
 
-      <div class="settings-groups">
-        ${settingsGroups.map(group => `
-          <div class="settings-group">
-            <h2 class="group-title">
-              <span class="material-symbols-outlined">${group.icon}</span>
-              ${group.title}
-            </h2>
-            <div class="group-settings">
-              ${group.settings.map(setting => renderSetting(setting)).join('')}
-            </div>
-          </div>
-        `).join('')}
+      <div class="settings-groups" id="settings-groups">
+        <!-- Los grupos se renderizarán dinámicamente -->
       </div>
 
       <div class="settings-actions">
-        <button class="btn-save" id="save-btn">
+        <button class="btn-save" id="save-btn" disabled>
           <span class="material-symbols-outlined">save</span>
           Guardar cambios
         </button>
@@ -173,69 +180,73 @@ export function createSettingsPage(): HTMLElement {
   // Add styles
   addSettingsStyles();
 
+  // Cargar configuraciones
+  loadSettings(container);
+
   // Event listeners
   const backBtn = container.querySelector('#back-btn');
   backBtn?.addEventListener('click', () => navigateTo('home'));
 
-  const saveBtn = container.querySelector('#save-btn');
-  saveBtn?.addEventListener('click', () => {
-    // Show success feedback
-    const originalText = saveBtn.innerHTML;
-    saveBtn.innerHTML = `
-      <span class="material-symbols-outlined">check</span>
-      Guardado
-    `;
-    saveBtn.classList.add('saved');
-    setTimeout(() => {
-      saveBtn.innerHTML = originalText;
-      saveBtn.classList.remove('saved');
-    }, 2000);
-  });
+  const saveBtn = container.querySelector('#save-btn') as HTMLButtonElement;
+  saveBtn?.addEventListener('click', () => handleSave(container, saveBtn));
 
   const resetBtn = container.querySelector('#reset-btn');
-  resetBtn?.addEventListener('click', () => {
-    if (confirm('¿Restaurar todas las configuraciones a los valores predeterminados?')) {
-      // Reset all toggles
-      container.querySelectorAll('.setting-toggle input').forEach((input) => {
-        const htmlInput = input as HTMLInputElement;
-        htmlInput.checked = htmlInput.dataset.default === 'true';
-      });
-    }
-  });
-
-  // Toggle handlers
-  container.querySelectorAll('.setting-toggle input').forEach(toggle => {
-    toggle.addEventListener('change', (e) => {
-      const target = e.target as HTMLInputElement;
-      console.log(`Setting ${target.id} changed to:`, target.checked);
-    });
-  });
-
-  // Select handlers
-  container.querySelectorAll('.setting-select').forEach(select => {
-    select.addEventListener('change', (e) => {
-      const target = e.target as HTMLSelectElement;
-      console.log(`Setting ${target.id} changed to:`, target.value);
-    });
-  });
-
-  // Button handlers
-  container.querySelectorAll('.setting-button').forEach(button => {
-    button.addEventListener('click', () => {
-      const id = button.id;
-      if (id === 'export-data-btn') {
-        alert('Exportación de datos en desarrollo');
-      }
-    });
-  });
+  resetBtn?.addEventListener('click', () => handleReset(container));
 
   return container;
 }
 
 /**
- * Render a single setting item
+ * Carga las configuraciones desde Supabase
+ */
+async function loadSettings(container: HTMLElement): Promise<void> {
+  const statusEl = container.querySelector('#settings-status');
+  const groupsEl = container.querySelector('#settings-groups');
+
+  try {
+    const settings = await getUserSettings();
+    currentSettings = settings;
+    isLoading = false;
+
+    // Renderizar grupos de configuraciones
+    if (groupsEl) {
+      groupsEl.innerHTML = settingsGroups
+        .map((group) => `
+          <div class="settings-group">
+            <h2 class="group-title">
+              <span class="material-symbols-outlined">${group.icon}</span>
+              ${group.title}
+            </h2>
+            <div class="group-settings">
+              ${group.settings.map((setting) => renderSetting(setting)).join('')}
+            </div>
+          </div>
+        `)
+        .join('');
+    }
+
+    // Actualizar estado
+    if (statusEl) {
+      statusEl.innerHTML = '<span class="status-success">✓ Preferencias cargadas</span>';
+      statusEl.classList.add('loaded');
+    }
+
+    // Configurar event listeners
+    setupEventListeners(container);
+  } catch (error) {
+    console.error('[SettingsPage] Error cargando configuraciones:', error);
+    if (statusEl) {
+      statusEl.innerHTML = '<span class="status-error">✗ Error cargando preferencias</span>';
+    }
+  }
+}
+
+/**
+ * Renderiza una configuración individual
  */
 function renderSetting(setting: SettingItem): string {
+  const value = currentSettings[setting.key];
+
   switch (setting.type) {
     case 'toggle':
       return `
@@ -245,7 +256,7 @@ function renderSetting(setting: SettingItem): string {
             <span class="setting-description">${setting.description}</span>
           </div>
           <label class="setting-toggle">
-            <input type="checkbox" id="${setting.id}" ${setting.value ? 'checked' : ''} data-default="${setting.value}">
+            <input type="checkbox" id="${setting.id}" ${value ? 'checked' : ''} data-key="${setting.key}">
             <span class="toggle-slider"></span>
           </label>
         </div>
@@ -257,10 +268,14 @@ function renderSetting(setting: SettingItem): string {
             <span class="setting-label">${setting.label}</span>
             <span class="setting-description">${setting.description}</span>
           </div>
-          <select class="setting-select" id="${setting.id}">
-            ${setting.options?.map(opt => `
-              <option value="${opt.value}" ${opt.value === setting.value ? 'selected' : ''}>${opt.label}</option>
-            `).join('')}
+          <select class="setting-select" id="${setting.id}" data-key="${setting.key}">
+            ${setting.options
+              ?.map(
+                (opt) => `
+              <option value="${opt.value}" ${opt.value === value ? 'selected' : ''}>${opt.label}</option>
+            `
+              )
+              .join('')}
           </select>
         </div>
       `;
@@ -271,7 +286,7 @@ function renderSetting(setting: SettingItem): string {
             <span class="setting-label">${setting.label}</span>
             <span class="setting-description">${setting.description}</span>
           </div>
-          <button class="setting-button" id="${setting.id}-btn">
+          <button class="setting-button" id="${setting.id}-btn" data-key="${setting.key}">
             <span class="material-symbols-outlined">download</span>
             Exportar
           </button>
@@ -280,6 +295,198 @@ function renderSetting(setting: SettingItem): string {
     default:
       return '';
   }
+}
+
+/**
+ * Configura los event listeners para los controles
+ */
+function setupEventListeners(container: HTMLElement): void {
+  const saveBtn = container.querySelector('#save-btn') as HTMLButtonElement;
+
+  // Toggle handlers
+  container.querySelectorAll('.setting-toggle input').forEach((toggle) => {
+    toggle.addEventListener('change', (e) => {
+      const target = e.target as HTMLInputElement;
+      const key = target.dataset.key as keyof UserSettings;
+      currentSettings[key] = target.checked as any;
+      hasUnsavedChanges = true;
+      updateSaveButton(saveBtn);
+
+      // Aplicar cambio inmediatamente para feedback visual
+      applySettings(currentSettings);
+    });
+  });
+
+  // Select handlers
+  container.querySelectorAll('.setting-select').forEach((select) => {
+    select.addEventListener('change', (e) => {
+      const target = e.target as HTMLSelectElement;
+      const key = target.dataset.key as keyof UserSettings;
+      currentSettings[key] = target.value as any;
+      hasUnsavedChanges = true;
+      updateSaveButton(saveBtn);
+
+      // Aplicar cambio inmediatamente
+      applySettings(currentSettings);
+    });
+  });
+
+  // Button handlers
+  container.querySelectorAll('.setting-button').forEach((button) => {
+    button.addEventListener('click', () => {
+      handleExportData();
+    });
+  });
+}
+
+/**
+ * Actualiza el estado del botón de guardar
+ */
+function updateSaveButton(saveBtn: HTMLButtonElement): void {
+  if (hasUnsavedChanges) {
+    saveBtn.disabled = false;
+    saveBtn.classList.add('has-changes');
+  } else {
+    saveBtn.disabled = true;
+    saveBtn.classList.remove('has-changes');
+  }
+}
+
+/**
+ * Maneja el guardado de configuraciones
+ */
+async function handleSave(container: HTMLElement, saveBtn: HTMLButtonElement): Promise<void> {
+  const originalText = saveBtn.innerHTML;
+  saveBtn.disabled = true;
+  saveBtn.innerHTML = `
+    <span class="material-symbols-outlined">hourglass_empty</span>
+    Guardando...
+  `;
+
+  try {
+    const success = await saveUserSettings(currentSettings);
+
+    if (success) {
+      hasUnsavedChanges = false;
+      updateSaveButton(saveBtn);
+
+      saveBtn.innerHTML = `
+        <span class="material-symbols-outlined">check</span>
+        Guardado
+      `;
+      saveBtn.classList.add('saved');
+
+      // Mostrar notificación
+      showNotification(container, 'Configuraciones guardadas correctamente', 'success');
+    } else {
+      saveBtn.innerHTML = originalText;
+      saveBtn.disabled = false;
+      showNotification(container, 'Error al guardar. Se guardó localmente.', 'warning');
+    }
+
+    setTimeout(() => {
+      saveBtn.innerHTML = originalText;
+      saveBtn.classList.remove('saved');
+      updateSaveButton(saveBtn);
+    }, 2000);
+  } catch (error) {
+    console.error('[SettingsPage] Error guardando:', error);
+    saveBtn.innerHTML = originalText;
+    saveBtn.disabled = false;
+    showNotification(container, 'Error al guardar configuraciones', 'error');
+  }
+}
+
+/**
+ * Maneja el reset a valores predeterminados
+ */
+async function handleReset(container: HTMLElement): Promise<void> {
+  if (!confirm('¿Restaurar todas las configuraciones a los valores predeterminados?')) {
+    return;
+  }
+
+  currentSettings = { ...defaultSettings };
+  hasUnsavedChanges = true;
+
+  // Actualizar UI
+  const groupsEl = container.querySelector('#settings-groups');
+  if (groupsEl) {
+    groupsEl.innerHTML = settingsGroups
+      .map((group) => `
+        <div class="settings-group">
+          <h2 class="group-title">
+            <span class="material-symbols-outlined">${group.icon}</span>
+            ${group.title}
+          </h2>
+          <div class="group-settings">
+            ${group.settings.map((setting) => renderSetting(setting)).join('')}
+          </div>
+        </div>
+      `)
+      .join('');
+  }
+
+  // Reconfigurar event listeners
+  setupEventListeners(container);
+
+  // Aplicar cambios
+  applySettings(currentSettings);
+
+  // Actualizar botón de guardar
+  const saveBtn = container.querySelector('#save-btn') as HTMLButtonElement;
+  updateSaveButton(saveBtn);
+
+  showNotification(container, 'Configuraciones restauradas. Guarda para aplicar.', 'info');
+}
+
+/**
+ * Maneja la exportación de datos
+ */
+async function handleExportData(): Promise<void> {
+  try {
+    // Crear datos de exportación
+    const exportData = {
+      userSettings: currentSettings,
+      exportDate: new Date().toISOString(),
+      version: '1.0',
+    };
+
+    // Crear blob y descargar
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pulsos-config-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showNotification(document.body, 'Datos exportados correctamente', 'success');
+  } catch (error) {
+    console.error('[SettingsPage] Error exportando:', error);
+    showNotification(document.body, 'Error al exportar datos', 'error');
+  }
+}
+
+/**
+ * Muestra una notificación temporal
+ */
+function showNotification(
+  container: HTMLElement | Element,
+  message: string,
+  type: 'success' | 'error' | 'warning' | 'info'
+): void {
+  const notification = document.createElement('div');
+  notification.className = `settings-notification ${type}`;
+  notification.textContent = message;
+
+  container.appendChild(notification);
+
+  setTimeout(() => {
+    notification.classList.add('fade-out');
+    setTimeout(() => notification.remove(), 300);
+  }, 3000);
 }
 
 /**
@@ -320,7 +527,40 @@ function addSettingsStyles(): void {
     .settings-subtitle {
       font-size: 0.9rem;
       color: rgba(255, 255, 255, 0.5);
-      margin: 0;
+      margin: 0 0 1rem;
+    }
+
+    .settings-status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    .settings-status.loaded {
+      color: #00ff88;
+    }
+
+    .loading-spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-top-color: #00f0ff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .status-success {
+      color: #00ff88;
+    }
+
+    .status-error {
+      color: #ff6464;
     }
 
     .settings-groups {
@@ -505,11 +745,25 @@ function addSettingsStyles(): void {
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s ease;
+      opacity: 0.5;
     }
 
-    .btn-save:hover {
+    .btn-save:not(:disabled) {
+      opacity: 1;
+    }
+
+    .btn-save:not(:disabled):hover {
       transform: translateY(-1px);
       box-shadow: 0 4px 20px rgba(0, 240, 255, 0.3);
+    }
+
+    .btn-save.has-changes {
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(0, 240, 255, 0.4); }
+      50% { box-shadow: 0 0 0 10px rgba(0, 240, 255, 0); }
     }
 
     .btn-save.saved {
@@ -556,6 +810,61 @@ function addSettingsStyles(): void {
     .btn-back:hover {
       border-color: #00f0ff;
       color: #00f0ff;
+    }
+
+    /* Notifications */
+    .settings-notification {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      padding: 1rem 1.5rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      z-index: 1000;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    .settings-notification.fade-out {
+      animation: fadeOut 0.3s ease forwards;
+    }
+
+    @keyframes fadeOut {
+      to {
+        opacity: 0;
+        transform: translateX(100%);
+      }
+    }
+
+    .settings-notification.success {
+      background: rgba(0, 255, 136, 0.9);
+      color: #020204;
+    }
+
+    .settings-notification.error {
+      background: rgba(255, 100, 100, 0.9);
+      color: #ffffff;
+    }
+
+    .settings-notification.warning {
+      background: rgba(255, 193, 7, 0.9);
+      color: #020204;
+    }
+
+    .settings-notification.info {
+      background: rgba(0, 240, 255, 0.9);
+      color: #020204;
     }
 
     @media (max-width: 768px) {

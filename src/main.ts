@@ -30,6 +30,7 @@ import {
   type Route 
 } from './router/index';
 import { authService } from './services/auth';
+import { initUserSettings } from './services/userSettingsService';
 
 // Public Pages
 import { createLandingPage } from './pages/LandingPage';
@@ -66,6 +67,10 @@ async function initApp(): Promise<void> {
 
   // Initialize auth service
   await authService.initialize();
+
+  // Initialize user settings (applies saved preferences)
+  await initUserSettings();
+  console.log('⚙️ User settings initialized');
 
   // Create base app structure
   appContainer = document.createElement('div');

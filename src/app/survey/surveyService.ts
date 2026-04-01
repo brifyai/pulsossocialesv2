@@ -194,16 +194,22 @@ export async function deleteSurvey(id: string): Promise<boolean> {
   const isAvailable = await isSurveyPersistenceAvailable();
   if (isAvailable) {
     try {
-      await deleteSurveyDefinition(id);
+      const dbDeleted = await deleteSurveyDefinition(id);
+      if (!dbDeleted) {
+        console.error('[SurveyService] Failed to delete survey from DB');
+        return false;
+      }
+      console.log(`🗑️ Survey deleted from DB: ${id}`);
     } catch (error) {
-      console.warn('[SurveyService] Error deleting from DB:', error);
+      console.error('[SurveyService] Error deleting from DB:', error);
+      return false;
     }
   }
   
   // Siempre eliminar de cache local
   const deleted = surveys.delete(id);
   if (deleted) {
-    console.log(`🗑️ Survey deleted: ${id}`);
+    console.log(`🗑️ Survey deleted from cache: ${id}`);
   }
   return deleted;
 }

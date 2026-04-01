@@ -1,10 +1,11 @@
 /**
  * Profile Page - Pulsos Sociales
- * Vista de perfil de usuario
+ * Vista de perfil de usuario con datos reales
  */
 
 import { authService } from '../services/auth';
 import { navigateTo } from '../router';
+import { getUserMetrics, type UserMetricsWithFormatted } from '../services/userMetricsService';
 
 /**
  * Create the Profile page
@@ -16,6 +17,20 @@ export function createProfilePage(): HTMLElement {
   const user = authService.getCurrentUser();
   const displayName = user?.name || user?.email?.split('@')[0] || 'Usuario';
   const initials = displayName.substring(0, 2).toUpperCase();
+
+  // Estado inicial con valores de carga
+  let metrics: UserMetricsWithFormatted = {
+    totalAgents: 0,
+    totalSurveys: 0,
+    totalRuns: 0,
+    totalRegions: 16,
+    totalCommunes: 346,
+    formatted: {
+      agents: '...',
+      surveys: '...',
+      territories: '...',
+    },
+  };
 
   container.innerHTML = `
     <div class="profile-container">
@@ -49,6 +64,10 @@ export function createProfilePage(): HTMLElement {
               <span class="info-label">ID de usuario</span>
               <span class="info-value id">${user?.id || 'demo-user-123'}</span>
             </div>
+            <div class="info-row">
+              <span class="info-label">Rol</span>
+              <span class="info-value role-badge">${user?.role === 'admin' ? 'Administrador' : user?.role === 'moderator' ? 'Moderador' : 'Usuario'}</span>
+            </div>
           </div>
         </div>
 
@@ -66,15 +85,15 @@ export function createProfilePage(): HTMLElement {
               <div class="plan-usage">
                 <div class="usage-item">
                   <span class="usage-label">Agentes sintéticos</span>
-                  <span class="usage-value">19.5M / ∞</span>
+                  <span class="usage-value" id="metrics-agents">${metrics.formatted.agents}</span>
                 </div>
                 <div class="usage-item">
                   <span class="usage-label">Encuestas generadas</span>
-                  <span class="usage-value">1,247 / ∞</span>
+                  <span class="usage-value" id="metrics-surveys">${metrics.formatted.surveys}</span>
                 </div>
                 <div class="usage-item">
                   <span class="usage-label">Territorios analizados</span>
-                  <span class="usage-value">16 / 16</span>
+                  <span class="usage-value" id="metrics-territories">${metrics.formatted.territories}</span>
                 </div>
               </div>
             </div>
@@ -121,7 +140,31 @@ export function createProfilePage(): HTMLElement {
     alert('Funcionalidad de cambio de contraseña en desarrollo');
   });
 
+  // Cargar métricas reales
+  loadMetrics(container);
+
   return container;
+}
+
+/**
+ * Carga las métricas reales desde el servicio
+ */
+async function loadMetrics(container: HTMLElement): Promise<void> {
+  try {
+    const metrics = await getUserMetrics();
+
+    // Actualizar valores en el DOM
+    const agentsEl = container.querySelector('#metrics-agents');
+    const surveysEl = container.querySelector('#metrics-surveys');
+    const territoriesEl = container.querySelector('#metrics-territories');
+
+    if (agentsEl) agentsEl.textContent = metrics.formatted.agents;
+    if (surveysEl) surveysEl.textContent = metrics.formatted.surveys;
+    if (territoriesEl) territoriesEl.textContent = metrics.formatted.territories;
+  } catch (error) {
+    console.error('[ProfilePage] Error cargando métricas:', error);
+    // Mostrar error silenciosamente - los valores permanecerán como "..."
+  }
 }
 
 /**
@@ -258,6 +301,17 @@ function addProfileStyles(): void {
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.75rem;
       color: rgba(255, 255, 255, 0.4);
+    }
+
+    .info-value.role-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.75rem;
+      background: rgba(0, 240, 255, 0.1);
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      border-radius: 20px;
+      font-size: 0.75rem;
+      color: #00f0ff;
     }
 
     .plan-card {
