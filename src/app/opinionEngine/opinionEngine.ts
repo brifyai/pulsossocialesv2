@@ -3,6 +3,11 @@ import type { TopicState } from './types';
 import { resolveQuestionByFamily } from './questionResolver';
 import { buildInitialTopicStates } from './topicStateSeed';
 import type { PanelState } from '../panel/types';
+import {
+  FATIGUE_CONFIG,
+  CONFIDENCE_CONFIG,
+  RESPONSE_FACTORS,
+} from './engineConfig';
 
 // Interfaz mínima del agente que espera el motor
 export interface OpinionEngineAgent {
@@ -36,7 +41,7 @@ function calculateFatigueFactor(questionIndex: number, totalQuestions: number): 
   if (totalQuestions <= 1) return 0;
   const progress = questionIndex / totalQuestions;
   // Fatiga crece no linealmente (más rápido al final)
-  return Math.pow(progress, 1.5) * 0.3; // Máximo 30% de impacto
+  return Math.pow(progress, FATIGUE_CONFIG.GROWTH_EXPONENT) * FATIGUE_CONFIG.MAX_IMPACT;
 }
 
 /**
@@ -50,15 +55,15 @@ function adjustConfidenceForPanel(
   let adjusted = baseConfidence;
 
   // Fatiga reduce confianza
-  adjusted -= fatigueFactor * 0.15;
+  adjusted -= fatigueFactor * CONFIDENCE_CONFIG.FATIGUE_REDUCTION_FACTOR;
 
   // Quality score del panelista ajusta (buenos panelistas mantienen confianza)
   if (panelState) {
-    adjusted += (panelState.qualityScore - 0.5) * 0.1;
+    adjusted += (panelState.qualityScore - CONFIDENCE_CONFIG.BASE_CENTER) * CONFIDENCE_CONFIG.QUALITY_SCORE_FACTOR;
   }
 
-  // Clamp entre 0.1 y 0.98
-  return Math.max(0.1, Math.min(0.98, adjusted));
+  // Clamp entre valores mínimo y máximo
+  return Math.max(CONFIDENCE_CONFIG.MIN_VALUE, Math.min(CONFIDENCE_CONFIG.MAX_VALUE, adjusted));
 }
 
 /**
@@ -77,7 +82,7 @@ function buildResponseFactors(
   if (relevantTopic) {
     factors.push({
       type: 'topic_state',
-      weight: 0.45,
+      weight: RESPONSE_FACTORS.TOPIC_STATE,
       description: `Estado latente en ${relevantTopic.topic}: score ${relevantTopic.score.toFixed(2)}`,
     });
   }
@@ -85,7 +90,7 @@ function buildResponseFactors(
   // Factor demográfico (implícito en el score inicial)
   factors.push({
     type: 'demographic',
-    weight: 0.25,
+    weight: RESPONSE_FACTORS.DEMOGRAPHIC,
     description: 'Perfil demográfico y socioeconómico del agente',
   });
 
@@ -93,7 +98,7 @@ function buildResponseFactors(
   if (fatigueFactor > 0.1) {
     factors.push({
       type: 'panel_fatigue',
-      weight: fatigueFactor * 0.3,
+      weight: fatigueFactor * RESPONSE_FACTORS.PANEL_FATIGUE,
       description: `Fatiga de encuesta: ${(fatigueFactor * 100).toFixed(0)}%`,
     });
   }
@@ -101,14 +106,14 @@ function buildResponseFactors(
   // Factor de contexto de pregunta
   factors.push({
     type: 'question_context',
-    weight: 0.1,
+    weight: RESPONSE_FACTORS.QUESTION_CONTEXT,
     description: `Posición ${interpretedQuestion.responseFormat} en encuesta`,
   });
 
   // Ruido aleatorio (siempre presente pero pequeño)
   factors.push({
     type: 'random_noise',
-    weight: 0.05,
+    weight: RESPONSE_FACTORS.RANDOM_NOISE,
     description: 'Variabilidad estocástica inherente',
   });
 
@@ -156,7 +161,7 @@ export function generateOpinionatedResponse(
 
   // Ajustar reasoning si hay fatiga significativa
   let finalReasoning = resolved.reasoning;
-  if (fatigueFactor > 0.25) {
+  if (fatigueFactor > FATIGUE_CONFIG.SIGNIFICANT_THRESHOLD) {
     finalReasoning += ' (Respuesta potencialmente afectada por fatiga de encuesta)';
   }
 

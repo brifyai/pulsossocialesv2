@@ -9,6 +9,12 @@ import type {
 } from '../../types/opinion';
 import type { InterpretedQuestion, TopicState } from './types';
 import { getTopicState, clamp } from './topicStateSeed';
+import {
+  NOISE_CONFIG,
+  NO_RESPONSE_CONFIG,
+  CONFIDENCE_CALCULATION,
+  SCORE_THRESHOLDS,
+} from './engineConfig';
 
 interface ResolverResult<TValue> {
   value: TValue;
@@ -16,21 +22,27 @@ interface ResolverResult<TValue> {
   reasoning: string;
 }
 
-function randomNoise(scale = 0.06): number {
+function randomNoise(scale: number = NOISE_CONFIG.DEFAULT_SCALE): number {
   return (Math.random() * 2 - 1) * scale;
 }
 
-function scoreWithNoise(score: number, scale = 0.06): number {
+function scoreWithNoise(score: number, scale: number = NOISE_CONFIG.DEFAULT_SCALE): number {
   return clamp(score + randomNoise(scale), -1, 1);
 }
 
-function resolveNoResponse(score: number, baseProbability = 0.02): boolean {
-  const uncertaintyBoost = Math.max(0, 0.12 - Math.abs(score)) * 0.25;
+function resolveNoResponse(score: number, baseProbability: number = NO_RESPONSE_CONFIG.BASE_PROBABILITY): boolean {
+  const uncertaintyBoost = Math.max(0, NO_RESPONSE_CONFIG.UNCERTAINTY_BOOST_MAX - Math.abs(score)) * NO_RESPONSE_CONFIG.UNCERTAINTY_BOOST_MULTIPLIER;
   return Math.random() < baseProbability + uncertaintyBoost;
 }
 
-function confidenceFromScore(score: number, stateConfidence = 0.6): number {
-  return clamp(0.45 + Math.abs(score) * 0.35 + stateConfidence * 0.2, 0.2, 0.98);
+function confidenceFromScore(score: number, stateConfidence: number = CONFIDENCE_CALCULATION.DEFAULT_STATE_CONFIDENCE): number {
+  return clamp(
+    CONFIDENCE_CALCULATION.BASE + 
+    Math.abs(score) * CONFIDENCE_CALCULATION.SCORE_FACTOR + 
+    stateConfidence * CONFIDENCE_CALCULATION.STATE_CONFIDENCE_FACTOR,
+    CONFIDENCE_CALCULATION.MIN_FROM_SCORE,
+    CONFIDENCE_CALCULATION.MAX_FROM_SCORE
+  );
 }
 
 function getRequiredTopicState(
@@ -57,9 +69,9 @@ export function resolveApprovalQuestion(
   topicStates: TopicState[],
 ): ResolverResult<ApprovalAnswer> {
   const state = getRequiredTopicState(topicStates, 'government_approval');
-  const score = scoreWithNoise(state.score, 0.07);
+  const score = scoreWithNoise(state.score, NOISE_CONFIG.APPROVAL_SCALE);
 
-  if (resolveNoResponse(score, 0.02)) {
+  if (resolveNoResponse(score, NO_RESPONSE_CONFIG.BASE_PROBABILITY)) {
     return {
       value: 'no_response',
       confidence: 0.25,
@@ -83,9 +95,9 @@ export function resolveCountryDirectionQuestion(
   topicStates: TopicState[],
 ): ResolverResult<CountryDirectionAnswer> {
   const state = getRequiredTopicState(topicStates, 'country_direction');
-  const score = scoreWithNoise(state.score, 0.07);
+  const score = scoreWithNoise(state.score, NOISE_CONFIG.DIRECTION_SCALE);
 
-  if (resolveNoResponse(score, 0.02)) {
+  if (resolveNoResponse(score, NO_RESPONSE_CONFIG.BASE_PROBABILITY)) {
     return {
       value: 'no_response',
       confidence: 0.25,
@@ -109,9 +121,9 @@ export function resolveOptimismQuestion(
   topicStates: TopicState[],
 ): ResolverResult<OptimismAnswer> {
   const state = getRequiredTopicState(topicStates, 'country_optimism');
-  const score = scoreWithNoise(state.score, 0.08);
+  const score = scoreWithNoise(state.score, NOISE_CONFIG.OPTIMISM_SCALE);
 
-  if (resolveNoResponse(score, 0.03)) {
+  if (resolveNoResponse(score, NO_RESPONSE_CONFIG.OPTIMISM)) {
     return {
       value: 'no_response',
       confidence: 0.25,
@@ -122,11 +134,11 @@ export function resolveOptimismQuestion(
   let value: OptimismAnswer;
 
   // Thresholds más estrechos para capturar más extremos
-  if (score >= 0.4) {
+  if (score >= SCORE_THRESHOLDS.VERY_EXTREME) {
     value = 'very_optimistic';
   } else if (score >= 0) {
     value = 'optimistic';
-  } else if (score <= -0.4) {
+  } else if (score <= -SCORE_THRESHOLDS.VERY_EXTREME) {
     value = 'very_pessimistic';
   } else {
     value = 'pessimistic';
@@ -144,9 +156,9 @@ export function resolveEconomicPerceptionQuestion(
   topic: TopicKey,
 ): ResolverResult<EconomicPerceptionAnswer> {
   const state = getRequiredTopicState(topicStates, topic);
-  const score = scoreWithNoise(state.score, 0.08);
+  const score = scoreWithNoise(state.score, NOISE_CONFIG.ECONOMIC_SCALE);
 
-  if (resolveNoResponse(score, 0.025)) {
+  if (resolveNoResponse(score, NO_RESPONSE_CONFIG.ECONOMIC)) {
     return {
       value: 'no_response',
       confidence: 0.25,
@@ -157,11 +169,11 @@ export function resolveEconomicPerceptionQuestion(
   let value: EconomicPerceptionAnswer;
 
   // Thresholds más estrechos para capturar más extremos
-  if (score >= 0.4) {
+  if (score >= SCORE_THRESHOLDS.VERY_EXTREME) {
     value = 'very_good';
   } else if (score >= 0) {
     value = 'good';
-  } else if (score <= -0.4) {
+  } else if (score <= -SCORE_THRESHOLDS.VERY_EXTREME) {
     value = 'very_bad';
   } else {
     value = 'bad';
@@ -178,9 +190,9 @@ export function resolveSecurityPerceptionQuestion(
   topicStates: TopicState[],
 ): ResolverResult<SecurityPerceptionAnswer> {
   const state = getRequiredTopicState(topicStates, 'security_perception');
-  const score = scoreWithNoise(state.score, 0.08);
+  const score = scoreWithNoise(state.score, NOISE_CONFIG.SECURITY_SCALE);
 
-  if (resolveNoResponse(score, 0.025)) {
+  if (resolveNoResponse(score, NO_RESPONSE_CONFIG.SECURITY)) {
     return {
       value: 'no_response',
       confidence: 0.25,
@@ -190,11 +202,11 @@ export function resolveSecurityPerceptionQuestion(
 
   let value: SecurityPerceptionAnswer;
 
-  if (score >= 0.5) {
+  if (score >= SCORE_THRESHOLDS.SECURITY_VERY_EXTREME) {
     value = 'very_safe';
   } else if (score >= 0) {
     value = 'safe';
-  } else if (score <= -0.5) {
+  } else if (score <= -SCORE_THRESHOLDS.SECURITY_VERY_EXTREME) {
     value = 'very_unsafe';
   } else {
     value = 'unsafe';
@@ -211,9 +223,9 @@ export function resolveIdeologyQuestion(
   topicStates: TopicState[],
 ): ResolverResult<PoliticalIdentityAnswer> {
   const state = getRequiredTopicState(topicStates, 'political_identity');
-  const score = scoreWithNoise(state.score, 0.06);
+  const score = scoreWithNoise(state.score, NOISE_CONFIG.IDEOLOGY_SCALE);
 
-  if (resolveNoResponse(score, 0.05)) {
+  if (resolveNoResponse(score, NO_RESPONSE_CONFIG.IDEOLOGY)) {
     return {
       value: 'no_response',
       confidence: 0.25,
@@ -224,16 +236,16 @@ export function resolveIdeologyQuestion(
   let value: PoliticalIdentityAnswer;
 
   // Independent: score muy cercano a 0 con baja confianza
-  if (Math.abs(score) < 0.10 && state.confidence < 0.65) {
+  if (Math.abs(score) < SCORE_THRESHOLDS.IDEOLOGY_CENTER && state.confidence < SCORE_THRESHOLDS.INDEPENDENT_MAX_CONFIDENCE) {
     value = 'independent';
-  } else if (score >= 0.55) {
+  } else if (score >= SCORE_THRESHOLDS.IDEOLOGY_EXTREME) {
     value = 'right';
-  } else if (score >= 0.18) {
+  } else if (score >= SCORE_THRESHOLDS.IDEOLOGY_MODERATE) {
     value = 'center_right';
-  } else if (score > -0.18 && score < 0.18) {
+  } else if (score > -SCORE_THRESHOLDS.IDEOLOGY_MODERATE && score < SCORE_THRESHOLDS.IDEOLOGY_MODERATE) {
     // Centro más estrecho: solo scores muy cercanos a 0
     value = 'center';
-  } else if (score > -0.55) {
+  } else if (score > -SCORE_THRESHOLDS.IDEOLOGY_EXTREME) {
     value = 'center_left';
   } else {
     value = 'left';

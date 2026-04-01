@@ -1,5 +1,20 @@
 import type { TopicKey } from '../../types/opinion';
 import type { TopicState } from './types';
+import {
+  TOPIC_SEED_CONFIG,
+  AGE_SCORES,
+  POLITICAL_IDENTITY_WEIGHTS,
+  ECONOMY_PERSONAL_WEIGHTS,
+  ECONOMY_NATIONAL_WEIGHTS,
+  EMPLOYMENT_WEIGHTS,
+  CONSUMPTION_WEIGHTS,
+  INSTITUTIONAL_TRUST_WEIGHTS,
+  SECURITY_PERCEPTION_WEIGHTS,
+  COUNTRY_OPTIMISM_WEIGHTS,
+  COUNTRY_DIRECTION_WEIGHTS,
+  GOVERNMENT_APPROVAL_WEIGHTS,
+  TOPIC_STATE_BUILDER,
+} from './engineConfig';
 
 /**
  * Tipo mínimo esperado del agente sintético para inicializar estados.
@@ -64,18 +79,17 @@ function educationScore(level?: string): number {
 /** Score aproximado según ingreso */
 function incomeScore(incomeDecile?: number): number {
   if (!incomeDecile || Number.isNaN(incomeDecile)) return 0;
-  const centered = (incomeDecile - 5.5) / 4.5;
-  // Mantenido en 0.4 - el ajuste se hace en los pesos de las funciones
-  return clamp(centered, -1, 1) * 0.4;
+  const centered = (incomeDecile - TOPIC_SEED_CONFIG.INCOME_DECILE_CENTER) / TOPIC_SEED_CONFIG.INCOME_DECILE_DIVISOR;
+  return clamp(centered, -1, 1) * TOPIC_SEED_CONFIG.INCOME_SCORE_MULTIPLIER;
 }
 
 /** Score aproximado según edad */
 function ageScore(age?: number): number {
   if (age === undefined || age === null) return 0;
-  if (age < 30) return 0.15;
-  if (age < 50) return 0.05;
-  if (age < 70) return -0.05;
-  return -0.1;
+  if (age < 30) return AGE_SCORES.YOUNG;
+  if (age < 50) return AGE_SCORES.ADULT;
+  if (age < 70) return AGE_SCORES.MIDDLE_AGE;
+  return AGE_SCORES.SENIOR;
 }
 
 /** Componentes base calculados una sola vez por agente */
@@ -109,14 +123,14 @@ function calculateBaseComponents(agent: TopicStateSeedAgent): BaseComponents {
 
   const povertyPenalty =
     agent.povertyStatus && ['extreme_poverty', 'poverty'].includes(agent.povertyStatus)
-      ? -0.25  // Reducido de -0.45 para no afectar tanto la economía personal
+      ? TOPIC_SEED_CONFIG.POVERTY_PENALTY_HIGH
       : agent.povertyStatus === 'vulnerable'
-        ? -0.1   // Reducido de -0.2
+        ? TOPIC_SEED_CONFIG.POVERTY_PENALTY_LOW
         : 0;
 
   const urbanPenalty =
     agent.regionCode === 'CL-RM' || agent.regionCode === 'RM'
-      ? -0.1
+      ? TOPIC_SEED_CONFIG.URBAN_PENALTY
       : 0;
 
   // Generar ruido una sola vez por estimación
@@ -128,46 +142,41 @@ function calculateBaseComponents(agent: TopicStateSeedAgent): BaseComponents {
     connectivity,
     povertyPenalty,
     urbanPenalty,
-    noisePolitical: randomNoise(0.12),
-    noiseEconomyPersonal: randomNoise(0.1),
-    noiseEconomyNational: randomNoise(0.14),
-    noiseEmployment: randomNoise(0.12),
-    noiseConsumption: randomNoise(0.1),
-    noiseInstitutional: randomNoise(0.15),
-    noiseSecurity: randomNoise(0.18),
-    noiseOptimism: randomNoise(0.15),
-    noiseDirection: randomNoise(0.12),
-    noiseGovernment: randomNoise(0.12),
+    noisePolitical: randomNoise(TOPIC_SEED_CONFIG.DEFAULT_NOISE_SCALE * POLITICAL_IDENTITY_WEIGHTS.NOISE_MULTIPLIER),
+    noiseEconomyPersonal: randomNoise(TOPIC_SEED_CONFIG.DEFAULT_NOISE_SCALE * ECONOMY_PERSONAL_WEIGHTS.NOISE_MULTIPLIER),
+    noiseEconomyNational: randomNoise(TOPIC_SEED_CONFIG.DEFAULT_NOISE_SCALE * ECONOMY_NATIONAL_WEIGHTS.NOISE_MULTIPLIER),
+    noiseEmployment: randomNoise(TOPIC_SEED_CONFIG.DEFAULT_NOISE_SCALE),
+    noiseConsumption: randomNoise(TOPIC_SEED_CONFIG.DEFAULT_NOISE_SCALE),
+    noiseInstitutional: randomNoise(TOPIC_SEED_CONFIG.DEFAULT_NOISE_SCALE),
+    noiseSecurity: randomNoise(TOPIC_SEED_CONFIG.DEFAULT_NOISE_SCALE),
+    noiseOptimism: randomNoise(TOPIC_SEED_CONFIG.DEFAULT_NOISE_SCALE * COUNTRY_OPTIMISM_WEIGHTS.NOISE_MULTIPLIER),
+    noiseDirection: randomNoise(TOPIC_SEED_CONFIG.DEFAULT_NOISE_SCALE * COUNTRY_DIRECTION_WEIGHTS.NOISE_MULTIPLIER),
+    noiseGovernment: randomNoise(TOPIC_SEED_CONFIG.DEFAULT_NOISE_SCALE * GOVERNMENT_APPROVAL_WEIGHTS.NOISE_MULTIPLIER),
   };
 }
 
 /** Estimación básica de identidad política latente */
 function estimatePoliticalIdentity(components: BaseComponents): number {
-  // Aumentado peso de ingreso y ruido para más dispersión
   const base =
-    components.income * 0.45 +
-    components.age * 0.2 +
-    components.connectivity * 0.08 +
-    components.digital * 0.08 -
-    components.education * 0.1 +
-    components.noisePolitical * 1.5; // Más ruido para dispersión
+    components.income * POLITICAL_IDENTITY_WEIGHTS.INCOME +
+    components.age * POLITICAL_IDENTITY_WEIGHTS.AGE +
+    components.connectivity * POLITICAL_IDENTITY_WEIGHTS.CONNECTIVITY +
+    components.digital * POLITICAL_IDENTITY_WEIGHTS.DIGITAL +
+    components.education * POLITICAL_IDENTITY_WEIGHTS.EDUCATION +
+    components.noisePolitical;
 
   return safeScore(base);
 }
 
 /** Estimación de percepción económica personal */
 function estimateEconomyPersonal(components: BaseComponents): number {
-  // CALIBRACIÓN v4.7: Ajuste mínimo conjunto - bajar ambas economías
-  // Objetivo: mantener separación personal > nacional pero bajar nivel general
-  // Ajuste: sesgo de +0.02 a -0.03 para bajar de 64.6% hacia ~52%
-  // Resultado previo: 64.6% positivos (alto), target: ~52%
   const base =
-    components.income * 0.40 +      // Mantenido en 0.40
-    components.connectivity * 0.15 + // Conectividad como proxy de estabilidad
-    components.digital * 0.08 +      // Exposición digital
-    components.age * 0.05 +          // Edad tiene ligero efecto
-    -0.03 +                          // Sesgo base ajustado (era +0.02)
-    components.noiseEconomyPersonal * 1.0; // Ruido independiente
+    components.income * ECONOMY_PERSONAL_WEIGHTS.INCOME +
+    components.connectivity * ECONOMY_PERSONAL_WEIGHTS.CONNECTIVITY +
+    components.digital * ECONOMY_PERSONAL_WEIGHTS.DIGITAL +
+    components.age * ECONOMY_PERSONAL_WEIGHTS.AGE +
+    ECONOMY_PERSONAL_WEIGHTS.BASE_BIAS +
+    components.noiseEconomyPersonal;
 
   return safeScore(base);
 }
@@ -178,18 +187,14 @@ function estimateEconomyNational(
   economyPersonal: number,
   politicalIdentity: number,
 ): number {
-  // CALIBRACIÓN v4.8: Ajuste fino - subir ligeramente economy_national
-  // Objetivo: acercar a target de ~36% sin afectar economy_personal
-  // Ajuste: de -0.08 a -0.05 para subir de 26.3% hacia ~36%
-  // Resultado previo: 26.3% positivos (bajo), target: ~36%
   const base =
-    economyPersonal * 0.12 +        // Dependencia de economía personal
-    politicalIdentity * 0.08 +      // Ideología influye en visión macro
-    components.income * 0.05 +      // Ingreso personal influye menos
-    components.education * 0.10 +   // Educación influye en perspectiva macro
-    components.connectivity * 0.05 + // Conectividad tiene efecto menor
-    -0.05 +                          // Sesgo base ajustado (era -0.08)
-    components.noiseEconomyNational * 1.1; // Ruido independiente
+    economyPersonal * ECONOMY_NATIONAL_WEIGHTS.ECONOMY_PERSONAL +
+    politicalIdentity * ECONOMY_NATIONAL_WEIGHTS.POLITICAL_IDENTITY +
+    components.income * ECONOMY_NATIONAL_WEIGHTS.INCOME +
+    components.education * ECONOMY_NATIONAL_WEIGHTS.EDUCATION +
+    components.connectivity * ECONOMY_NATIONAL_WEIGHTS.CONNECTIVITY +
+    ECONOMY_NATIONAL_WEIGHTS.BASE_BIAS +
+    components.noiseEconomyNational;
 
   return safeScore(base);
 }
@@ -201,8 +206,8 @@ function estimateEmployment(
   economyPersonal: number,
 ): number {
   const base =
-    economyNational * 0.55 +
-    economyPersonal * 0.2 +
+    economyNational * EMPLOYMENT_WEIGHTS.ECONOMY_NATIONAL +
+    economyPersonal * EMPLOYMENT_WEIGHTS.ECONOMY_PERSONAL +
     components.noiseEmployment;
 
   return safeScore(base);
@@ -214,8 +219,8 @@ function estimateConsumption(
   economyPersonal: number,
 ): number {
   const base =
-    economyPersonal * 0.6 +
-    components.income * 0.2 +
+    economyPersonal * CONSUMPTION_WEIGHTS.ECONOMY_PERSONAL +
+    components.income * CONSUMPTION_WEIGHTS.INCOME +
     components.noiseConsumption;
 
   return safeScore(base);
@@ -224,9 +229,9 @@ function estimateConsumption(
 /** Estimación de confianza institucional */
 function estimateInstitutionalTrust(components: BaseComponents): number {
   const base =
-    components.education * 0.2 +
-    components.age * 0.15 +
-    components.connectivity * 0.1 +
+    components.education * INSTITUTIONAL_TRUST_WEIGHTS.EDUCATION +
+    components.age * INSTITUTIONAL_TRUST_WEIGHTS.AGE +
+    components.connectivity * INSTITUTIONAL_TRUST_WEIGHTS.CONNECTIVITY +
     components.noiseInstitutional;
 
   return safeScore(base);
@@ -235,8 +240,8 @@ function estimateInstitutionalTrust(components: BaseComponents): number {
 /** Estimación de percepción de seguridad */
 function estimateSecurityPerception(components: BaseComponents): number {
   const base =
-    components.povertyPenalty +
-    components.urbanPenalty +
+    (SECURITY_PERCEPTION_WEIGHTS.USES_POVERTY_PENALTY ? components.povertyPenalty : 0) +
+    (SECURITY_PERCEPTION_WEIGHTS.USES_URBAN_PENALTY ? components.urbanPenalty : 0) +
     components.noiseSecurity;
 
   return safeScore(base);
@@ -249,19 +254,13 @@ function estimateCountryOptimism(
   securityPerception: number,
   economyPersonal: number,
 ): number {
-  // CALIBRACIÓN v4.10: Ajustar optimismo - reducir bias
-  // Objetivo: bajar de 79.7% hacia ~60-62%
-  // Problema: v4.9 se pasó (79.7% vs target 62%)
-  // Cambios:
-  // - Reducir bias base de +0.15 a +0.06 (mitad aprox)
-  // - Mantener pesos ajustados de v4.9
   const base =
-    economyNational * 0.15 +        // Mantenido de v4.9
-    economyPersonal * 0.25 +        // Mantenido de v4.9
-    securityPerception * 0.05 +     // Mantenido de v4.9
-    components.income * 0.1 +       // Mantenido
-    0.06 +                          // AJUSTADO: bias base reducido (era 0.15)
-    components.noiseOptimism * 1.4; // Mantenido
+    economyNational * COUNTRY_OPTIMISM_WEIGHTS.ECONOMY_NATIONAL +
+    economyPersonal * COUNTRY_OPTIMISM_WEIGHTS.ECONOMY_PERSONAL +
+    securityPerception * COUNTRY_OPTIMISM_WEIGHTS.SECURITY_PERCEPTION +
+    components.income * COUNTRY_OPTIMISM_WEIGHTS.INCOME +
+    COUNTRY_OPTIMISM_WEIGHTS.BASE_BIAS +
+    components.noiseOptimism;
 
   return safeScore(base);
 }
@@ -274,16 +273,13 @@ function estimateCountryDirection(
   securityPerception: number,
   politicalIdentity: number,
 ): number {
-  // FIX q_direction: Reducido peso de optimism de 0.2 a 0.05 para evitar acoplamiento excesivo
-  // que causaba comportamiento inconsistente en escenarios económicos negativos.
-  // Aumentado ligeramente economyNational para mantener sensibilidad a factores económicos.
   const base =
-    optimism * 0.05 +        // Reducido de 0.2: optimism es volátil, no debería dominar
-    economyNational * 0.25 + // Aumentado de 0.2: más peso a factores económicos concretos
-    securityPerception * 0.15 + // Aumentado ligeramente
-    politicalIdentity * 0.20 +  // Aumentado: identidad política es más estable
-    components.income * 0.15 +  // Aumentado: ingreso es factor objetivo
-    components.noiseDirection * 1.3;
+    optimism * COUNTRY_DIRECTION_WEIGHTS.OPTIMISM +
+    economyNational * COUNTRY_DIRECTION_WEIGHTS.ECONOMY_NATIONAL +
+    securityPerception * COUNTRY_DIRECTION_WEIGHTS.SECURITY_PERCEPTION +
+    politicalIdentity * COUNTRY_DIRECTION_WEIGHTS.POLITICAL_IDENTITY +
+    components.income * COUNTRY_DIRECTION_WEIGHTS.INCOME +
+    components.noiseDirection;
 
   return safeScore(base);
 }
@@ -295,13 +291,12 @@ function estimateGovernmentApproval(
   politicalIdentity: number,
   optimism: number,
 ): number {
-  // Reducida cascada: menos dependencia de direction/optimism, más independencia
   const base =
-    direction * 0.25 +
-    politicalIdentity * 0.3 +
-    optimism * 0.1 +
-    components.income * 0.1 +
-    components.noiseGovernment * 1.4;
+    direction * GOVERNMENT_APPROVAL_WEIGHTS.COUNTRY_DIRECTION +
+    politicalIdentity * GOVERNMENT_APPROVAL_WEIGHTS.POLITICAL_IDENTITY +
+    optimism * GOVERNMENT_APPROVAL_WEIGHTS.OPTIMISM +
+    components.income * GOVERNMENT_APPROVAL_WEIGHTS.INCOME +
+    components.noiseGovernment;
 
   return safeScore(base);
 }
@@ -310,9 +305,21 @@ function buildTopicState(topic: TopicKey, score: number): TopicState {
   return {
     topic,
     score: safeScore(score),
-    confidence: clamp(0.55 + Math.abs(score) * 0.25 + randomNoise(0.04), 0.2, 0.95),
-    salience: clamp(0.5 + Math.abs(score) * 0.15 + randomNoise(0.03), 0.2, 0.95),
-    volatility: clamp(0.45 - Math.abs(score) * 0.15 + randomNoise(0.04), 0.05, 0.9),
+    confidence: clamp(
+      TOPIC_STATE_BUILDER.BASE_CONFIDENCE + Math.abs(score) * TOPIC_STATE_BUILDER.SCORE_CONFIDENCE_FACTOR + randomNoise(TOPIC_STATE_BUILDER.CONFIDENCE_NOISE_SCALE),
+      TOPIC_STATE_BUILDER.MIN_CONFIDENCE,
+      TOPIC_STATE_BUILDER.MAX_CONFIDENCE
+    ),
+    salience: clamp(
+      TOPIC_STATE_BUILDER.BASE_SALIENCE + Math.abs(score) * TOPIC_STATE_BUILDER.SCORE_SALIENCE_FACTOR + randomNoise(TOPIC_STATE_BUILDER.SALIENCE_NOISE_SCALE),
+      TOPIC_STATE_BUILDER.MIN_SALIENCE,
+      TOPIC_STATE_BUILDER.MAX_SALIENCE
+    ),
+    volatility: clamp(
+      TOPIC_STATE_BUILDER.BASE_VOLATILITY + Math.abs(score) * TOPIC_STATE_BUILDER.SCORE_VOLATILITY_FACTOR + randomNoise(TOPIC_STATE_BUILDER.VOLATILITY_NOISE_SCALE),
+      TOPIC_STATE_BUILDER.MIN_VOLATILITY,
+      TOPIC_STATE_BUILDER.MAX_VOLATILITY
+    ),
     updatedAt: new Date(),
   };
 }
