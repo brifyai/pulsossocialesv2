@@ -24,7 +24,7 @@ import {
   type DbUser,
 } from '../supabase/repositories/userRepository';
 import { hashPassword, verifyPassword, isLegacyHash } from './passwordHasher';
-import { createSession, isSessionValid as checkSessionValid } from './tokenManager';
+import { createSession } from './tokenManager';
 import { loginRateLimiter } from './rateLimiter';
 import { auditLogger } from './auditLog';
 
@@ -58,7 +58,6 @@ export interface AuthResult {
 // ===========================================
 
 const SESSION_KEY = 'pulsossociales_session';
-const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 días
 
 function saveSession(session: AuthSession): void {
   try {

@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { SurveyRun, SurveyDefinition, AgentResponse } from '../../../types/survey';
+import type { AgentResponse } from '../../../types/survey';
 import type { SyntheticAgent, Sex, EducationLevel, SyntheticAgentType } from '../../../types/agent';
 
 // Mock de las dependencias
@@ -43,7 +43,6 @@ import { generateSurveyResponses } from '../syntheticResponseEngine';
 // Importar las funciones a testear
 import {
   runSurvey,
-  getSurveyRun,
   runSurveyWithFixedAgents,
   runBaselineAndScenario,
   createSurvey

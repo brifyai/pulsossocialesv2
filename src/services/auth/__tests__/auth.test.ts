@@ -3,7 +3,7 @@
  * Verifica PBKDF2, rate limiting, tokens seguros y audit logging
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   hashPassword,
   verifyPassword,
@@ -11,7 +11,7 @@ import {
 } from '../passwordHasher';
 import { createSession, isSessionValid } from '../tokenManager';
 import { RateLimiter } from '../rateLimiter';
-import { auditLogger, type AuditEventType } from '../auditLog';
+import { auditLogger } from '../auditLog';
 
 describe('Password Hasher (PBKDF2)', () => {
   it('debe generar hashes PBKDF2 correctamente', async () => {

@@ -51,7 +51,7 @@ class AuditLogger {
     }
 
     // TODO: En producción, enviar a servicio de logging (e.g., Supabase, LogRocket, etc.)
-    this.sendToRemote(fullEvent).catch(() => {
+    this.sendToRemote(fullEvent).catch((_error) => {
       // Silenciar errores de logging remoto
     });
   }
@@ -80,7 +80,7 @@ class AuditLogger {
   /**
    * Enviar evento a servicio remoto (placeholder)
    */
-  private async sendToRemote(event: AuditEvent): Promise<void> {
+  private async sendToRemote(_event: AuditEvent): Promise<void> {
     // Placeholder: implementar envío a Supabase o servicio de logging
     // Ejemplo:
     // await supabase.from('audit_logs').insert(event);
