@@ -14,16 +14,13 @@ import {
   NO_RESPONSE_CONFIG,
   CONFIDENCE_CALCULATION,
   SCORE_THRESHOLDS,
+  randomNoise,
 } from './engineConfig';
 
 interface ResolverResult<TValue> {
   value: TValue;
   confidence: number;
   reasoning: string;
-}
-
-function randomNoise(scale: number = NOISE_CONFIG.DEFAULT_SCALE): number {
-  return (Math.random() * 2 - 1) * scale;
 }
 
 function scoreWithNoise(score: number, scale: number = NOISE_CONFIG.DEFAULT_SCALE): number {
@@ -168,21 +165,27 @@ export function resolveEconomicPerceptionQuestion(
 
   let value: EconomicPerceptionAnswer;
 
-  // Thresholds más estrechos para capturar más extremos
+  // CALIBRACIÓN v5.0: Agregado 'progressing' como respuesta intermedia
+  // Orden: very_good > good > progressing > bad > very_bad
   if (score >= SCORE_THRESHOLDS.VERY_EXTREME) {
     value = 'very_good';
-  } else if (score >= 0) {
+  } else if (score >= SCORE_THRESHOLDS.ECONOMIC_PROGRESSING_MAX) {
     value = 'good';
-  } else if (score <= -SCORE_THRESHOLDS.VERY_EXTREME) {
-    value = 'very_bad';
-  } else {
+  } else if (score >= SCORE_THRESHOLDS.ECONOMIC_PROGRESSING_MIN) {
+    // Zona de transición: "progressing" (ni bueno ni malo, en progreso)
+    value = 'progressing';
+  } else if (score >= -SCORE_THRESHOLDS.VERY_EXTREME) {
     value = 'bad';
+  } else {
+    value = 'very_bad';
   }
 
   return {
     value,
     confidence: confidenceFromScore(score, state.confidence),
-    reasoning: 'La respuesta surge de la percepción económica latente del agente.',
+    reasoning: value === 'progressing'
+      ? 'El agente percibe que la situación está en transición o progresando.'
+      : 'La respuesta surge de la percepción económica latente del agente.',
   };
 }
 

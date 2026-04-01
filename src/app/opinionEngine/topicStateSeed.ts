@@ -14,6 +14,7 @@ import {
   COUNTRY_DIRECTION_WEIGHTS,
   GOVERNMENT_APPROVAL_WEIGHTS,
   TOPIC_STATE_BUILDER,
+  randomNoise,
 } from './engineConfig';
 
 /**
@@ -37,11 +38,6 @@ export interface TopicStateSeedAgent {
 /** Limita un valor numérico a un rango dado */
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
-}
-
-/** Ruido aleatorio pequeño para evitar agentes excesivamente deterministas */
-export function randomNoise(scale = 0.08): number {
-  return (Math.random() * 2 - 1) * scale;
 }
 
 /** Normaliza valores posiblemente indefinidos a score seguro */

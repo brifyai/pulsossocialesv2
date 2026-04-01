@@ -57,6 +57,7 @@ export type OptimismAnswer =
 export type EconomicPerceptionAnswer =
   | 'very_good'
   | 'good'
+  | 'progressing'
   | 'bad'
   | 'very_bad'
   | 'no_response';

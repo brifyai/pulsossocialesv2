@@ -100,20 +100,20 @@ export const NOISE_CONFIG = {
 // ============================================================================
 
 export const NO_RESPONSE_CONFIG = {
-  /** Base probability of no response */
-  BASE_PROBABILITY: 0.02,
+  /** Base probability of no response (CALIBRACIÓN v5.0: ajustado de 0.02 a 0.06 para alcanzar 5-15%) */
+  BASE_PROBABILITY: 0.06,
   
   /** Uncertainty boost factor (higher when score is near 0) */
-  UNCERTAINTY_BOOST_MAX: 0.12,
+  UNCERTAINTY_BOOST_MAX: 0.15,
   
-  /** Uncertainty boost multiplier */
-  UNCERTAINTY_BOOST_MULTIPLIER: 0.25,
+  /** Uncertainty boost multiplier (CALIBRACIÓN v5.0: ajustado de 0.25 a 0.35) */
+  UNCERTAINTY_BOOST_MULTIPLIER: 0.35,
   
-  /** Specific probabilities by question type */
-  OPTIMISM: 0.03,
-  ECONOMIC: 0.025,
-  SECURITY: 0.025,
-  IDEOLOGY: 0.05,
+  /** Specific probabilities by question type (CALIBRACIÓN v5.0: aumentados) */
+  OPTIMISM: 0.07,
+  ECONOMIC: 0.06,
+  SECURITY: 0.06,
+  IDEOLOGY: 0.08,
 } as const;
 
 // ============================================================================
@@ -140,29 +140,6 @@ export const CONFIDENCE_CALCULATION = {
   DEFAULT_STATE_CONFIDENCE: 0.6,
 } as const;
 
-// ============================================================================
-// SCORE THRESHOLDS
-// ============================================================================
-
-export const SCORE_THRESHOLDS = {
-  /** Threshold for "very" positive/negative (optimism, economy) */
-  VERY_EXTREME: 0.4,
-  
-  /** Threshold for "very" positive/negative (security) */
-  SECURITY_VERY_EXTREME: 0.5,
-  
-  /** Threshold for right/left ideology */
-  IDEOLOGY_EXTREME: 0.55,
-  
-  /** Threshold for center-right/center-left */
-  IDEOLOGY_MODERATE: 0.18,
-  
-  /** Threshold for center (independent check) */
-  IDEOLOGY_CENTER: 0.10,
-  
-  /** Maximum confidence for independent classification */
-  INDEPENDENT_MAX_CONFIDENCE: 0.65,
-} as const;
 
 // ============================================================================
 // TOPIC STATE SEED CONFIGURATION
@@ -363,6 +340,30 @@ export const SECURITY_PERCEPTION_WEIGHTS = {
 } as const;
 
 // ============================================================================
+// COUNTRY DIRECTION ESTIMATION WEIGHTS
+// ============================================================================
+
+export const COUNTRY_DIRECTION_WEIGHTS = {
+  /** Optimism dependency */
+  OPTIMISM: 0.35,
+  
+  /** Economy national dependency */
+  ECONOMY_NATIONAL: 0.15,
+  
+  /** Security perception dependency */
+  SECURITY_PERCEPTION: 0.05,
+  
+  /** Political identity dependency */
+  POLITICAL_IDENTITY: 0.15,
+  
+  /** Income weight */
+  INCOME: 0.05,
+  
+  /** Noise multiplier */
+  NOISE_MULTIPLIER: 1.3,
+} as const;
+
+// ============================================================================
 // COUNTRY OPTIMISM ESTIMATION WEIGHTS
 // ============================================================================
 
@@ -379,35 +380,39 @@ export const COUNTRY_OPTIMISM_WEIGHTS = {
   /** Income weight */
   INCOME: 0.1,
   
-  /** Base bias (CALIBRACIÓN v4.10: ajustado de +0.15 a +0.06) */
-  BASE_BIAS: 0.06,
+  /** Base bias (CALIBRACIÓN v5.1: ajustado de -0.08 a +0.04 para aumentar optimismo) */
+  BASE_BIAS: 0.04,
   
   /** Noise multiplier */
   NOISE_MULTIPLIER: 1.4,
 } as const;
 
 // ============================================================================
-// COUNTRY DIRECTION ESTIMATION WEIGHTS
+// SCORE THRESHOLDS
 // ============================================================================
 
-export const COUNTRY_DIRECTION_WEIGHTS = {
-  /** Optimism dependency (reducido de 0.2 a 0.05 para evitar acoplamiento excesivo) */
-  OPTIMISM: 0.05,
+export const SCORE_THRESHOLDS = {
+  /** Threshold for "very" positive/negative (optimism, economy) */
+  VERY_EXTREME: 0.4,
   
-  /** Economy national dependency (aumentado de 0.2 a 0.25) */
-  ECONOMY_NATIONAL: 0.25,
+  /** Threshold for "very" positive/negative (security) */
+  SECURITY_VERY_EXTREME: 0.5,
   
-  /** Security perception dependency (aumentado ligeramente) */
-  SECURITY_PERCEPTION: 0.15,
+  /** Threshold for right/left ideology */
+  IDEOLOGY_EXTREME: 0.55,
   
-  /** Political identity dependency (aumentado) */
-  POLITICAL_IDENTITY: 0.20,
+  /** Threshold for center-right/center-left */
+  IDEOLOGY_MODERATE: 0.18,
   
-  /** Income dependency (aumentado) */
-  INCOME: 0.15,
+  /** Threshold for center (independent check) */
+  IDEOLOGY_CENTER: 0.10,
   
-  /** Noise multiplier */
-  NOISE_MULTIPLIER: 1.3,
+  /** Maximum confidence for independent classification */
+  INDEPENDENT_MAX_CONFIDENCE: 0.65,
+  
+  /** Threshold for "progressing" in economic questions (CALIBRACIÓN v5.2: ajustado de ±0.08 a ±0.04 para reducir "progressing") */
+  ECONOMIC_PROGRESSING_MIN: -0.04,
+  ECONOMIC_PROGRESSING_MAX: 0.04,
 } as const;
 
 // ============================================================================
@@ -513,8 +518,9 @@ export function clamp(value: number, min: number, max: number): number {
 
 /**
  * Generates random noise within a given scale
+ * @param scale - The scale of the noise (default: NOISE_CONFIG.DEFAULT_SCALE)
  */
-export function randomNoise(scale: number): number {
+export function randomNoise(scale: number = NOISE_CONFIG.DEFAULT_SCALE): number {
   return (Math.random() * 2 - 1) * scale;
 }
 
