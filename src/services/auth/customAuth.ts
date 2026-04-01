@@ -3,7 +3,14 @@
  * Servicio de autenticación usando tabla propia (NO Supabase Auth)
  *
  * Este servicio reemplaza Supabase Auth para evitar dependencia de GoTrue.
- * Usa la tabla 'users' directamente con bcrypt para passwords.
+ * Usa la tabla 'users' directamente con PBKDF2 para passwords.
+ *
+ * MEJORAS DE SEGURIDAD:
+ * - PBKDF2 con 100K iteraciones para hashing de passwords
+ * - Tokens criptográficamente seguros (crypto.getRandomValues)
+ * - Rate limiting para protección contra fuerza bruta
+ * - Audit logging para eventos de autenticación
+ * - Migración automática de hashes legacy
  */
 
 import {
@@ -14,7 +21,12 @@ import {
   updatePassword as updateUserPassword,
   isEmailTaken,
   type User,
+  type DbUser,
 } from '../supabase/repositories/userRepository';
+import { hashPassword, verifyPassword, isLegacyHash } from './passwordHasher';
+import { createSession, isSessionValid as checkSessionValid } from './tokenManager';
+import { loginRateLimiter } from './rateLimiter';
+import { auditLogger } from './auditLog';
 
 // ===========================================
 // Types (compatibles con el auth service anterior)
@@ -42,42 +54,11 @@ export interface AuthResult {
 }
 
 // ===========================================
-// Password Hashing (simple, sin bcrypt para evitar dependencias)
-// ===========================================
-
-/**
- * Genera un hash simple de password usando SHA-256 + salt
- * NOTA: En producción deberías usar bcrypt o similar
- */
-async function hashPassword(password: string): Promise<string> {
-  const salt = 'pulsossociales-salt-v1';
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password + salt);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Verifica un password contra un hash
- */
-async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  const computedHash = await hashPassword(password);
-  return computedHash === hash;
-}
-
-// ===========================================
 // Session Management
 // ===========================================
 
 const SESSION_KEY = 'pulsossociales_session';
 const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 días
-
-function generateToken(userId: string): string {
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2);
-  return `${userId}.${timestamp}.${random}`;
-}
 
 function saveSession(session: AuthSession): void {
   try {
@@ -119,6 +100,16 @@ function clearSession(): void {
 // ===========================================
 
 function mapToAuthUser(user: User): AuthUser {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name || undefined,
+    avatar: user.avatar || undefined,
+    role: user.role,
+  };
+}
+
+function mapDbUserToAuthUser(user: DbUser): AuthUser {
   return {
     id: user.id,
     email: user.email,
@@ -181,6 +172,7 @@ class CustomAuthService {
 
   /**
    * Sign in with email and password
+   * Ahora con rate limiting y audit logging
    */
   async signIn(email: string, password: string): Promise<AuthResult> {
     // Validate inputs
@@ -191,57 +183,100 @@ class CustomAuthService {
       return { success: false, error: 'La contraseña es requerida' };
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Verificar rate limiting
+    const rateLimitCheck = loginRateLimiter.isBlocked(normalizedEmail);
+    if (rateLimitCheck.blocked) {
+      const remainingTime = loginRateLimiter.formatRemainingTime(rateLimitCheck.remainingMs || 0);
+      auditLogger.log({
+        type: 'LOGIN_BLOCKED',
+        email: normalizedEmail,
+        details: { reason: 'rate_limit', remainingMs: rateLimitCheck.remainingMs },
+      });
+      return {
+        success: false,
+        error: `Demasiados intentos fallidos. Intenta nuevamente en ${remainingTime}.`
+      };
+    }
+
     try {
       // Buscar usuario por email (incluye password_hash)
-      const dbUser = await getUserByEmailWithPassword(email.trim().toLowerCase());
+      const dbUser = await getUserByEmailWithPassword(normalizedEmail);
 
       if (!dbUser) {
+        loginRateLimiter.recordFailedAttempt(normalizedEmail);
+        auditLogger.log({
+          type: 'LOGIN_FAILED',
+          email: normalizedEmail,
+          details: { reason: 'user_not_found' },
+        });
         return { success: false, error: 'Email o contraseña incorrectos' };
       }
 
       // Verificar password
       const isValid = await verifyPassword(password, dbUser.password_hash);
       if (!isValid) {
+        loginRateLimiter.recordFailedAttempt(normalizedEmail);
+        auditLogger.log({
+          type: 'LOGIN_FAILED',
+          email: normalizedEmail,
+          userId: dbUser.id,
+          details: { reason: 'invalid_password' },
+        });
         return { success: false, error: 'Email o contraseña incorrectos' };
       }
+
+      // Si el hash es legacy, migrar automáticamente a PBKDF2
+      if (isLegacyHash(dbUser.password_hash)) {
+        console.log('🔐 [CustomAuth] Migrando hash legacy a PBKDF2 para:', normalizedEmail);
+        const newHash = await hashPassword(password);
+        await updateUserPassword(dbUser.id, newHash);
+      }
+
+      // Resetear intentos fallidos
+      loginRateLimiter.resetAttempts(normalizedEmail);
 
       // Actualizar último login
       await updateLastLogin(dbUser.id);
 
       // Crear sesión
-      const user = mapToAuthUser({
-        id: dbUser.id,
-        email: dbUser.email,
-        name: dbUser.name,
-        avatar: dbUser.avatar,
-        role: dbUser.role,
-        isActive: dbUser.is_active,
-        emailVerified: dbUser.email_verified,
-        lastLoginAt: new Date().toISOString(),
-        createdAt: dbUser.created_at,
-      });
-
-      const token = generateToken(user.id);
+      const user = mapDbUserToAuthUser(dbUser);
+      const sessionData = createSession(user.id);
       this.session = {
         user,
-        accessToken: token,
-        expiresAt: Date.now() + SESSION_DURATION,
-        timestamp: Date.now(),
+        accessToken: sessionData.token,
+        expiresAt: sessionData.expiresAt,
+        timestamp: sessionData.createdAt,
       };
 
       // Guardar en localStorage
       saveSession(this.session);
 
+      // Log de éxito
+      auditLogger.log({
+        type: 'LOGIN_SUCCESS',
+        email: normalizedEmail,
+        userId: dbUser.id,
+        details: { sessionExpiresAt: sessionData.expiresAt },
+      });
+
       console.log('🔐 [CustomAuth] User signed in:', user.email);
       return { success: true, user };
     } catch (error) {
       console.error('[CustomAuth] Sign in error:', error);
+      auditLogger.log({
+        type: 'LOGIN_FAILED',
+        email: normalizedEmail,
+        details: { reason: 'error', error: String(error) },
+      });
       return { success: false, error: 'Error al iniciar sesión. Intenta nuevamente.' };
     }
   }
 
   /**
    * Sign up with email and password
+   * Ahora usa PBKDF2 para hashing
    */
   async signUp(
     email: string,
@@ -256,19 +291,21 @@ class CustomAuthService {
       return { success: false, error: 'La contraseña debe tener al menos 8 caracteres' };
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     try {
       // Verificar si email ya existe
-      const emailExists = await isEmailTaken(email.trim().toLowerCase());
+      const emailExists = await isEmailTaken(normalizedEmail);
       if (emailExists) {
         return { success: false, error: 'Este email ya está registrado. Intenta iniciar sesión.' };
       }
 
-      // Hash del password
+      // Hash del password con PBKDF2
       const passwordHash = await hashPassword(password);
 
       // Crear usuario
       const user = await createUser({
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         passwordHash,
         name: metadata?.name?.trim(),
         role: 'user',
@@ -279,15 +316,23 @@ class CustomAuthService {
       }
 
       // Crear sesión automáticamente (auto-login)
-      const token = generateToken(user.id);
+      const sessionData = createSession(user.id);
       this.session = {
         user: mapToAuthUser(user),
-        accessToken: token,
-        expiresAt: Date.now() + SESSION_DURATION,
-        timestamp: Date.now(),
+        accessToken: sessionData.token,
+        expiresAt: sessionData.expiresAt,
+        timestamp: sessionData.createdAt,
       };
 
       saveSession(this.session);
+
+      // Log de registro
+      auditLogger.log({
+        type: 'LOGIN_SUCCESS',
+        email: normalizedEmail,
+        userId: user.id,
+        details: { isNewUser: true },
+      });
 
       console.log('👤 [CustomAuth] User registered:', user.email);
       return { success: true, user: mapToAuthUser(user) };
@@ -301,6 +346,13 @@ class CustomAuthService {
    * Sign out
    */
   async signOut(): Promise<void> {
+    if (this.session) {
+      auditLogger.log({
+        type: 'LOGOUT',
+        email: this.session.user.email,
+        userId: this.session.user.id,
+      });
+    }
     clearSession();
     this.session = null;
     console.log('🔐 [CustomAuth] User signed out');
@@ -315,15 +367,24 @@ class CustomAuthService {
       return { success: false, error: 'El email es requerido' };
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     // Verificar que el usuario existe
-    const dbUser = await getUserByEmailWithPassword(email.trim().toLowerCase());
+    const dbUser = await getUserByEmailWithPassword(normalizedEmail);
     if (!dbUser) {
       return { success: false, error: 'No existe una cuenta con este email' };
     }
 
+    // Log de solicitud
+    auditLogger.log({
+      type: 'PASSWORD_RESET_REQUESTED',
+      email: normalizedEmail,
+      userId: dbUser.id,
+    });
+
     // En una implementación real, aquí enviaríamos un email
     // Por ahora, solo logueamos
-    console.log('📧 [CustomAuth] Password reset requested for:', email);
+    console.log('📧 [CustomAuth] Password reset requested for:', normalizedEmail);
     console.log('📧 [CustomAuth] NOTA: En desarrollo local, contacta al admin para resetear password');
 
     return { success: true };
@@ -331,6 +392,7 @@ class CustomAuthService {
 
   /**
    * Update password (requiere sesión activa)
+   * Ahora usa PBKDF2 para el nuevo hash
    */
   async updatePassword(newPassword: string, currentPassword?: string): Promise<AuthResult> {
     if (!newPassword || newPassword.length < 8) {
@@ -355,7 +417,7 @@ class CustomAuthService {
         }
       }
 
-      // Hash del nuevo password
+      // Hash del nuevo password con PBKDF2
       const passwordHash = await hashPassword(newPassword);
 
       // Actualizar en DB
@@ -363,6 +425,13 @@ class CustomAuthService {
       if (!success) {
         return { success: false, error: 'Error al actualizar la contraseña' };
       }
+
+      // Log de cambio
+      auditLogger.log({
+        type: 'PASSWORD_CHANGED',
+        email: this.session.user.email,
+        userId: this.session.user.id,
+      });
 
       console.log('🔐 [CustomAuth] Password updated for user:', this.session.user.email);
       return { success: true };
