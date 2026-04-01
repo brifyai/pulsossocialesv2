@@ -80,4 +80,3 @@ CREATE TRIGGER update_user_settings_timestamp
 
 -- Grant permissions to authenticated users
 GRANT SELECT, INSERT, UPDATE, DELETE ON user_settings TO authenticated;
-GRANT USAGE ON SEQUENCE user_settings_id_seq TO authenticated;
