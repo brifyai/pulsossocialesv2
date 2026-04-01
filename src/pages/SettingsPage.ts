@@ -14,7 +14,6 @@ import {
 
 // Estado actual de las configuraciones
 let currentSettings: UserSettings = { ...defaultSettings };
-let isLoading = true;
 let hasUnsavedChanges = false;
 
 interface SettingItem {
@@ -206,7 +205,6 @@ async function loadSettings(container: HTMLElement): Promise<void> {
   try {
     const settings = await getUserSettings();
     currentSettings = settings;
-    isLoading = false;
 
     // Renderizar grupos de configuraciones
     if (groupsEl) {
@@ -298,6 +296,13 @@ function renderSetting(setting: SettingItem): string {
 }
 
 /**
+ * Helper para actualizar settings de forma type-safe
+ */
+function updateSetting<K extends keyof UserSettings>(key: K, value: UserSettings[K]): void {
+  currentSettings[key] = value;
+}
+
+/**
  * Configura los event listeners para los controles
  */
 function setupEventListeners(container: HTMLElement): void {
@@ -308,7 +313,7 @@ function setupEventListeners(container: HTMLElement): void {
     toggle.addEventListener('change', (e) => {
       const target = e.target as HTMLInputElement;
       const key = target.dataset.key as keyof UserSettings;
-      currentSettings[key] = target.checked as any;
+      updateSetting(key as 'darkMode' | 'highContrast' | 'animations' | 'qualityMode' | 'showLabels' | 'emailNotifications' | 'surveyAlerts' | 'dataCache' | 'shareAnalytics', target.checked);
       hasUnsavedChanges = true;
       updateSaveButton(saveBtn);
 
@@ -322,7 +327,7 @@ function setupEventListeners(container: HTMLElement): void {
     select.addEventListener('change', (e) => {
       const target = e.target as HTMLSelectElement;
       const key = target.dataset.key as keyof UserSettings;
-      currentSettings[key] = target.value as any;
+      updateSetting(key as 'agentDensity', target.value as 'low' | 'medium' | 'high');
       hasUnsavedChanges = true;
       updateSaveButton(saveBtn);
 
