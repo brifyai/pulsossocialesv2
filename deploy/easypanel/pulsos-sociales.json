@@ -17,7 +17,11 @@
       "deploy": {
         "restartPolicy": "always",
         "command": null,
-        "args": null
+        "args": null,
+        "resources": {
+          "memory": "512M",
+          "cpu": 1
+        }
       },
       "networking": {
         "containerPort": 80,
@@ -37,11 +41,15 @@
         "image": "supabase/postgres:15.1.0.153"
       },
       "deploy": {
-        "restartPolicy": "always"
+        "restartPolicy": "always",
+        "resources": {
+          "memory": "1G",
+          "cpu": 1
+        }
       },
       "networking": {
         "containerPort": 5432,
-        "servicePort": 5432
+        "servicePort": null
       },
       "volumes": [
         {
@@ -67,11 +75,15 @@
         "image": "supabase/studio:20240326-5e7a8e2"
       },
       "deploy": {
-        "restartPolicy": "always"
+        "restartPolicy": "always",
+        "resources": {
+          "memory": "256M",
+          "cpu": 0.5
+        }
       },
       "networking": {
         "containerPort": 3000,
-        "servicePort": 3000
+        "servicePort": null
       },
       "env": [
         "STUDIO_PG_META_URL=http://supabase-meta:8080",
@@ -97,7 +109,11 @@
       "deploy": {
         "restartPolicy": "always",
         "command": "bash",
-        "args": ["-c", "eval \"echo \\\"$$$(cat /home/kong/template.yml)\\\"\" > /home/kong/kong.yml && kong start -c /home/kong/kong.yml"]
+        "args": ["-c", "eval \"echo \"$$$(cat /home/kong/template.yml)\"\" > /home/kong/kong.yml && kong start -c /home/kong/kong.yml"],
+        "resources": {
+          "memory": "256M",
+          "cpu": 0.5
+        }
       },
       "networking": {
         "containerPort": 8000,
@@ -126,11 +142,15 @@
         "image": "supabase/gotrue:v2.143.0"
       },
       "deploy": {
-        "restartPolicy": "always"
+        "restartPolicy": "always",
+        "resources": {
+          "memory": "256M",
+          "cpu": 0.5
+        }
       },
       "networking": {
         "containerPort": 9999,
-        "servicePort": 9999
+        "servicePort": null
       },
       "env": [
         "GOTRUE_API_HOST=0.0.0.0",
@@ -183,11 +203,15 @@
         "image": "postgrest/postgrest:v12.0.1"
       },
       "deploy": {
-        "restartPolicy": "always"
+        "restartPolicy": "always",
+        "resources": {
+          "memory": "256M",
+          "cpu": 0.5
+        }
       },
       "networking": {
         "containerPort": 3000,
-        "servicePort": 3000
+        "servicePort": null
       },
       "env": [
         "PGRST_DB_URI=postgres://postgres:${POSTGRES_PASSWORD}@supabase-db:5432/postgres",
@@ -206,11 +230,15 @@
         "image": "supabase/realtime:v2.28.32"
       },
       "deploy": {
-        "restartPolicy": "always"
+        "restartPolicy": "always",
+        "resources": {
+          "memory": "256M",
+          "cpu": 0.5
+        }
       },
       "networking": {
         "containerPort": 4000,
-        "servicePort": 4000
+        "servicePort": null
       },
       "env": [
         "PORT=4000",
@@ -247,11 +275,15 @@
         "image": "supabase/storage-api:v1.2.1"
       },
       "deploy": {
-        "restartPolicy": "always"
+        "restartPolicy": "always",
+        "resources": {
+          "memory": "256M",
+          "cpu": 0.5
+        }
       },
       "networking": {
         "containerPort": 5000,
-        "servicePort": 5000
+        "servicePort": null
       },
       "volumes": [
         {
@@ -281,11 +313,15 @@
         "image": "darthsim/imgproxy:v3.8.0"
       },
       "deploy": {
-        "restartPolicy": "always"
+        "restartPolicy": "always",
+        "resources": {
+          "memory": "256M",
+          "cpu": 0.5
+        }
       },
       "networking": {
         "containerPort": 5001,
-        "servicePort": 5001
+        "servicePort": null
       },
       "volumes": [
         {
@@ -308,11 +344,15 @@
         "image": "supabase/postgres-meta:v0.80.0"
       },
       "deploy": {
-        "restartPolicy": "always"
+        "restartPolicy": "always",
+        "resources": {
+          "memory": "256M",
+          "cpu": 0.5
+        }
       },
       "networking": {
         "containerPort": 8080,
-        "servicePort": 8080
+        "servicePort": null
       },
       "env": [
         "PG_META_PORT=8080",
