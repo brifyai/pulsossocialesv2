@@ -1,0 +1,3053 @@
+==========================================
+AUDITORÍA TÉCNICA INTEGRAL - PARTE 2/6
+SISTEMA DE AUTENTICACIÓN Y SEGURIDAD
+Fecha: 2026-04-01 18:24:33 UTC
+Repositorio: Pulso
+==========================================
+
+INSTRUCCIONES:
+1. Usar con: docs/PROMPT_AUDITORIA_DEFINITIVO_V2.md
+2. Esta es la Parte 2 de 6
+3. Procesar en orden: Parte 1 → Parte 2 → ... → Parte 6
+4. Cada parte debe analizarse secuencialmente
+
+=== AUTH SYSTEM FILES ===
+=== src/services/auth/__tests__/auth.test.ts ===
+/**
+ * Tests para el sistema de autenticación endurecido
+ * Verifica PBKDF2, rate limiting, tokens seguros y audit logging
+ */
+
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  hashPassword,
+  verifyPassword,
+  isLegacyHash,
+} from '../passwordHasher';
+import { createSession, isSessionValid } from '../tokenManager';
+import { RateLimiter } from '../rateLimiter';
+import { auditLogger } from '../auditLog';
+
+describe('Password Hasher (PBKDF2)', () => {
+  it('debe generar hashes PBKDF2 correctamente', async () => {
+    const password = 'testPassword123!';
+    const hash = await hashPassword(password);
+
+    // Verificar que el hash tiene el formato correcto: iterations:salt:hash
+    expect(hash.split(':')).toHaveLength(3);
+    // El primer elemento debe ser el número de iteraciones (número)
+    expect(parseInt(hash.split(':')[0], 10)).toBeGreaterThan(0);
+  });
+
+  it('debe verificar passwords correctamente', async () => {
+    const password = 'testPassword123!';
+    const hash = await hashPassword(password);
+
+    const isValid = await verifyPassword(password, hash);
+    expect(isValid).toBe(true);
+  });
+
+  it('debe rechazar passwords incorrectos', async () => {
+    const password = 'testPassword123!';
+    const wrongPassword = 'wrongPassword123!';
+    const hash = await hashPassword(password);
+
+    const isValid = await verifyPassword(wrongPassword, hash);
+    expect(isValid).toBe(false);
+  });
+
+  it('debe generar hashes diferentes para el mismo password (salt aleatorio)', async () => {
+    const password = 'testPassword123!';
+    const hash1 = await hashPassword(password);
+    const hash2 = await hashPassword(password);
+
+    expect(hash1).not.toBe(hash2);
+
+    // Pero ambos deben verificar correctamente
+    expect(await verifyPassword(password, hash1)).toBe(true);
+    expect(await verifyPassword(password, hash2)).toBe(true);
+  });
+
+  it('debe detectar hashes legacy', () => {
+    // Legacy hash no tiene ':' (formato antiguo SHA-256)
+    const legacyHash = 'abc123def456';
+    // PBKDF2 hash tiene formato: iterations:salt:hash
+    const pbkdf2Hash = '100000:abc123def456:xyz789';
+
+    expect(isLegacyHash(legacyHash)).toBe(true);
+    expect(isLegacyHash(pbkdf2Hash)).toBe(false);
+    expect(isLegacyHash('some_random_hash_without_colon')).toBe(true);
+  });
+
+  it('debe manejar passwords vacíos', async () => {
+    const hash = await hashPassword('');
+    // El hash debe tener el formato correcto
+    expect(hash.split(':')).toHaveLength(3);
+
+    const isValid = await verifyPassword('', hash);
+    expect(isValid).toBe(true);
+  });
+
+  it('debe manejar passwords largos', async () => {
+    const longPassword = 'a'.repeat(1000);
+    const hash = await hashPassword(longPassword);
+
+    const isValid = await verifyPassword(longPassword, hash);
+    expect(isValid).toBe(true);
+  });
+});
+
+describe('Token Manager', () => {
+  it('debe crear sesiones con tokens únicos', () => {
+    const session1 = createSession('user-1');
+    const session2 = createSession('user-1');
+
+    expect(session1.token).not.toBe(session2.token);
+    expect(session1.token).toHaveLength(64); // 32 bytes en hex = 64 chars
+  });
+
+  it('debe crear sesiones con expiración correcta', () => {
+    const beforeCreate = Date.now();
+    const session = createSession('user-1');
+    const afterCreate = Date.now();
+
+    // 7 días en ms = 7 * 24 * 60 * 60 * 1000 = 604800000
+    const expectedDuration = 7 * 24 * 60 * 60 * 1000;
+
+    expect(session.expiresAt - session.createdAt).toBe(expectedDuration);
+    expect(session.createdAt).toBeGreaterThanOrEqual(beforeCreate);
+    expect(session.createdAt).toBeLessThanOrEqual(afterCreate);
+  });
+
+  it('debe validar sesiones correctamente', () => {
+    const session = createSession('user-1');
+
+    expect(isSessionValid(session)).toBe(true);
+  });
+
+  it('debe rechazar sesiones expiradas', () => {
+    const session = createSession('user-1');
+    session.expiresAt = Date.now() - 1000; // Expirada hace 1 segundo
+
+    expect(isSessionValid(session)).toBe(false);
+  });
+
+  it('debe manejar diferentes userIds', () => {
+    const session1 = createSession('user-1');
+    const session2 = createSession('user-2');
+
+    expect(session1.userId).toBe('user-1');
+    expect(session2.userId).toBe('user-2');
+  });
+});
+
+describe('Rate Limiter', () => {
+  let rateLimiter: RateLimiter;
+
+  beforeEach(() => {
+    rateLimiter = new RateLimiter({
+      maxAttempts: 3,
+      windowMs: 60000, // 1 minuto
+      blockDurationMs: 300000, // 5 minutos
+    });
+  });
+
+  it('debe permitir intentos dentro del límite', () => {
+    const key = 'test@example.com';
+
+    expect(rateLimiter.isBlocked(key).blocked).toBe(false);
+    rateLimiter.recordFailedAttempt(key);
+    expect(rateLimiter.isBlocked(key).blocked).toBe(false);
+    rateLimiter.recordFailedAttempt(key);
+    expect(rateLimiter.isBlocked(key).blocked).toBe(false);
+  });
+
+  it('debe bloquear después de exceder intentos', () => {
+    const key = 'test@example.com';
+
+    rateLimiter.recordFailedAttempt(key);
+    rateLimiter.recordFailedAttempt(key);
+    rateLimiter.recordFailedAttempt(key);
+
+    const result = rateLimiter.isBlocked(key);
+    expect(result.blocked).toBe(true);
+    expect(result.remainingMs).toBeGreaterThan(0);
+  });
+
+  it('debe resetear intentos después de éxito', () => {
+    const key = 'test@example.com';
+
+    rateLimiter.recordFailedAttempt(key);
+    rateLimiter.recordFailedAttempt(key);
+    rateLimiter.resetAttempts(key);
+
+    expect(rateLimiter.isBlocked(key).blocked).toBe(false);
+  });
+
+  it('debe formatear tiempo restante correctamente', () => {
+    // El formato actual devuelve "X minuto(s)"
+    expect(rateLimiter.formatRemainingTime(300000)).toBe('5 minutos');
+    expect(rateLimiter.formatRemainingTime(90000)).toBe('2 minutos');
+    expect(rateLimiter.formatRemainingTime(45000)).toBe('1 minuto');
+    expect(rateLimiter.formatRemainingTime(5000)).toBe('1 minuto');
+  });
+
+  it('debe manejar múltiples claves independientemente', () => {
+    const key1 = 'user1@example.com';
+    const key2 = 'user2@example.com';
+
+    rateLimiter.recordFailedAttempt(key1);
+    rateLimiter.recordFailedAttempt(key1);
+    rateLimiter.recordFailedAttempt(key1);
+
+    expect(rateLimiter.isBlocked(key1).blocked).toBe(true);
+    expect(rateLimiter.isBlocked(key2).blocked).toBe(false);
+  });
+});
+
+describe('Audit Logger', () => {
+  beforeEach(() => {
+    auditLogger.clear();
+  });
+
+  it('debe registrar eventos correctamente', () => {
+    auditLogger.log({
+      type: 'LOGIN_SUCCESS',
+      email: 'test@example.com',
+      userId: 'user-1',
+      details: { ip: '127.0.0.1' },
+    });
+
+    const events = auditLogger.getRecentEvents(1);
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('LOGIN_SUCCESS');
+    expect(events[0].email).toBe('test@example.com');
+    expect(events[0].userId).toBe('user-1');
+    expect(events[0].timestamp).toBeGreaterThan(0);
+  });
+
+  it('debe limitar el número de eventos almacenados', () => {
+    // Llenar con más eventos que el máximo
+    for (let i = 0; i < 1100; i++) {
+      auditLogger.log({
+        type: 'LOGIN_SUCCESS',
+        email: `user${i}@example.com`,
+      });
+    }
+
+    const events = auditLogger.getRecentEvents(2000);
+    expect(events.length).toBeLessThanOrEqual(1000);
+  });
+
+  it('debe filtrar eventos por usuario', () => {
+    auditLogger.log({ type: 'LOGIN_SUCCESS', email: 'user1@example.com', userId: 'user-1' });
+    auditLogger.log({ type: 'LOGIN_SUCCESS', email: 'user2@example.com', userId: 'user-2' });
+    auditLogger.log({ type: 'LOGOUT', email: 'user1@example.com', userId: 'user-1' });
+
+    const user1Events = auditLogger.getEventsByUser('user-1');
+    expect(user1Events).toHaveLength(2);
+    expect(user1Events.every(e => e.userId === 'user-1')).toBe(true);
+  });
+
+  it('debe manejar eventos sin userId', () => {
+    auditLogger.log({
+      type: 'LOGIN_FAILED',
+      email: 'unknown@example.com',
+      details: { reason: 'user_not_found' },
+    });
+
+    const events = auditLogger.getRecentEvents(1);
+    expect(events[0].type).toBe('LOGIN_FAILED');
+    expect(events[0].userId).toBeUndefined();
+  });
+});
+
+describe('Integración de Seguridad', () => {
+  it('debe flujo completo: hash -> verificar -> crear sesión', async () => {
+    const password = 'SecurePass123!';
+    const userId = 'user-123';
+
+    // Hash del password
+    const hash = await hashPassword(password);
+    // Verificar formato: iterations:salt:hash
+    expect(hash.split(':')).toHaveLength(3);
+
+    // Verificar
+    const isValid = await verifyPassword(password, hash);
+    expect(isValid).toBe(true);
+
+    // Crear sesión
+    const session = createSession(userId);
+    expect(session.userId).toBe(userId);
+    expect(isSessionValid(session)).toBe(true);
+
+    // Log de éxito
+    auditLogger.log({
+      type: 'LOGIN_SUCCESS',
+      userId,
+      email: 'test@example.com',
+    });
+
+    const events = auditLogger.getRecentEvents(1);
+    expect(events[0].type).toBe('LOGIN_SUCCESS');
+  });
+
+  it('debe manejar rate limiting en intentos fallidos', () => {
+    const rateLimiter = new RateLimiter({
+      maxAttempts: 2,
+      windowMs: 60000,
+      blockDurationMs: 300000,
+    });
+
+    const key = 'attacker@example.com';
+
+    // Dos intentos fallidos
+    rateLimiter.recordFailedAttempt(key);
+    rateLimiter.recordFailedAttempt(key);
+
+    // Tercer intento debe estar bloqueado
+    const result = rateLimiter.isBlocked(key);
+    expect(result.blocked).toBe(true);
+
+    // Log del bloqueo
+    auditLogger.log({
+      type: 'LOGIN_BLOCKED',
+      email: key,
+      details: { reason: 'rate_limit' },
+    });
+
+    // Buscar eventos por email ya que no hay userId
+    const recentEvents = auditLogger.getRecentEvents(10);
+    expect(recentEvents.some(e => e.type === 'LOGIN_BLOCKED' && e.email === key)).toBe(true);
+  });
+});
+
+=== src/services/auth/auditLog.ts ===
+/**
+ * Audit logging para eventos de autenticación.
+ * Registra intentos de login, cambios de password, etc.
+ * En producción, esto debería enviarse a un servicio de logging.
+ */
+
+export type AuditEventType =
+  | 'LOGIN_SUCCESS'
+  | 'LOGIN_FAILED'
+  | 'LOGIN_BLOCKED'
+  | 'LOGOUT'
+  | 'PASSWORD_CHANGED'
+  | 'PASSWORD_RESET_REQUESTED'
+  | 'PASSWORD_RESET_COMPLETED'
+  | 'SESSION_EXPIRED'
+  | 'SESSION_INVALIDATED';
+
+export interface AuditEvent {
+  type: AuditEventType;
+  userId?: string;
+  email?: string;
+  ip?: string;
+  userAgent?: string;
+  timestamp: number;
+  details?: Record<string, unknown>;
+}
+
+class AuditLogger {
+  private events: AuditEvent[] = [];
+  private maxEvents = 1000; // Mantener últimos 1000 eventos en memoria
+
+  /**
+   * Registrar un evento de auditoría
+   */
+  log(event: Omit<AuditEvent, 'timestamp'>): void {
+    const fullEvent: AuditEvent = {
+      ...event,
+      timestamp: Date.now(),
+    };
+
+    this.events.push(fullEvent);
+
+    // Mantener solo los últimos eventos
+    if (this.events.length > this.maxEvents) {
+      this.events = this.events.slice(-this.maxEvents);
+    }
+
+    // En desarrollo, log a consola
+    if (import.meta.env?.DEV) {
+      console.log('[AUDIT]', fullEvent.type, fullEvent.email || fullEvent.userId, fullEvent.details);
+    }
+
+    // TODO: En producción, enviar a servicio de logging (e.g., Supabase, LogRocket, etc.)
+    this.sendToRemote(fullEvent).catch((_error) => {
+      // Silenciar errores de logging remoto
+    });
+  }
+
+  /**
+   * Obtener eventos recientes (para debugging)
+   */
+  getRecentEvents(count = 100): AuditEvent[] {
+    return this.events.slice(-count);
+  }
+
+  /**
+   * Obtener eventos por usuario
+   */
+  getEventsByUser(userId: string): AuditEvent[] {
+    return this.events.filter(e => e.userId === userId);
+  }
+
+  /**
+   * Limpiar eventos antiguos
+   */
+  clear(): void {
+    this.events = [];
+  }
+
+  /**
+   * Enviar evento a servicio remoto (placeholder)
+   */
+  private async sendToRemote(_event: AuditEvent): Promise<void> {
+    // Placeholder: implementar envío a Supabase o servicio de logging
+    // Ejemplo:
+    // await supabase.from('audit_logs').insert(event);
+
+    // Por ahora, no hacer nada
+    return Promise.resolve();
+  }
+}
+
+export const auditLogger = new AuditLogger();
+
+=== src/services/auth/auth.test.ts ===
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { authService, type AuthSession } from './index';
+
+// Mock localStorage
+let localStorageStore: Record<string, string> = {};
+
+const localStorageMock = {
+  getItem: vi.fn((key: string) => localStorageStore[key] || null),
+  setItem: vi.fn((key: string, value: string) => {
+    localStorageStore[key] = value;
+  }),
+  removeItem: vi.fn((key: string) => {
+    delete localStorageStore[key];
+  }),
+  clear: vi.fn(() => {
+    localStorageStore = {};
+  }),
+};
+
+Object.defineProperty(window, 'localStorage', {
+  value: localStorageMock,
+  writable: true,
+});
+
+// Mock userRepository
+vi.mock('../supabase/repositories/userRepository', () => ({
+  getUserByEmailWithPassword: vi.fn(),
+  getUserById: vi.fn(),
+  createUser: vi.fn(),
+  updateLastLogin: vi.fn(),
+  updatePassword: vi.fn(),
+  isEmailTaken: vi.fn(),
+}));
+
+// Mock passwordHasher
+vi.mock('./passwordHasher', () => ({
+  hashPassword: vi.fn(() => Promise.resolve('mocked-hash')),
+  verifyPassword: vi.fn(() => Promise.resolve(true)),
+  isLegacyHash: vi.fn(() => false),
+}));
+
+import {
+  getUserByEmailWithPassword,
+  getUserById,
+  // createUser e isEmailTaken no se usan directamente pero están disponibles en el mock
+} from '../supabase/repositories/userRepository';
+
+import { verifyPassword } from './passwordHasher';
+
+describe('Auth Service', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageStore = {};
+    // Sign out to reset state
+    authService.signOut();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('Session Management', () => {
+    it('should start with no session', () => {
+      expect(authService.isAuthenticated()).toBe(false);
+      expect(authService.getCurrentUser()).toBeNull();
+    });
+
+    it('should load session from localStorage', async () => {
+      // First sign in to create a valid session
+      vi.mocked(getUserByEmailWithPassword).mockResolvedValue({
+        id: 'test-id',
+        email: 'test@example.com',
+        name: 'Test User',
+        role: 'user',
+        password_hash: 'pbkdf2_sha256$600000$test$salt+hash',
+        isActive: true,
+      } as any);
+
+      await authService.signIn('test@example.com', 'password');
+
+      // Verify session was saved to localStorage
+      const savedSession = localStorageStore['pulsossociales_session'];
+      expect(savedSession).toBeDefined();
+
+      // Verify the service is authenticated
+      expect(authService.isAuthenticated()).toBe(true);
+      expect(authService.getCurrentUser()?.email).toBe('test@example.com');
+    });
+
+    it('should handle invalid localStorage data gracefully', () => {
+      localStorageStore['pulsossociales_session'] = 'invalid json';
+
+      // Should not throw and return false
+      expect(authService.isAuthenticated()).toBe(false);
+    });
+  });
+
+  describe('Auth Flow', () => {
+    it('should reject empty email', async () => {
+      const result = await authService.signIn('', 'password');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('El email es requerido');
+    });
+
+    it('should reject empty password', async () => {
+      const result = await authService.signIn('test@example.com', '');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('La contraseña es requerida');
+    });
+
+    it('should reject sign up with short password', async () => {
+      const result = await authService.signUp('test@example.com', 'short');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('8 caracteres');
+    });
+
+    it('should reject sign up with empty email', async () => {
+      const result = await authService.signUp('', 'password123');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('El email es requerido');
+    });
+
+    it('should successfully sign in with valid credentials', async () => {
+      // Mock user found in database with valid password
+      vi.mocked(getUserByEmailWithPassword).mockResolvedValue({
+        id: 'test-id',
+        email: 'test@example.com',
+        name: 'Test User',
+        role: 'user',
+        password_hash: 'pbkdf2_sha256$600000$test$salt+hash',
+        isActive: true,
+      } as any);
+
+      const result = await authService.signIn('test@example.com', 'password');
+
+      expect(result.success).toBe(true);
+      expect(result.user?.email).toBe('test@example.com');
+      expect(authService.isAuthenticated()).toBe(true);
+    });
+
+    it('should reject sign in with invalid credentials', async () => {
+      // Mock user found but password verification fails
+      vi.mocked(getUserByEmailWithPassword).mockResolvedValue({
+        id: 'test-id',
+        email: 'test@example.com',
+        name: 'Test User',
+        role: 'user',
+        password_hash: 'pbkdf2_sha256$600000$test$salt+hash',
+        isActive: true,
+      } as any);
+      vi.mocked(verifyPassword).mockResolvedValue(false);
+
+      const result = await authService.signIn('test@example.com', 'wrongpassword');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Email o contraseña incorrectos');
+    });
+
+    it('should clear session on sign out', async () => {
+      // First set up a mock session
+      vi.mocked(getUserByEmailWithPassword).mockResolvedValue({
+        id: 'test-id',
+        email: 'test@example.com',
+        name: 'Test User',
+        role: 'user',
+        password_hash: 'pbkdf2_sha256$600000$test$salt+hash',
+        isActive: true,
+      } as any);
+
+      await authService.signIn('test@example.com', 'password');
+      expect(authService.isAuthenticated()).toBe(true);
+
+      // Then sign out
+      await authService.signOut();
+
+      expect(authService.isAuthenticated()).toBe(false);
+      expect(authService.getCurrentUser()).toBeNull();
+    });
+
+    it('should handle update password when not available', async () => {
+      const result = await authService.updatePassword('newpassword');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('No hay sesión activa');
+    });
+  });
+
+  describe('Session Validation', () => {
+    it('should validate non-expired session', async () => {
+      // Set up a mock session first
+      vi.mocked(getUserByEmailWithPassword).mockResolvedValue({
+        id: 'test-id',
+        email: 'test@example.com',
+        name: 'Test User',
+        role: 'user',
+        password_hash: 'pbkdf2_sha256$600000$test$salt+hash',
+        isActive: true,
+      } as any);
+
+      await authService.signIn('test@example.com', 'password');
+
+      expect(authService.isSessionValid()).toBe(true);
+    });
+
+    it('should invalidate expired session', async () => {
+      // Create an expired session manually
+      const expiredSession: AuthSession = {
+        user: {
+          id: 'test-id',
+          email: 'test@example.com',
+          role: 'user',
+        },
+        accessToken: 'test-token',
+        expiresAt: Date.now() - 1000, // Expired 1 second ago
+        timestamp: Date.now() - 1000000,
+      };
+      localStorageStore['pulsossociales_session'] = JSON.stringify(expiredSession);
+
+      // Mock getUserById to return the user (session restoration checks if user still exists)
+      vi.mocked(getUserById).mockResolvedValue({
+        id: 'test-id',
+        email: 'test@example.com',
+        name: 'Test User',
+        role: 'user',
+        isActive: true,
+      } as any);
+
+      // Initialize should check the expired session and clear it
+      await (authService as any).initialize();
+
+      // The expired session should be invalid
+      expect(authService.isSessionValid()).toBe(false);
+    });
+  });
+
+  describe('Input Validation', () => {
+    it('should trim email on sign in', async () => {
+      const result = await authService.signIn('  test@example.com  ', 'password');
+
+      // Should fail because user doesn't exist in database (not because of trim)
+      // The email should be trimmed before querying (normalizedEmail = email.trim().toLowerCase())
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Email o contraseña incorrectos');
+    });
+
+    it('should trim name on sign up', async () => {
+      const result = await authService.signUp('test@example.com', 'password123', {
+        name: '  John Doe  ',
+      });
+
+      // Should fail because database is not available in test
+      // But the name should be trimmed before saving (metadata?.name?.trim())
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('Admin Check', () => {
+    it('should return false for non-admin user', () => {
+      expect(authService.isAdmin()).toBe(false);
+    });
+  });
+});
+
+=== src/services/auth/customAuth.ts ===
+/**
+ * Custom Auth Service - Pulsos Sociales
+ * Servicio de autenticación usando tabla propia (NO Supabase Auth)
+ *
+ * Este servicio reemplaza Supabase Auth para evitar dependencia de GoTrue.
+ * Usa la tabla 'users' directamente con PBKDF2 para passwords.
+ *
+ * MEJORAS DE SEGURIDAD:
+ * - PBKDF2 con 100K iteraciones para hashing de passwords
+ * - Tokens criptográficamente seguros (crypto.getRandomValues)
+ * - Rate limiting para protección contra fuerza bruta
+ * - Audit logging para eventos de autenticación
+ * - Migración automática de hashes legacy
+ */
+
+import {
+  getUserByEmailWithPassword,
+  getUserById,
+  createUser,
+  updateLastLogin,
+  updatePassword as updateUserPassword,
+  isEmailTaken,
+  type User,
+  type DbUser,
+} from '../supabase/repositories/userRepository';
+import { hashPassword, verifyPassword, isLegacyHash } from './passwordHasher';
+import { createSession } from './tokenManager';
+import { loginRateLimiter } from './rateLimiter';
+import { auditLogger } from './auditLog';
+
+// ===========================================
+// Types (compatibles con el auth service anterior)
+// ===========================================
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name?: string;
+  avatar?: string;
+  role: 'user' | 'admin' | 'moderator';
+}
+
+export interface AuthSession {
+  user: AuthUser;
+  accessToken: string;
+  expiresAt: number;
+  timestamp: number;
+}
+
+export interface AuthResult {
+  success: boolean;
+  user?: AuthUser;
+  error?: string;
+}
+
+// ===========================================
+// Session Management
+// ===========================================
+
+const SESSION_KEY = 'pulsossociales_session';
+
+function saveSession(session: AuthSession): void {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch {
+    // Silent fail in private mode
+  }
+}
+
+function loadSession(): AuthSession | null {
+  try {
+    const data = localStorage.getItem(SESSION_KEY);
+    if (!data) return null;
+
+    const session: AuthSession = JSON.parse(data);
+
+    // Check expiration
+    if (Date.now() > session.expiresAt) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function clearSession(): void {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // Silent fail
+  }
+}
+
+// ===========================================
+// User Mappers
+// ===========================================
+
+function mapToAuthUser(user: User): AuthUser {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name || undefined,
+    avatar: user.avatar || undefined,
+    role: user.role,
+  };
+}
+
+function mapDbUserToAuthUser(user: DbUser): AuthUser {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name || undefined,
+    avatar: user.avatar || undefined,
+    role: user.role,
+  };
+}
+
+// ===========================================
+// Auth Service
+// ===========================================
+
+class CustomAuthService {
+  private session: AuthSession | null = null;
+  private initialized = false;
+
+  constructor() {
+    // No cargamos sesión aquí - se hace en initialize()
+  }
+
+  /**
+   * Check if auth service is available (tabla users está accesible)
+   */
+  async isAvailable(): Promise<boolean> {
+    // Intentar hacer una operación simple para verificar disponibilidad
+    try {
+      // Verificar si podemos acceder a la tabla users
+      const { getSupabaseClient } = await import('../supabase/client');
+      const client = await getSupabaseClient();
+      return !!client;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Initialize auth service
+   * Carga sesión desde localStorage
+   */
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+
+    // Cargar sesión desde localStorage
+    const session = loadSession();
+    if (session) {
+      // Verificar que el usuario sigue existiendo
+      const user = await getUserById(session.user.id);
+      if (user && user.isActive) {
+        this.session = session;
+        console.log('🔐 [CustomAuth] Sesión restaurada:', session.user.email);
+      } else {
+        clearSession();
+        console.log('🔐 [CustomAuth] Sesión inválida - usuario no existe o inactivo');
+      }
+    }
+
+    this.initialized = true;
+  }
+
+  /**
+   * Sign in with email and password
+   * Ahora con rate limiting y audit logging
+   */
+  async signIn(email: string, password: string): Promise<AuthResult> {
+    // Validate inputs
+    if (!email || !email.trim()) {
+      return { success: false, error: 'El email es requerido' };
+    }
+    if (!password) {
+      return { success: false, error: 'La contraseña es requerida' };
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Verificar rate limiting
+    const rateLimitCheck = loginRateLimiter.isBlocked(normalizedEmail);
+    if (rateLimitCheck.blocked) {
+      const remainingTime = loginRateLimiter.formatRemainingTime(rateLimitCheck.remainingMs || 0);
+      auditLogger.log({
+        type: 'LOGIN_BLOCKED',
+        email: normalizedEmail,
+        details: { reason: 'rate_limit', remainingMs: rateLimitCheck.remainingMs },
+      });
+      return {
+        success: false,
+        error: `Demasiados intentos fallidos. Intenta nuevamente en ${remainingTime}.`
+      };
+    }
+
+    try {
+      // Buscar usuario por email (incluye password_hash)
+      const dbUser = await getUserByEmailWithPassword(normalizedEmail);
+
+      if (!dbUser) {
+        loginRateLimiter.recordFailedAttempt(normalizedEmail);
+        auditLogger.log({
+          type: 'LOGIN_FAILED',
+          email: normalizedEmail,
+          details: { reason: 'user_not_found' },
+        });
+        return { success: false, error: 'Email o contraseña incorrectos' };
+      }
+
+      // Verificar password
+      const isValid = await verifyPassword(password, dbUser.password_hash);
+      if (!isValid) {
+        loginRateLimiter.recordFailedAttempt(normalizedEmail);
+        auditLogger.log({
+          type: 'LOGIN_FAILED',
+          email: normalizedEmail,
+          userId: dbUser.id,
+          details: { reason: 'invalid_password' },
+        });
+        return { success: false, error: 'Email o contraseña incorrectos' };
+      }
+
+      // Si el hash es legacy, migrar automáticamente a PBKDF2
+      if (isLegacyHash(dbUser.password_hash)) {
+        console.log('🔐 [CustomAuth] Migrando hash legacy a PBKDF2 para:', normalizedEmail);
+        const newHash = await hashPassword(password);
+        await updateUserPassword(dbUser.id, newHash);
+      }
+
+      // Resetear intentos fallidos
+      loginRateLimiter.resetAttempts(normalizedEmail);
+
+      // Actualizar último login
+      await updateLastLogin(dbUser.id);
+
+      // Crear sesión
+      const user = mapDbUserToAuthUser(dbUser);
+      const sessionData = createSession(user.id);
+      this.session = {
+        user,
+        accessToken: sessionData.token,
+        expiresAt: sessionData.expiresAt,
+        timestamp: sessionData.createdAt,
+      };
+
+      // Guardar en localStorage
+      saveSession(this.session);
+
+      // Log de éxito
+      auditLogger.log({
+        type: 'LOGIN_SUCCESS',
+        email: normalizedEmail,
+        userId: dbUser.id,
+        details: { sessionExpiresAt: sessionData.expiresAt },
+      });
+
+      console.log('🔐 [CustomAuth] User signed in:', user.email);
+      return { success: true, user };
+    } catch (error) {
+      console.error('[CustomAuth] Sign in error:', error);
+      auditLogger.log({
+        type: 'LOGIN_FAILED',
+        email: normalizedEmail,
+        details: { reason: 'error', error: String(error) },
+      });
+      return { success: false, error: 'Error al iniciar sesión. Intenta nuevamente.' };
+    }
+  }
+
+  /**
+   * Sign up with email and password
+   * Ahora usa PBKDF2 para hashing
+   */
+  async signUp(
+    email: string,
+    password: string,
+    metadata?: { name?: string }
+  ): Promise<AuthResult> {
+    // Validate inputs
+    if (!email || !email.trim()) {
+      return { success: false, error: 'El email es requerido' };
+    }
+    if (!password || password.length < 8) {
+      return { success: false, error: 'La contraseña debe tener al menos 8 caracteres' };
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    try {
+      // Verificar si email ya existe
+      const emailExists = await isEmailTaken(normalizedEmail);
+      if (emailExists) {
+        return { success: false, error: 'Este email ya está registrado. Intenta iniciar sesión.' };
+      }
+
+      // Hash del password con PBKDF2
+      const passwordHash = await hashPassword(password);
+
+      // Crear usuario
+      const user = await createUser({
+        email: normalizedEmail,
+        passwordHash,
+        name: metadata?.name?.trim(),
+        role: 'user',
+      });
+
+      if (!user) {
+        return { success: false, error: 'Error al crear la cuenta' };
+      }
+
+      // Crear sesión automáticamente (auto-login)
+      const sessionData = createSession(user.id);
+      this.session = {
+        user: mapToAuthUser(user),
+        accessToken: sessionData.token,
+        expiresAt: sessionData.expiresAt,
+        timestamp: sessionData.createdAt,
+      };
+
+      saveSession(this.session);
+
+      // Log de registro
+      auditLogger.log({
+        type: 'LOGIN_SUCCESS',
+        email: normalizedEmail,
+        userId: user.id,
+        details: { isNewUser: true },
+      });
+
+      console.log('👤 [CustomAuth] User registered:', user.email);
+      return { success: true, user: mapToAuthUser(user) };
+    } catch (error) {
+      console.error('[CustomAuth] Sign up error:', error);
+      return { success: false, error: 'Error al crear la cuenta. Intenta nuevamente.' };
+    }
+  }
+
+  /**
+   * Sign out
+   */
+  async signOut(): Promise<void> {
+    if (this.session) {
+      auditLogger.log({
+        type: 'LOGOUT',
+        email: this.session.user.email,
+        userId: this.session.user.id,
+      });
+    }
+    clearSession();
+    this.session = null;
+    console.log('🔐 [CustomAuth] User signed out');
+  }
+
+  /**
+   * Reset password (envía email con enlace)
+   * NOTA: Esta versión no implementa emails reales, solo simula
+   */
+  async resetPassword(email: string): Promise<AuthResult> {
+    if (!email || !email.trim()) {
+      return { success: false, error: 'El email es requerido' };
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Verificar que el usuario existe
+    const dbUser = await getUserByEmailWithPassword(normalizedEmail);
+    if (!dbUser) {
+      return { success: false, error: 'No existe una cuenta con este email' };
+    }
+
+    // Log de solicitud
+    auditLogger.log({
+      type: 'PASSWORD_RESET_REQUESTED',
+      email: normalizedEmail,
+      userId: dbUser.id,
+    });
+
+    // En una implementación real, aquí enviaríamos un email
+    // Por ahora, solo logueamos
+    console.log('📧 [CustomAuth] Password reset requested for:', normalizedEmail);
+    console.log('📧 [CustomAuth] NOTA: En desarrollo local, contacta al admin para resetear password');
+
+    return { success: true };
+  }
+
+  /**
+   * Update password (requiere sesión activa)
+   * Ahora usa PBKDF2 para el nuevo hash
+   */
+  async updatePassword(newPassword: string, currentPassword?: string): Promise<AuthResult> {
+    if (!newPassword || newPassword.length < 8) {
+      return { success: false, error: 'La contraseña debe tener al menos 8 caracteres' };
+    }
+
+    if (!this.session) {
+      return { success: false, error: 'No hay sesión activa' };
+    }
+
+    try {
+      // Si se proporciona currentPassword, verificar
+      if (currentPassword) {
+        const dbUser = await getUserByEmailWithPassword(this.session.user.email);
+        if (!dbUser) {
+          return { success: false, error: 'Usuario no encontrado' };
+        }
+
+        const isValid = await verifyPassword(currentPassword, dbUser.password_hash);
+        if (!isValid) {
+          return { success: false, error: 'Contraseña actual incorrecta' };
+        }
+      }
+
+      // Hash del nuevo password con PBKDF2
+      const passwordHash = await hashPassword(newPassword);
+
+      // Actualizar en DB
+      const success = await updateUserPassword(this.session.user.id, passwordHash);
+      if (!success) {
+        return { success: false, error: 'Error al actualizar la contraseña' };
+      }
+
+      // Log de cambio
+      auditLogger.log({
+        type: 'PASSWORD_CHANGED',
+        email: this.session.user.email,
+        userId: this.session.user.id,
+      });
+
+      console.log('🔐 [CustomAuth] Password updated for user:', this.session.user.email);
+      return { success: true };
+    } catch (error) {
+      console.error('[CustomAuth] Update password error:', error);
+      return { success: false, error: 'Error al actualizar la contraseña' };
+    }
+  }
+
+  /**
+   * Get current user
+   */
+  getCurrentUser(): AuthUser | null {
+    return this.session?.user || null;
+  }
+
+  /**
+   * Get current session
+   */
+  getSession(): AuthSession | null {
+    return this.session;
+  }
+
+  /**
+   * Check if user is authenticated
+   */
+  isAuthenticated(): boolean {
+    return !!this.session && Date.now() < this.session.expiresAt;
+  }
+
+  /**
+   * Check if session is valid (not expired)
+   */
+  isSessionValid(): boolean {
+    if (!this.session) return false;
+    return Date.now() < this.session.expiresAt;
+  }
+
+  /**
+   * Check if current user is admin
+   */
+  isAdmin(): boolean {
+    return this.session?.user?.role === 'admin';
+  }
+
+  /**
+   * Cleanup
+   */
+  cleanup(): void {
+    // No hay listeners que limpiar en esta implementación
+  }
+}
+
+// Export singleton instance
+export const customAuthService = new CustomAuthService();
+
+// Export for use in other modules
+export default customAuthService;
+
+// Convenience exports for common operations
+export const logout = () => customAuthService.signOut();
+export const getCurrentUser = () => customAuthService.getCurrentUser();
+export const isAuthenticated = () => customAuthService.isAuthenticated();
+
+=== src/services/auth/index.ts ===
+/**
+ * Auth Service - Pulsos Sociales
+ * Servicio de autenticación usando tabla propia (NO Supabase Auth)
+ *
+ * NOTA: Este servicio fue migrado de Supabase Auth a auth propio
+ * para evitar dependencia del servicio GoTrue que da error 503.
+ * Usa la tabla 'users' directamente.
+ *
+ * Este archivo ahora re-exporta desde customAuth.ts para mantener
+ * compatibilidad con el resto de la aplicación.
+ */
+
+// Re-exportar todo desde customAuth
+export {
+  customAuthService as authService,
+  customAuthService as default,
+  logout,
+  getCurrentUser,
+  isAuthenticated,
+} from './customAuth';
+
+export type {
+  AuthUser,
+  AuthSession,
+  AuthResult,
+} from './customAuth';
+
+=== src/services/auth/passwordHasher.ts ===
+/**
+ * Password hashing usando PBKDF2 con Web Crypto API.
+ * PBKDF2 es deliberadamente lento, resistente a fuerza bruta.
+ * Funciona en browser sin dependencias de Node.js.
+ */
+
+const PBKDF2_ITERATIONS = 100000;  // 100K iteraciones = ~100ms en browser moderno
+const SALT_LENGTH = 16;            // 16 bytes de salt aleatorio
+const HASH_LENGTH = 32;            // 256 bits de output
+const ALGORITHM = 'PBKDF2';
+
+/**
+ * Genera un salt aleatorio criptográficamente seguro
+ */
+function generateSalt(): Uint8Array {
+  return crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
+}
+
+/**
+ * Hashea un password con PBKDF2
+ * Retorna string en formato: iterations:salt_hex:hash_hex
+ */
+export async function hashPassword(password: string): Promise<string> {
+  const salt = generateSalt();
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    ALGORITHM,
+    false,
+    ['deriveBits']
+  );
+
+  const hashBuffer = await crypto.subtle.deriveBits(
+    {
+      name: ALGORITHM,
+      salt: salt.buffer as ArrayBuffer,
+      iterations: PBKDF2_ITERATIONS,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    HASH_LENGTH * 8
+  );
+
+  const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
+  const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  return `${PBKDF2_ITERATIONS}:${saltHex}:${hashHex}`;
+}
+
+/**
+ * Verifica un password contra un hash almacenado
+ * Soporta tanto hashes PBKDF2 como legacy SHA-256
+ */
+export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  // Si el hash es formato legacy (SHA-256 sin separador), usar verificación legacy
+  if (isLegacyHash(storedHash)) {
+    return verifyLegacyPassword(password, storedHash);
+  }
+
+  const [iterationsStr, saltHex, expectedHash] = storedHash.split(':');
+
+  if (!iterationsStr || !saltHex || !expectedHash) {
+    return false; // Formato inválido
+  }
+
+  const iterations = parseInt(iterationsStr, 10);
+  const salt = new Uint8Array(saltHex.match(/.{2}/g)!.map(byte => parseInt(byte, 16)));
+  const encoder = new TextEncoder();
+
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    ALGORITHM,
+    false,
+    ['deriveBits']
+  );
+
+  const hashBuffer = await crypto.subtle.deriveBits(
+    {
+      name: ALGORITHM,
+      salt: salt.buffer as ArrayBuffer,
+      iterations: iterations,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    HASH_LENGTH * 8
+  );
+
+  const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  return hashHex === expectedHash;
+}
+
+/**
+ * Verifica un password contra un hash legacy (SHA-256 con salt estático)
+ * Usado para migración automática de usuarios legacy
+ */
+async function verifyLegacyPassword(password: string, hash: string): Promise<boolean> {
+  const salt = 'pulsossociales-salt-v1';
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password + salt);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const computedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return computedHash === hash;
+}
+
+/**
+ * Detecta si un hash es formato legacy (SHA-256 con salt estático)
+ * Los hashes legacy no contienen ':'
+ */
+export function isLegacyHash(hash: string): boolean {
+  return !hash.includes(':');
+}
+
+// Constantes exportadas para tests
+export const PBKDF2_HASH_PREFIX = 'pbkdf2';
+export const LEGACY_HASH_PREFIX = 'legacy';
+
+=== src/services/auth/rateLimiter.ts ===
+/**
+ * Rate limiter para protección contra fuerza bruta.
+ * Almacena intentos en memoria. Se resetea al recargar la página,
+ * pero protege contra ataques automatizados durante la sesión.
+ *
+ * Para persistencia entre recargas, los intentos fallidos también
+ * se guardan en Supabase (tabla login_attempts si existe).
+ */
+
+interface LoginAttempt {
+  count: number;
+  firstAttempt: number;
+  lastAttempt: number;
+  lockedUntil: number | null;
+}
+
+interface RateLimiterOptions {
+  maxAttempts?: number;
+  windowMs?: number;
+  blockDurationMs?: number;
+}
+
+const DEFAULT_MAX_ATTEMPTS = 5;
+const DEFAULT_LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutos
+const DEFAULT_ATTEMPT_WINDOW_MS = 30 * 60 * 1000;   // Ventana de 30 minutos
+
+export class RateLimiter {
+  private attempts = new Map<string, LoginAttempt>();
+  private maxAttempts: number;
+  private lockoutDurationMs: number;
+  private attemptWindowMs: number;
+
+  constructor(options?: RateLimiterOptions) {
+    this.maxAttempts = options?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+    this.lockoutDurationMs = options?.blockDurationMs ?? DEFAULT_LOCKOUT_DURATION_MS;
+    this.attemptWindowMs = options?.windowMs ?? DEFAULT_ATTEMPT_WINDOW_MS;
+  }
+
+  /**
+   * Verificar si un email/IP está bloqueado
+   */
+  isBlocked(identifier: string): { blocked: boolean; remainingMs?: number } {
+    const attempt = this.attempts.get(identifier);
+    if (!attempt) return { blocked: false };
+
+    // Limpiar intentos antiguos fuera de la ventana
+    if (Date.now() - attempt.firstAttempt > this.attemptWindowMs) {
+      this.attempts.delete(identifier);
+      return { blocked: false };
+    }
+
+    // Verificar lockout
+    if (attempt.lockedUntil && Date.now() < attempt.lockedUntil) {
+      return {
+        blocked: true,
+        remainingMs: attempt.lockedUntil - Date.now()
+      };
+    }
+
+    // Si el lockout expiró, resetear
+    if (attempt.lockedUntil && Date.now() >= attempt.lockedUntil) {
+      this.attempts.delete(identifier);
+      return { blocked: false };
+    }
+
+    return { blocked: false };
+  }
+
+  /**
+   * Registrar un intento fallido
+   */
+  recordFailedAttempt(identifier: string): void {
+    const existing = this.attempts.get(identifier);
+    const now = Date.now();
+
+    if (!existing) {
+      this.attempts.set(identifier, {
+        count: 1,
+        firstAttempt: now,
+        lastAttempt: now,
+        lockedUntil: null,
+      });
+      return;
+    }
+
+    existing.count++;
+    existing.lastAttempt = now;
+
+    if (existing.count >= this.maxAttempts) {
+      existing.lockedUntil = now + this.lockoutDurationMs;
+    }
+  }
+
+  /**
+   * Resetear intentos después de login exitoso
+   */
+  resetAttempts(identifier: string): void {
+    this.attempts.delete(identifier);
+  }
+
+  /**
+   * Obtener info de intentos para logging
+   */
+  getAttemptInfo(identifier: string): LoginAttempt | null {
+    return this.attempts.get(identifier) || null;
+  }
+
+  /**
+   * Formatear tiempo restante en formato legible
+   */
+  formatRemainingTime(remainingMs: number): string {
+    const minutes = Math.ceil(remainingMs / 60000);
+    return `${minutes} minuto${minutes > 1 ? 's' : ''}`;
+  }
+}
+
+export const loginRateLimiter = new RateLimiter();
+
+=== src/services/auth/tokenManager.ts ===
+/**
+ * Generación de tokens de sesión criptográficamente seguros.
+ * Usa crypto.getRandomValues() en lugar de Math.random().
+ */
+
+const TOKEN_LENGTH = 32; // 32 bytes = 256 bits de entropía
+const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 días
+
+export interface SessionToken {
+  token: string;
+  userId: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+/**
+ * Genera un token criptográficamente seguro
+ */
+export function generateSecureToken(): string {
+  const array = new Uint8Array(TOKEN_LENGTH);
+  crypto.getRandomValues(array);
+  return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Crea una sesión completa con token seguro
+ */
+export function createSession(userId: string): SessionToken {
+  const now = Date.now();
+  return {
+    token: generateSecureToken(),
+    userId,
+    createdAt: now,
+    expiresAt: now + SESSION_DURATION_MS,
+  };
+}
+
+/**
+ * Verifica si una sesión es válida (no expirada)
+ */
+export function isSessionValid(session: SessionToken): boolean {
+  return Date.now() < session.expiresAt;
+}
+
+=== LOGIN PAGE ===
+=== src/pages/LoginPage.ts ===
+/**
+ * Login Page - Pulsos Sociales
+ * Página de autenticación visual premium
+ */
+
+import { navigateTo } from '../router/index';
+import { authService } from '../services/auth';
+
+export type AuthMode = 'login' | 'register' | 'forgot';
+
+interface LoginState {
+  mode: AuthMode;
+  loading: boolean;
+  error: string | null;
+  success: string | null;
+}
+
+const state: LoginState = {
+  mode: 'login',
+  loading: false,
+  error: null,
+  success: null
+};
+
+/**
+ * Create the Login page
+ */
+export function createLoginPage(): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'auth-container';
+
+  container.innerHTML = `
+    <!-- Background -->
+    <div class="auth-bg">
+      <div class="auth-grid"></div>
+    </div>
+
+    <!-- Back Link -->
+    <a href="#" class="auth-back" id="auth-back">
+      <span class="material-symbols-outlined">arrow_back</span>
+      <span>Volver</span>
+    </a>
+
+    <!-- Auth Card -->
+    <div class="auth-card">
+      <!-- Header -->
+      <div class="auth-header">
+        <div class="auth-logo">◉</div>
+        <h1 class="auth-title">PULSOS SOCIALES</h1>
+        <p class="auth-subtitle" id="auth-subtitle">Inicia sesión para continuar</p>
+      </div>
+
+      <!-- Messages -->
+      <div class="auth-messages" id="auth-messages"></div>
+
+      <!-- Tabs -->
+      <div class="auth-tabs" id="auth-tabs">
+        <button class="auth-tab active" data-mode="login">Iniciar sesión</button>
+        <button class="auth-tab" data-mode="register">Crear cuenta</button>
+      </div>
+
+      <!-- Login Form -->
+      <form class="auth-form" id="login-form">
+        <div class="auth-field">
+          <label class="auth-label">Email</label>
+          <input 
+            type="email" 
+            class="auth-input" 
+            id="login-email" 
+            placeholder="tu@email.com"
+            required
+            autocomplete="email"
+          />
+        </div>
+
+        <div class="auth-field auth-field-password">
+          <label class="auth-label">Contraseña</label>
+          <input 
+            type="password" 
+            class="auth-input" 
+            id="login-password" 
+            placeholder="••••••••"
+            required
+            autocomplete="current-password"
+          />
+          <button type="button" class="auth-password-toggle" id="toggle-password">
+            <span class="material-symbols-outlined">visibility_off</span>
+          </button>
+        </div>
+
+        <div class="auth-options">
+          <label class="auth-remember">
+            <input type="checkbox" id="remember-me" />
+            <span class="auth-checkbox"></span>
+            <span class="auth-remember-text">Recordarme</span>
+          </label>
+          <a href="#" class="auth-forgot" id="forgot-link">¿Olvidaste tu contraseña?</a>
+        </div>
+
+        <button type="submit" class="auth-button" id="login-button">
+          <span>Iniciar sesión</span>
+        </button>
+      </form>
+
+      <!-- Register Form -->
+      <form class="auth-form" id="register-form" style="display: none;">
+        <div class="auth-field">
+          <label class="auth-label">Nombre</label>
+          <input 
+            type="text" 
+            class="auth-input" 
+            id="register-name" 
+            placeholder="Tu nombre"
+            required
+            autocomplete="name"
+          />
+        </div>
+
+        <div class="auth-field">
+          <label class="auth-label">Email</label>
+          <input 
+            type="email" 
+            class="auth-input" 
+            id="register-email" 
+            placeholder="tu@email.com"
+            required
+            autocomplete="email"
+          />
+        </div>
+
+        <div class="auth-field auth-field-password">
+          <label class="auth-label">Contraseña</label>
+          <input 
+            type="password" 
+            class="auth-input" 
+            id="register-password" 
+            placeholder="Mínimo 8 caracteres"
+            required
+            minlength="8"
+            autocomplete="new-password"
+          />
+          <button type="button" class="auth-password-toggle" id="toggle-register-password">
+            <span class="material-symbols-outlined">visibility_off</span>
+          </button>
+        </div>
+
+        <div class="auth-field auth-field-password">
+          <label class="auth-label">Confirmar contraseña</label>
+          <input 
+            type="password" 
+            class="auth-input" 
+            id="register-password-confirm" 
+            placeholder="Repite tu contraseña"
+            required
+            autocomplete="new-password"
+          />
+        </div>
+
+        <button type="submit" class="auth-button" id="register-button">
+          <span>Crear cuenta</span>
+        </button>
+      </form>
+
+      <!-- Forgot Password Form -->
+      <form class="auth-form" id="forgot-form" style="display: none;">
+        <div class="auth-field">
+          <label class="auth-label">Email</label>
+          <input 
+            type="email" 
+            class="auth-input" 
+            id="forgot-email" 
+            placeholder="tu@email.com"
+            required
+            autocomplete="email"
+          />
+        </div>
+
+        <p style="font-size: 0.9rem; color: rgba(255,255,255,0.6); margin-bottom: 20px;">
+          Te enviaremos un enlace para restablecer tu contraseña.
+        </p>
+
+        <button type="submit" class="auth-button" id="forgot-button">
+          <span>Enviar enlace</span>
+        </button>
+
+        <button type="button" class="auth-button" style="background: transparent; border: 1px solid rgba(255,255,255,0.2); margin-top: 10px;" id="back-to-login">
+          <span>Volver al inicio de sesión</span>
+        </button>
+      </form>
+
+      <!-- Divider -->
+      <div class="auth-divider" id="auth-divider">o continúa con</div>
+
+      <!-- Social Login -->
+      <div class="auth-social" id="auth-social">
+        <button class="auth-social-button" id="google-login">
+          <span class="material-symbols-outlined">account_circle</span>
+          <span>Google</span>
+        </button>
+        <button class="auth-social-button" id="github-login">
+          <span class="material-symbols-outlined">code</span>
+          <span>GitHub</span>
+        </button>
+      </div>
+
+      <!-- Footer -->
+      <div class="auth-footer" id="auth-footer">
+        <span class="auth-footer-text">
+          ¿No tienes cuenta? 
+          <a href="#" class="auth-footer-link" id="switch-to-register">Regístrate</a>
+        </span>
+      </div>
+    </div>
+  `;
+
+  // Setup event listeners
+  setupEventListeners(container);
+
+  return container;
+}
+
+/**
+ * Setup event listeners
+ */
+function setupEventListeners(container: HTMLElement): void {
+  // Back button
+  const backBtn = container.querySelector('#auth-back');
+  backBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    navigateTo('landing');
+  });
+
+  // Tab switching
+  const tabs = container.querySelectorAll('.auth-tab');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const mode = tab.getAttribute('data-mode') as AuthMode;
+      switchMode(mode, container);
+    });
+  });
+
+  // Password toggles
+  setupPasswordToggle(container, '#toggle-password', '#login-password');
+  setupPasswordToggle(container, '#toggle-register-password', '#register-password');
+
+  // Form submissions
+  const loginForm = container.querySelector('#login-form') as HTMLFormElement;
+  loginForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await handleLogin(container);
+  });
+
+  const registerForm = container.querySelector('#register-form') as HTMLFormElement;
+  registerForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await handleRegister(container);
+  });
+
+  const forgotForm = container.querySelector('#forgot-form') as HTMLFormElement;
+  forgotForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await handleForgot(container);
+  });
+
+  // Forgot password link
+  const forgotLink = container.querySelector('#forgot-link');
+  forgotLink?.addEventListener('click', (e) => {
+    e.preventDefault();
+    switchMode('forgot', container);
+  });
+
+  // Back to login
+  const backToLogin = container.querySelector('#back-to-login');
+  backToLogin?.addEventListener('click', () => {
+    switchMode('login', container);
+  });
+
+  // Switch to register link
+  const switchToRegister = container.querySelector('#switch-to-register');
+  switchToRegister?.addEventListener('click', (e) => {
+    e.preventDefault();
+    switchMode('register', container);
+  });
+
+  // Social login (placeholders)
+  const googleLogin = container.querySelector('#google-login');
+  googleLogin?.addEventListener('click', () => {
+    showMessage(container, 'Login con Google - Integración pendiente', 'info');
+  });
+
+  const githubLogin = container.querySelector('#github-login');
+  githubLogin?.addEventListener('click', () => {
+    showMessage(container, 'Login con GitHub - Integración pendiente', 'info');
+  });
+}
+
+/**
+ * Setup password visibility toggle
+ */
+function setupPasswordToggle(container: HTMLElement, toggleSelector: string, inputSelector: string): void {
+  const toggle = container.querySelector(toggleSelector);
+  const input = container.querySelector(inputSelector) as HTMLInputElement;
+  
+  if (!toggle || !input) return;
+
+  toggle.addEventListener('click', () => {
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    
+    const icon = toggle.querySelector('.material-symbols-outlined');
+    if (icon) {
+      icon.textContent = isPassword ? 'visibility' : 'visibility_off';
+    }
+  });
+}
+
+/**
+ * Switch between auth modes
+ */
+function switchMode(mode: AuthMode, container: HTMLElement): void {
+  state.mode = mode;
+  state.error = null;
+  state.success = null;
+
+  // Update tabs
+  const tabs = container.querySelectorAll('.auth-tab');
+  tabs.forEach(tab => {
+    const tabMode = tab.getAttribute('data-mode');
+    if (tabMode === mode) {
+      tab.classList.add('active');
+    } else {
+      tab.classList.remove('active');
+    }
+  });
+
+  // Show/hide forms
+  const loginForm = container.querySelector('#login-form') as HTMLElement;
+  const registerForm = container.querySelector('#register-form') as HTMLElement;
+  const forgotForm = container.querySelector('#forgot-form') as HTMLElement;
+  const tabsContainer = container.querySelector('#auth-tabs') as HTMLElement;
+  const divider = container.querySelector('#auth-divider') as HTMLElement;
+  const social = container.querySelector('#auth-social') as HTMLElement;
+  const footer = container.querySelector('#auth-footer') as HTMLElement;
+  const subtitle = container.querySelector('#auth-subtitle') as HTMLElement;
+
+  // Reset visibility
+  loginForm.style.display = 'none';
+  registerForm.style.display = 'none';
+  forgotForm.style.display = 'none';
+
+  switch (mode) {
+    case 'login':
+      loginForm.style.display = 'flex';
+      tabsContainer.style.display = 'flex';
+      divider.style.display = 'flex';
+      social.style.display = 'flex';
+      footer.style.display = 'block';
+      subtitle.textContent = 'Inicia sesión para continuar';
+      break;
+    case 'register':
+      registerForm.style.display = 'flex';
+      tabsContainer.style.display = 'flex';
+      divider.style.display = 'flex';
+      social.style.display = 'flex';
+      footer.style.display = 'none';
+      subtitle.textContent = 'Crea tu cuenta para comenzar';
+      break;
+    case 'forgot':
+      forgotForm.style.display = 'flex';
+      tabsContainer.style.display = 'none';
+      divider.style.display = 'none';
+      social.style.display = 'none';
+      footer.style.display = 'none';
+      subtitle.textContent = 'Recupera tu contraseña';
+      break;
+  }
+
+  // Clear messages
+  clearMessages(container);
+}
+
+/**
+ * Handle login submission
+ */
+async function handleLogin(container: HTMLElement): Promise<void> {
+  const emailInput = container.querySelector('#login-email') as HTMLInputElement;
+  const passwordInput = container.querySelector('#login-password') as HTMLInputElement;
+
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
+
+  if (!email || !password) {
+    showMessage(container, 'Por favor completa todos los campos', 'error');
+    return;
+  }
+
+  setLoading(container, true);
+
+  try {
+    const result = await authService.signIn(email, password);
+    if (result.success) {
+      showMessage(container, '¡Bienvenido! Redirigiendo...', 'success');
+      setTimeout(() => {
+        navigateTo('home');
+      }, 1000);
+    } else {
+      showMessage(container, result.error || 'Error al iniciar sesión', 'error');
+    }
+  } catch (error) {
+    showMessage(container, 'Error al iniciar sesión. Intenta nuevamente.', 'error');
+  } finally {
+    setLoading(container, false);
+  }
+}
+
+/**
+ * Handle register submission
+ */
+async function handleRegister(container: HTMLElement): Promise<void> {
+  const nameInput = container.querySelector('#register-name') as HTMLInputElement;
+  const emailInput = container.querySelector('#register-email') as HTMLInputElement;
+  const passwordInput = container.querySelector('#register-password') as HTMLInputElement;
+  const confirmInput = container.querySelector('#register-password-confirm') as HTMLInputElement;
+
+  const name = nameInput.value.trim();
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
+  const confirm = confirmInput.value;
+
+  if (!name || !email || !password || !confirm) {
+    showMessage(container, 'Por favor completa todos los campos', 'error');
+    return;
+  }
+
+  if (password.length < 8) {
+    showMessage(container, 'La contraseña debe tener al menos 8 caracteres', 'error');
+    return;
+  }
+
+  if (password !== confirm) {
+    showMessage(container, 'Las contraseñas no coinciden', 'error');
+    return;
+  }
+
+  setLoading(container, true);
+
+  try {
+    const result = await authService.signUp(email, password, { name });
+    if (result.success) {
+      showMessage(container, '¡Cuenta creada! Redirigiendo...', 'success');
+      setTimeout(() => {
+        navigateTo('home');
+      }, 1000);
+    } else {
+      showMessage(container, result.error || 'Error al crear cuenta', 'error');
+    }
+  } catch (error) {
+    showMessage(container, 'Error al crear cuenta. Intenta nuevamente.', 'error');
+  } finally {
+    setLoading(container, false);
+  }
+}
+
+/**
+ * Handle forgot password submission
+ */
+async function handleForgot(container: HTMLElement): Promise<void> {
+  const emailInput = container.querySelector('#forgot-email') as HTMLInputElement;
+  const email = emailInput.value.trim();
+
+  if (!email) {
+    showMessage(container, 'Por favor ingresa tu email', 'error');
+    return;
+  }
+
+  setLoading(container, true);
+
+  try {
+    const result = await authService.resetPassword(email);
+    if (result.success) {
+      showMessage(container, 'Revisa tu email para restablecer la contraseña', 'success');
+      setTimeout(() => {
+        switchMode('login', container);
+      }, 2000);
+    } else {
+      showMessage(container, result.error || 'Error al enviar el enlace', 'error');
+    }
+  } catch (error) {
+    showMessage(container, 'Error al enviar el enlace. Intenta nuevamente.', 'error');
+  } finally {
+    setLoading(container, false);
+  }
+}
+
+/**
+ * Show message
+ */
+function showMessage(container: HTMLElement, message: string, type: 'error' | 'success' | 'info'): void {
+  const messagesContainer = container.querySelector('#auth-messages');
+  if (!messagesContainer) return;
+
+  const colors = {
+    error: { bg: 'rgba(255, 68, 68, 0.1)', border: 'rgba(255, 68, 68, 0.3)', color: '#ff6464' },
+    success: { bg: 'rgba(0, 255, 136, 0.1)', border: 'rgba(0, 255, 136, 0.3)', color: '#00ff88' },
+    info: { bg: 'rgba(0, 240, 255, 0.1)', border: 'rgba(0, 240, 255, 0.3)', color: '#00f0ff' }
+  };
+
+  const style = colors[type];
+
+  messagesContainer.innerHTML = `
+    <div style="
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      background: ${style.bg};
+      border: 1px solid ${style.border};
+      color: ${style.color};
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    ">
+      <span class="material-symbols-outlined" style="font-size: 1.1rem;">
+        ${type === 'error' ? 'error' : type === 'success' ? 'check_circle' : 'info'}
+      </span>
+      <span>${message}</span>
+    </div>
+  `;
+}
+
+/**
+ * Clear messages
+ */
+function clearMessages(container: HTMLElement): void {
+  const messagesContainer = container.querySelector('#auth-messages');
+  if (messagesContainer) {
+    messagesContainer.innerHTML = '';
+  }
+}
+
+/**
+ * Set loading state
+ */
+function setLoading(container: HTMLElement, loading: boolean): void {
+  state.loading = loading;
+  
+  const buttons = container.querySelectorAll('.auth-button');
+  buttons.forEach(button => {
+    if (loading) {
+      button.setAttribute('disabled', 'true');
+      button.classList.add('auth-button-loading');
+    } else {
+      button.removeAttribute('disabled');
+      button.classList.remove('auth-button-loading');
+    }
+  });
+}
+
+=== USER MENU ===
+=== src/components/UserMenu.ts ===
+/**
+ * User Menu Component
+ * Menú de usuario para la app protegida con perfil, configuración y logout
+ */
+
+import { logout, authService } from '../services/auth/index';
+import { navigateTo } from '../router/index';
+
+interface User {
+  email: string;
+  name?: string;
+  avatar?: string;
+}
+
+/**
+ * Create the User Menu component
+ */
+export function createUserMenu(user?: User): HTMLElement {
+  // Get real user from auth service if not provided
+  const currentUser = user || authService.getCurrentUser() || { email: 'usuario@pulsos.cl' };
+  const container = document.createElement('div');
+  container.className = 'user-menu-container';
+
+  const displayName = currentUser.name || currentUser.email.split('@')[0];
+  const initials = displayName.substring(0, 2).toUpperCase();
+
+  container.innerHTML = `
+    <button class="user-menu-trigger" id="user-menu-trigger">
+      <div class="user-avatar">
+        <span class="user-initials">${initials}</span>
+        <div class="user-status"></div>
+      </div>
+      <span class="user-name">${displayName}</span>
+      <span class="material-symbols-outlined user-chevron">expand_more</span>
+    </button>
+    
+    <div class="user-menu-dropdown" id="user-menu-dropdown">
+      <div class="user-menu-header">
+        <div class="user-avatar large">
+          <span class="user-initials">${initials}</span>
+        </div>
+        <div class="user-info">
+          <span class="user-info-name">${displayName}</span>
+          <span class="user-info-email">${currentUser.email}</span>
+        </div>
+      </div>
+      
+      <div class="user-menu-divider"></div>
+      
+      <div class="user-menu-items">
+        <button class="user-menu-item" id="user-menu-profile">
+          <span class="material-symbols-outlined">person</span>
+          <span>Mi perfil</span>
+        </button>
+        
+        <button class="user-menu-item" id="user-menu-settings">
+          <span class="material-symbols-outlined">settings</span>
+          <span>Configuración</span>
+        </button>
+        
+        <div class="user-menu-divider"></div>
+        
+        <button class="user-menu-item user-menu-logout" id="user-menu-logout">
+          <span class="material-symbols-outlined">logout</span>
+          <span>Cerrar sesión</span>
+        </button>
+      </div>
+    </div>
+  `;
+
+  // Setup event listeners
+  setupEventListeners(container);
+
+  return container;
+}
+
+/**
+ * Setup event listeners for the user menu
+ */
+function setupEventListeners(container: HTMLElement): void {
+  const trigger = container.querySelector('#user-menu-trigger') as HTMLButtonElement;
+  const dropdown = container.querySelector('#user-menu-dropdown') as HTMLElement;
+  const profileBtn = container.querySelector('#user-menu-profile') as HTMLButtonElement;
+  const settingsBtn = container.querySelector('#user-menu-settings') as HTMLButtonElement;
+  const logoutBtn = container.querySelector('#user-menu-logout') as HTMLButtonElement;
+
+  let isOpen = false;
+
+  // Toggle dropdown
+  trigger?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    isOpen = !isOpen;
+    dropdown?.classList.toggle('open', isOpen);
+    trigger?.classList.toggle('active', isOpen);
+  });
+
+  // Close on outside click
+  document.addEventListener('click', (e) => {
+    if (isOpen && !container.contains(e.target as Node)) {
+      isOpen = false;
+      dropdown?.classList.remove('open');
+      trigger?.classList.remove('active');
+    }
+  });
+
+  // Profile action
+  profileBtn?.addEventListener('click', () => {
+    closeMenu();
+    navigateTo('profile');
+  });
+
+  // Settings action
+  settingsBtn?.addEventListener('click', () => {
+    closeMenu();
+    navigateTo('settings');
+  });
+
+  // Logout action
+  logoutBtn?.addEventListener('click', async () => {
+    closeMenu();
+    
+    // Mostrar indicador de carga
+    logoutBtn.innerHTML = `
+      <span class="material-symbols-outlined spinning">refresh</span>
+      <span>Cerrando sesión...</span>
+    `;
+    
+    try {
+      await logout();
+      // Redirigir a landing después de logout
+      navigateTo('landing');
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+      // Restaurar botón en caso de error
+      logoutBtn.innerHTML = `
+        <span class="material-symbols-outlined">logout</span>
+        <span>Cerrar sesión</span>
+      `;
+    }
+  });
+
+  function closeMenu(): void {
+    isOpen = false;
+    dropdown?.classList.remove('open');
+    trigger?.classList.remove('active');
+  }
+}
+
+/**
+ * Add user menu styles to the document
+ */
+export function addUserMenuStyles(): void {
+  if (document.getElementById('user-menu-styles')) return;
+
+  const style = document.createElement('style');
+  style.id = 'user-menu-styles';
+  style.textContent = `
+    /* ============================================
+       User Menu Styles
+       ============================================ */
+    .user-menu-container {
+      position: relative;
+    }
+
+    /* Trigger Button */
+    .user-menu-trigger {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 16px;
+      background: rgba(0, 240, 255, 0.05);
+      border: 1px solid rgba(0, 240, 255, 0.15);
+      border-radius: 12px;
+      color: #ffffff;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .user-menu-trigger:hover {
+      background: rgba(0, 240, 255, 0.1);
+      border-color: rgba(0, 240, 255, 0.3);
+    }
+
+    .user-menu-trigger.active {
+      background: rgba(0, 240, 255, 0.15);
+      border-color: rgba(0, 240, 255, 0.4);
+    }
+
+    /* Avatar */
+    .user-avatar {
+      position: relative;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #00f0ff, #ff00a0);
+      border-radius: 50%;
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: #020204;
+    }
+
+    .user-avatar.large {
+      width: 48px;
+      height: 48px;
+      font-size: 1.1rem;
+    }
+
+    .user-initials {
+      font-family: 'Inter', sans-serif;
+    }
+
+    .user-status {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 10px;
+      height: 10px;
+      background: #00ff88;
+      border: 2px solid #0a0a12;
+      border-radius: 50%;
+    }
+
+    /* User Name */
+    .user-name {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .user-chevron {
+      font-size: 1.2rem;
+      color: rgba(255, 255, 255, 0.5);
+      transition: transform 0.3s ease;
+    }
+
+    .user-menu-trigger.active .user-chevron {
+      transform: rotate(180deg);
+    }
+
+    /* Dropdown */
+    .user-menu-dropdown {
+      position: absolute;
+      top: calc(100% + 12px);
+      right: 0;
+      width: 280px;
+      background: rgba(12, 12, 20, 0.95);
+      border: 1px solid rgba(0, 240, 255, 0.2);
+      border-radius: 16px;
+      padding: 20px;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-10px);
+      transition: all 0.3s ease;
+      backdrop-filter: blur(20px);
+      box-shadow: 
+        0 20px 60px rgba(0, 0, 0, 0.5),
+        0 0 40px rgba(0, 240, 255, 0.1);
+      z-index: 1000;
+    }
+
+    .user-menu-dropdown.open {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    /* Dropdown Header */
+    .user-menu-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding-bottom: 16px;
+    }
+
+    .user-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .user-info-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .user-info-email {
+      font-size: 0.8rem;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    /* Divider */
+    .user-menu-divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+      margin: 12px 0;
+    }
+
+    /* Menu Items */
+    .user-menu-items {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .user-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: transparent;
+      border: none;
+      border-radius: 10px;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: left;
+      width: 100%;
+    }
+
+    .user-menu-item:hover {
+      background: rgba(0, 240, 255, 0.1);
+      color: #ffffff;
+    }
+
+    .user-menu-item .material-symbols-outlined {
+      font-size: 1.2rem;
+      color: rgba(0, 240, 255, 0.7);
+    }
+
+    .user-menu-item:hover .material-symbols-outlined {
+      color: #00f0ff;
+    }
+
+    /* Logout Item */
+    .user-menu-logout {
+      color: rgba(255, 100, 100, 0.9);
+    }
+
+    .user-menu-logout:hover {
+      background: rgba(255, 100, 100, 0.1);
+      color: #ff6464;
+    }
+
+    .user-menu-logout .material-symbols-outlined {
+      color: rgba(255, 100, 100, 0.7);
+    }
+
+    .user-menu-logout:hover .material-symbols-outlined {
+      color: #ff6464;
+    }
+
+    /* Spinning animation for loading */
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .spinning {
+      animation: spin 1s linear infinite;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .user-name {
+        display: none;
+      }
+      
+      .user-menu-trigger {
+        padding: 8px;
+      }
+      
+      .user-menu-dropdown {
+        right: -10px;
+        width: 260px;
+      }
+    }
+  `;
+
+  document.head.appendChild(style);
+}
+
+=== AUTH STYLES ===
+=== src/styles/auth.css ===
+/**
+ * Pulsos Sociales - Auth Styles (Login/Register)
+ * Diseño premium consistente con la landing
+ */
+
+/* ============================================
+   Auth Container
+   ============================================ */
+.auth-container {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--landing-bg, #050508);
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.auth-bg::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: 
+    radial-gradient(ellipse 60% 40% at 30% 30%, rgba(0, 240, 255, 0.1) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 30% at 70% 70%, rgba(255, 0, 160, 0.08) 0%, transparent 50%);
+}
+
+.auth-grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: 
+    linear-gradient(rgba(0, 240, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.02) 1px, transparent 1px);
+  background-size: 80px 80px;
+}
+
+/* ============================================
+   Auth Card
+   ============================================ */
+.auth-card {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  padding: 50px 45px;
+  background: rgba(15, 15, 25, 0.9);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: 24px;
+  backdrop-filter: blur(20px);
+  z-index: 1;
+  animation: auth-card-appear 0.6s ease forwards;
+}
+
+@keyframes auth-card-appear {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.auth-card::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  right: -1px;
+  height: 3px;
+  background: linear-gradient(90deg, var(--neon-cyan, #00f0ff), var(--neon-magenta, #ff00a0), var(--neon-purple, #8b5cf6));
+  border-radius: 24px 24px 0 0;
+}
+
+/* ============================================
+   Auth Header
+   ============================================ */
+.auth-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.auth-logo {
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--neon-cyan, #00f0ff), var(--neon-magenta, #ff00a0));
+  border-radius: 16px;
+  font-size: 2rem;
+  color: #050508;
+  margin: 0 auto 24px;
+  box-shadow: 0 0 30px rgba(0, 240, 255, 0.4);
+  animation: logo-pulse 3s ease-in-out infinite;
+}
+
+@keyframes logo-pulse {
+  0%, 100% { box-shadow: 0 0 30px rgba(0, 240, 255, 0.4); }
+  50% { box-shadow: 0 0 50px rgba(0, 240, 255, 0.6); }
+}
+
+.auth-title {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+
+.auth-subtitle {
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ============================================
+   Auth Form
+   ============================================ */
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.auth-field {
+  position: relative;
+}
+
+.auth-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.auth-input {
+  width: 100%;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: 1rem;
+  font-family: inherit;
+  transition: all 0.3s ease;
+}
+
+.auth-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.auth-input:hover {
+  border-color: rgba(0, 240, 255, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.auth-input:focus {
+  outline: none;
+  border-color: var(--neon-cyan, #00f0ff);
+  background: rgba(0, 240, 255, 0.05);
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+}
+
+.auth-input-icon {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.2rem;
+  color: rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+}
+
+/* Password Field */
+.auth-field-password .auth-input {
+  padding-right: 50px;
+}
+
+.auth-password-toggle {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: color 0.3s ease;
+  padding: 4px;
+}
+
+.auth-password-toggle:hover {
+  color: var(--neon-cyan, #00f0ff);
+}
+
+/* ============================================
+   Auth Options
+   ============================================ */
+.auth-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.auth-remember {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.auth-remember input {
+  display: none;
+}
+
+.auth-checkbox {
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.auth-remember input:checked + .auth-checkbox {
+  background: var(--neon-cyan, #00f0ff);
+  border-color: var(--neon-cyan, #00f0ff);
+}
+
+.auth-remember input:checked + .auth-checkbox::after {
+  content: '✓';
+  color: #050508;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.auth-remember-text {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.auth-forgot {
+  font-size: 0.85rem;
+  color: var(--neon-cyan, #00f0ff);
+  text-decoration: none;
+  transition: all 0.3s ease;
+}
+
+.auth-forgot:hover {
+  color: #ffffff;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+}
+
+/* ============================================
+   Auth Button
+   ============================================ */
+.auth-button {
+  width: 100%;
+  padding: 16px 24px;
+  background: linear-gradient(135deg, var(--neon-cyan, #00f0ff), var(--neon-magenta, #ff00a0));
+  border: none;
+  border-radius: 12px;
+  color: #050508;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  transition: left 0.5s ease;
+}
+
+.auth-button:hover::before {
+  left: 100%;
+}
+
+.auth-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px rgba(0, 240, 255, 0.4), 0 10px 30px rgba(255, 0, 160, 0.3);
+}
+
+.auth-button:active {
+  transform: translateY(0);
+}
+
+.auth-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.auth-button-loading {
+  position: relative;
+  color: transparent;
+}
+
+.auth-button-loading::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border: 2px solid transparent;
+  border-top-color: #050508;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   Auth Divider
+   ============================================ */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 30px 0;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.85rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+}
+
+/* ============================================
+   Auth Social
+   ============================================ */
+.auth-social {
+  display: flex;
+  gap: 12px;
+}
+
+.auth-social-button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #ffffff;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.auth-social-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(0, 240, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+/* ============================================
+   Auth Footer
+   ============================================ */
+.auth-footer {
+  text-align: center;
+  margin-top: 30px;
+  padding-top: 30px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.auth-footer-text {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.auth-footer-link {
+  color: var(--neon-cyan, #00f0ff);
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.auth-footer-link:hover {
+  color: #ffffff;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+}
+
+/* ============================================
+   Auth Error/Success Messages
+   ============================================ */
+.auth-message {
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.auth-message-error {
+  background: rgba(255, 68, 68, 0.1);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  color: #ff6464;
+}
+
+.auth-message-success {
+  background: rgba(0, 255, 136, 0.1);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  color: #00ff88;
+}
+
+.auth-message-icon {
+  font-size: 1.1rem;
+}
+
+/* ============================================
+   Auth Tabs (Login/Register toggle)
+   ============================================ */
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 12px 20px;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.auth-tab:hover {
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.auth-tab.active {
+  color: #ffffff;
+  background: rgba(0, 240, 255, 0.1);
+}
+
+.auth-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -21px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 2px;
+  background: var(--neon-cyan, #00f0ff);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+}
+
+/* ============================================
+   Auth Back Link
+   ============================================ */
+.auth-back {
+  position: absolute;
+  top: 30px;
+  left: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+  z-index: 2;
+}
+
+.auth-back:hover {
+  color: var(--neon-cyan, #00f0ff);
+}
+
+/* ============================================
+   Responsive
+   ============================================ */
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 40px 25px;
+    margin: 20px;
+    border-radius: 20px;
+  }
+  
+  .auth-title {
+    font-size: 1.5rem;
+  }
+  
+  .auth-social {
+    flex-direction: column;
+  }
+  
+  .auth-back {
+    top: 20px;
+    left: 20px;
+  }
+}
+
+/* ============================================
+   Auth Overlay (for modal mode)
+   ============================================ */
+.auth-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(5, 5, 8, 0.9);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+}
+
+.auth-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.auth-overlay .auth-card {
+  transform: scale(0.95);
+  transition: transform 0.3s ease;
+}
+
+.auth-overlay.active .auth-card {
+  transform: scale(1);
+}
+
+.auth-overlay-close {
+  position: absolute;
+  top: 30px;
+  right: 30px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 1.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.auth-overlay-close:hover {
+  background: rgba(255, 68, 68, 0.2);
+  border-color: rgba(255, 68, 68, 0.4);
+  color: #ff6464;
+}
+

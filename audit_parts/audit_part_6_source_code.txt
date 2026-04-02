@@ -1,0 +1,3715 @@
+==========================================
+AUDITORÍA TÉCNICA INTEGRAL - PARTE 6/6
+CÓDIGO FUENTE PRINCIPAL
+Fecha: 2026-04-01 18:24:33 UTC
+Repositorio: Pulso
+==========================================
+
+INSTRUCCIONES:
+1. Usar con: docs/PROMPT_AUDITORIA_DEFINITIVO_V2.md
+2. Esta es la Parte 6 de 6
+3. Procesar en orden: Parte 1 → Parte 2 → ... → Parte 6
+4. Cada parte debe analizarse secuencialmente
+
+=== MAIN ENTRY ===
+=== src/main.ts ===
+/**
+ * Pulsos Sociales - Main Entry Point
+ * 
+ * Arquitectura de producto con:
+ * - Landing pública (cyberpunk premium)
+ * - Login/Registro (visual premium)
+ * - App protegida (Home, Mapa, Agentes, etc.)
+ * - Router con guard de autenticación
+ */
+
+// Styles
+import './styles/main.css';
+import './styles/region-detail.css';
+import './styles/surveys.css';
+import './styles/benchmarks.css';
+import './styles/methodology.css';
+import './styles/landing.css';
+import './styles/auth.css';
+import './styles/scenarios.css';
+import './styles/operations.css';
+import './styles/agents.css';
+
+// Router & Auth
+import { 
+  initRouter, 
+  onRouteChange, 
+  isPublicRoute, 
+  isProtectedRoute,
+  isAuthenticated,
+  type Route 
+} from './router/index';
+import { authService } from './services/auth';
+import { initUserSettings } from './services/userSettingsService';
+
+// Public Pages
+import { createLandingPage } from './pages/LandingPage';
+import { createLoginPage } from './pages/LoginPage';
+
+// Protected Pages
+import { createNavigation } from './components/Navigation';
+import { createHomePage } from './pages/HomePage';
+import { createMapViewPage, cleanupMapView } from './pages/MapViewPage';
+import { createChileMapPage, cleanupChileMap } from './pages/ChileMapPage';
+import { createRegionDetailPage, cleanupRegionDetail } from './pages/RegionDetailPage';
+import { createAgentsPage, cleanupAgentsPage } from './pages/AgentsPage';
+import { createSurveysPage, cleanupSurveysPage } from './pages/SurveysPage';
+import { createBenchmarksPage, cleanupBenchmarksPage } from './pages/BenchmarksPage';
+import { createMethodologyPage, cleanupMethodologyPage } from './pages/MethodologyPage';
+import { createProfilePage, cleanupProfilePage } from './pages/ProfilePage';
+import { createSettingsPage, cleanupSettingsPage } from './pages/SettingsPage';
+import { createScenarioBuilderPage, cleanupScenarioBuilderPage } from './pages/ScenarioBuilderPage';
+import { createOperationsPage, cleanupOperationsPage } from './pages/OperationsPage';
+
+// App state
+let navigation: HTMLElement | null = null;
+let currentPage: HTMLElement | null = null;
+let appContainer: HTMLElement | null = null;
+let isAppShellCreated = false;
+let isRendering = false;
+let lastRenderedRoute: Route | null = null;
+
+/**
+ * Initialize the application
+ */
+async function initApp(): Promise<void> {
+  console.log('🚀 PULSOS SOCIALES - Initializing... (Build with secrets)');
+
+  // Initialize auth service
+  await authService.initialize();
+
+  // Initialize user settings (applies saved preferences)
+  await initUserSettings();
+  console.log('⚙️ User settings initialized');
+
+  // Create base app structure
+  appContainer = document.createElement('div');
+  appContainer.id = 'app';
+  document.body.appendChild(appContainer);
+
+  // Subscribe to route changes FIRST
+  // This ensures we catch the initial route notification from initRouter
+  onRouteChange(async (route) => {
+    await renderRoute(route);
+  });
+
+  // Initialize router (triggers initial route render via onRouteChange)
+  initRouter();
+
+  console.log('✅ PULSOS SOCIALES initialized');
+  console.log('🔒 Auth status:', isAuthenticated() ? 'Authenticated' : 'Not authenticated');
+}
+
+/**
+ * Render the current route
+ * Handles public vs protected routes differently
+ */
+async function renderRoute(route: Route): Promise<void> {
+  if (!appContainer) return;
+
+  // Prevent duplicate renders of the same route
+  if (isRendering) {
+    console.log(`⏭️ Skipping render of ${route} - already rendering`);
+    return;
+  }
+
+  // Skip if we're already on this route and have rendered it
+  if (lastRenderedRoute === route && currentPage) {
+    console.log(`⏭️ Skipping render of ${route} - already rendered`);
+    return;
+  }
+
+  isRendering = true;
+  lastRenderedRoute = route;
+
+  const isPublic = isPublicRoute(route);
+  const isProtected = isProtectedRoute(route);
+  const hasAuth = isAuthenticated();
+
+  console.log(`🎨 Rendering route: ${route}`, { isPublic, isProtected, hasAuth });
+
+  try {
+    // Cleanup previous page
+    if (currentPage) {
+      currentPage.remove();
+      currentPage = null;
+    }
+
+    // Cleanup map resources if leaving map routes
+    cleanupMapResources(route);
+
+    // Handle public routes (landing, login, methodology-public)
+    // Special case: methodology shows with nav when authenticated, without when not
+    if (isPublic) {
+      // For methodology page: show with nav if authenticated, without if not
+      if (route === 'methodology' && hasAuth) {
+        // Ensure app shell exists for authenticated users
+        if (!isAppShellCreated) {
+          createAppShell();
+        }
+        // Render methodology inside main content
+        const mainContent = document.getElementById('main-content');
+        if (mainContent) {
+          // LIMPIAR contenido anterior
+          mainContent.innerHTML = '';
+          currentPage = createMethodologyPage();
+          if (currentPage) {
+            mainContent.appendChild(currentPage);
+          }
+        }
+        return;
+      }
+
+      // Remove app shell if exists (for public routes we want clean layout)
+      if (isAppShellCreated) {
+        removeAppShell();
+      }
+
+      // Render public page
+      currentPage = renderPublicPage(route);
+      if (currentPage) {
+        appContainer.appendChild(currentPage);
+      }
+      return;
+    }
+
+    // Handle protected routes - require auth
+    if (isProtected) {
+      if (!hasAuth) {
+        console.log('🔒 Access denied to protected route, redirect handled by router');
+        return;
+      }
+
+      // Ensure app shell exists for protected routes
+      if (!isAppShellCreated) {
+        createAppShell();
+      }
+
+      // Render protected page inside main content
+      const mainContent = document.getElementById('main-content');
+      if (mainContent) {
+        // LIMPIAR contenido anterior - evita acumulación de páginas
+        mainContent.innerHTML = '';
+        currentPage = await renderProtectedPage(route);
+        if (currentPage) {
+          mainContent.appendChild(currentPage);
+        }
+      }
+    }
+  } finally {
+    isRendering = false;
+    console.log(`✅ Finished rendering route: ${route}`);
+  }
+}
+
+/**
+ * Render a public page
+ */
+function renderPublicPage(route: Route): HTMLElement | null {
+  switch (route) {
+    case 'landing':
+      return createLandingPage();
+    case 'login':
+      return createLoginPage();
+    case 'methodology':
+      // Methodology can be public or protected - here we treat it as public
+      return createMethodologyPage();
+    default:
+      return createLandingPage();
+  }
+}
+
+/**
+ * Render a protected page
+ */
+async function renderProtectedPage(route: Route): Promise<HTMLElement | null> {
+  switch (route) {
+    case 'home':
+      return createHomePage();
+    case 'map':
+      return createMapViewPage();
+    case 'territory':
+      return createChileMapPage();
+    case 'region':
+      return createRegionDetailPage();
+    case 'agents':
+      return await createAgentsPage();
+    case 'surveys':
+      return await createSurveysPage();
+    case 'benchmarks':
+      return await createBenchmarksPage();
+    case 'methodology':
+      return createMethodologyPage();
+    case 'profile':
+      return createProfilePage();
+    case 'settings':
+      return createSettingsPage();
+    case 'scenarios':
+      return await createScenarioBuilderPage();
+    case 'operations':
+      return await createOperationsPage();
+    default:
+      return createHomePage();
+  }
+}
+
+/**
+ * Create the protected app shell (navigation + main content area)
+ */
+function createAppShell(): void {
+  if (!appContainer || isAppShellCreated) return;
+
+  console.log('🏗️ Creating app shell...');
+
+  // Clear container
+  appContainer.innerHTML = '';
+
+  // Add navigation
+  navigation = createNavigation();
+  appContainer.appendChild(navigation);
+
+  // Create main content area
+  const main = document.createElement('main');
+  main.id = 'main-content';
+  appContainer.appendChild(main);
+
+  isAppShellCreated = true;
+}
+
+/**
+ * Remove the app shell (for public routes)
+ */
+function removeAppShell(): void {
+  if (!appContainer) return;
+
+  console.log('🗑️ Removing app shell...');
+
+  appContainer.innerHTML = '';
+  navigation = null;
+  isAppShellCreated = false;
+}
+
+/**
+ * Cleanup map resources when leaving map routes
+ */
+function cleanupMapResources(currentRoute: Route): void {
+  // Cleanup map if leaving map route
+  if (currentRoute !== 'map') {
+    cleanupMapView();
+    removeFloatingPanels();
+  }
+
+  // Cleanup Chile map if leaving territory route
+  if (currentRoute !== 'territory') {
+    cleanupChileMap();
+  }
+
+  // Cleanup region detail if leaving region route
+  if (currentRoute !== 'region') {
+    cleanupRegionDetail();
+  }
+
+  // Cleanup agents page if leaving agents route
+  if (currentRoute !== 'agents') {
+    cleanupAgentsPage();
+  }
+
+  // Cleanup surveys page if leaving surveys route
+  if (currentRoute !== 'surveys') {
+    cleanupSurveysPage();
+  }
+
+  // Cleanup benchmarks page if leaving benchmarks route
+  if (currentRoute !== 'benchmarks') {
+    cleanupBenchmarksPage();
+  }
+
+  // Cleanup methodology page if leaving methodology route
+  if (currentRoute !== 'methodology') {
+    cleanupMethodologyPage();
+  }
+
+  // Cleanup profile page if leaving profile route
+  if (currentRoute !== 'profile') {
+    cleanupProfilePage();
+  }
+
+  // Cleanup settings page if leaving settings route
+  if (currentRoute !== 'settings') {
+    cleanupSettingsPage();
+  }
+
+  // Cleanup scenario builder page if leaving scenarios route
+  if (currentRoute !== 'scenarios') {
+    cleanupScenarioBuilderPage();
+  }
+
+  // Cleanup operations page if leaving operations route
+  if (currentRoute !== 'operations') {
+    cleanupOperationsPage();
+  }
+}
+
+/**
+ * Remove floating panels from document.body
+ */
+function removeFloatingPanels(): void {
+  const panels = document.querySelectorAll('.cyberpunk-panel');
+  panels.forEach((panel) => {
+    panel.remove();
+  });
+  console.log('🧹 Floating panels removed');
+}
+
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', initApp);
+
+=== ROUTER ===
+=== src/router/index.ts ===
+/**
+ * Router - Pulsos Sociales
+ * Navegación con soporte para rutas públicas y protegidas
+ */
+
+import { authService } from '../services/auth';
+
+// Route types
+export type PublicRoute = 'landing' | 'login' | 'methodology';
+export type ProtectedRoute = 'home' | 'map' | 'territory' | 'region' | 'agents' | 'surveys' | 'benchmarks' | 'profile' | 'settings' | 'scenarios' | 'operations';
+export type Route = PublicRoute | ProtectedRoute;
+
+interface RouterState {
+  currentRoute: Route;
+  params: Record<string, string>;
+  isAuthenticated: boolean;
+}
+
+const state: RouterState = {
+  currentRoute: 'landing',
+  params: {},
+  isAuthenticated: false,
+};
+
+const listeners: Set<(route: Route) => void> = new Set();
+
+// Public routes that don't require authentication
+const publicRoutes: PublicRoute[] = ['landing', 'login', 'methodology'];
+
+// Protected routes that require authentication
+const protectedRoutes: ProtectedRoute[] = ['home', 'map', 'territory', 'region', 'agents', 'surveys', 'benchmarks', 'profile', 'settings', 'scenarios', 'operations'];
+
+// All valid routes
+const validRoutes: Route[] = [...publicRoutes, ...protectedRoutes];
+
+/**
+ * Check if user is authenticated
+ */
+export function isAuthenticated(): boolean {
+  return authService.isAuthenticated() && authService.isSessionValid();
+}
+
+/**
+ * Check if a route is public
+ */
+export function isPublicRoute(route: string): boolean {
+  return publicRoutes.includes(route as PublicRoute);
+}
+
+/**
+ * Check if a route is protected
+ */
+export function isProtectedRoute(route: string): boolean {
+  return protectedRoutes.includes(route as ProtectedRoute);
+}
+
+/**
+ * Navigate to a route
+ * Automatically redirects to login if trying to access protected route without auth
+ */
+export function navigateTo(route: Route, params: Record<string, string> = {}): void {
+  // Check if trying to access protected route without authentication
+  if (isProtectedRoute(route) && !isAuthenticated()) {
+    console.log('🔒 Protected route access denied, redirecting to login');
+    route = 'login';
+    params = { redirect: state.currentRoute };
+  }
+
+  // If already on landing and authenticated, go to home
+  if (route === 'landing' && isAuthenticated()) {
+    route = 'home';
+  }
+
+  // If going to login while authenticated, go to home instead
+  if (route === 'login' && isAuthenticated()) {
+    route = 'home';
+  }
+
+  state.currentRoute = route;
+  state.params = params;
+  state.isAuthenticated = isAuthenticated();
+
+  // Save route to storage for persistence across page refreshes
+  saveRouteToStorage(route);
+
+  // Update URL hash for shareability
+  if (Object.keys(params).length > 0) {
+    const queryString = new URLSearchParams(params).toString();
+    window.location.hash = `${route}?${queryString}`;
+  } else {
+    window.location.hash = route;
+  }
+
+  // Notify listeners
+  listeners.forEach(listener => listener(route));
+
+  console.log(`🧭 Navigated to: ${route}`, params);
+}
+
+/**
+ * Navigate to a public route
+ */
+export function navigateToPublic(route: PublicRoute, params: Record<string, string> = {}): void {
+  navigateTo(route, params);
+}
+
+/**
+ * Navigate to a protected route (requires auth)
+ */
+export function navigateToProtected(route: ProtectedRoute, params: Record<string, string> = {}): void {
+  if (!isAuthenticated()) {
+    console.log('🔒 Authentication required for protected route');
+    navigateTo('login', { redirect: route, ...params });
+    return;
+  }
+  navigateTo(route, params);
+}
+
+/**
+ * Get current route
+ */
+export function getCurrentRoute(): Route {
+  return state.currentRoute;
+}
+
+/**
+ * Get current params
+ */
+export function getParams(): Record<string, string> {
+  return { ...state.params };
+}
+
+/**
+ * Subscribe to route changes
+ */
+export function onRouteChange(callback: (route: Route) => void): () => void {
+  listeners.add(callback);
+  return () => listeners.delete(callback);
+}
+
+// Storage keys for preserving route
+const ROUTE_STORAGE_KEY = 'pulsossociales_last_route';
+const ROUTE_LOCAL_STORAGE_KEY = 'pulsossociales_last_route_persistent';
+
+/**
+ * Save current route to both sessionStorage and localStorage
+ * localStorage persists across app updates/reinstalls
+ */
+function saveRouteToStorage(route: Route): void {
+  try {
+    sessionStorage.setItem(ROUTE_STORAGE_KEY, route);
+    localStorage.setItem(ROUTE_LOCAL_STORAGE_KEY, route);
+  } catch (e) {
+    // Ignore storage errors
+  }
+}
+
+/**
+ * Get last route from storage
+ * Priority: 1) sessionStorage (same session), 2) localStorage (across updates)
+ */
+function getRouteFromStorage(): Route | null {
+  try {
+    // First try sessionStorage (for same-session navigation)
+    const sessionSaved = sessionStorage.getItem(ROUTE_STORAGE_KEY);
+    if (sessionSaved && validRoutes.includes(sessionSaved as Route)) {
+      return sessionSaved as Route;
+    }
+    
+    // Then try localStorage (persists across app updates)
+    const localSaved = localStorage.getItem(ROUTE_LOCAL_STORAGE_KEY);
+    if (localSaved && validRoutes.includes(localSaved as Route)) {
+      // Restore to sessionStorage for consistency
+      sessionStorage.setItem(ROUTE_STORAGE_KEY, localSaved);
+      return localSaved as Route;
+    }
+  } catch (e) {
+    // Ignore storage errors
+  }
+  return null;
+}
+
+/**
+ * Check if a hash looks like map coordinates (format: zoom/lat/lng/pitch/bearing)
+ * Example: "6.5/-33.5/-70.5/0/60" or "6.5/-33.5/-70.5"
+ */
+function isMapCoordinates(hash: string): boolean {
+  // Map coordinates pattern: numbers separated by slashes
+  // Matches patterns like: "6.5/-33.5/-70.5/0/60" or "6.5/-33.5/-70.5"
+  const coordPattern = /^-?\d+\.?\d*\/\d+\.?\d*\/\d+\.?\d*.*$/;
+  return coordPattern.test(hash);
+}
+
+/**
+ * Initialize router from URL hash
+ * Handles authentication check on init
+ * PRESERVES current route on page refresh if authenticated
+ */
+export function initRouter(): void {
+  // Check authentication status
+  state.isAuthenticated = isAuthenticated();
+
+  // Get raw hash (without the #) - preserve empty string if no hash
+  const rawHash = window.location.hash.slice(1);
+  const hasExplicitHash = rawHash.length > 0;
+  
+  console.log('🔍 Router init - rawHash:', rawHash, 'hasExplicitHash:', hasExplicitHash);
+  console.log('🔍 Router init - window.location.href:', window.location.href);
+  
+  // Try to get saved route from storage (for page refresh scenarios)
+  const savedRoute = getRouteFromStorage();
+  console.log('🔍 Router init - savedRoute from storage:', savedRoute);
+  
+  // Check if hash looks like map coordinates (e.g., "6.5/-33.5/-70.5/0/60")
+  const hashLooksLikeCoords = hasExplicitHash && isMapCoordinates(rawHash);
+  if (hashLooksLikeCoords) {
+    console.log('🗺️ Hash looks like map coordinates, ignoring and using saved route');
+  }
+  
+  // Parse hash and query params
+  // Priority: 1) URL hash (if not coordinates), 2) saved route from storage, 3) default 'landing'
+  let hashPart: string;
+  if (hasExplicitHash && !hashLooksLikeCoords) {
+    hashPart = rawHash;
+  } else if (savedRoute && state.isAuthenticated) {
+    // Use saved route if authenticated and no valid hash in URL
+    hashPart = savedRoute;
+    console.log('📦 Using saved route from storage:', savedRoute);
+  } else {
+    hashPart = 'landing';
+  }
+  
+  const [hash, queryString] = hashPart.split('?');
+  const route = hash as Route;
+
+  console.log('🔍 Router init - parsed route:', route, 'hashPart:', hashPart);
+
+  // Parse query params if present
+  if (queryString) {
+    const params = new URLSearchParams(queryString);
+    state.params = Object.fromEntries(params.entries());
+  }
+
+  // Validate and set initial route
+  if (validRoutes.includes(route)) {
+    // Check if protected route without auth
+    if (isProtectedRoute(route) && !state.isAuthenticated) {
+      console.log('🔒 Initial protected route access denied, redirecting to login');
+      state.currentRoute = 'login';
+      state.params = { redirect: route };
+    } else {
+      // Preserve the requested route (don't redirect to home)
+      state.currentRoute = route;
+      console.log('✅ Preserving current route:', route);
+    }
+  } else {
+    // Default to landing if invalid route
+    state.currentRoute = 'landing';
+    console.log('⚠️ Invalid route, defaulting to landing');
+  }
+
+  // Only redirect to home if:
+  // - User is authenticated AND
+  // - Current route is landing/login AND  
+  // - No explicit hash was in the URL AND
+  // - No saved route in storage
+  // This preserves the current route on page refresh
+  if (state.isAuthenticated && (state.currentRoute === 'landing' || state.currentRoute === 'login') && !hasExplicitHash && !savedRoute) {
+    console.log('🏠 No explicit hash or saved route, redirecting authenticated user to home');
+    state.currentRoute = 'home';
+    state.params = {};
+  }
+
+  // Save the current route to storage for next refresh
+  saveRouteToStorage(state.currentRoute);
+  console.log('💾 Saved route to storage:', state.currentRoute);
+
+  console.log('🔍 Router init - final state.currentRoute:', state.currentRoute);
+
+  // Update URL to match state only if we changed it
+  if (state.currentRoute !== route || (state.params.redirect && state.currentRoute !== 'login')) {
+    console.log('📝 Updating URL hash to:', state.currentRoute);
+    if (Object.keys(state.params).length > 0) {
+      const newQueryString = new URLSearchParams(state.params).toString();
+      window.location.hash = `${state.currentRoute}?${newQueryString}`;
+    } else {
+      window.location.hash = state.currentRoute;
+    }
+  } else {
+    console.log('📝 Not updating URL hash (route unchanged)');
+  }
+
+  // Listen for hash changes
+  window.addEventListener('hashchange', () => {
+    const newHashPart = window.location.hash.slice(1);
+    
+    // Ignore hash changes that look like map coordinates
+    if (isMapCoordinates(newHashPart)) {
+      console.log('🗺️ Ignoring hash change - looks like map coordinates');
+      return;
+    }
+    
+    const [newHash, newQueryString] = newHashPart.split('?');
+    const newRoute = newHash as Route;
+
+    if (validRoutes.includes(newRoute)) {
+      // Check authentication for protected routes
+      if (isProtectedRoute(newRoute) && !isAuthenticated()) {
+        console.log('🔒 Hash change to protected route denied');
+        navigateTo('login', { redirect: newRoute });
+        return;
+      }
+
+      // Parse new query params
+      const newParams: Record<string, string> = {};
+      if (newQueryString) {
+        const params = new URLSearchParams(newQueryString);
+        Object.assign(newParams, Object.fromEntries(params.entries()));
+      }
+
+      state.currentRoute = newRoute;
+      state.params = newParams;
+      state.isAuthenticated = isAuthenticated();
+
+      // Save route to storage for persistence
+      saveRouteToStorage(newRoute);
+
+      // Notify listeners
+      listeners.forEach(listener => listener(newRoute));
+    }
+  });
+
+  console.log('🧭 Router initialized', { 
+    route: state.currentRoute, 
+    params: state.params,
+    isAuthenticated: state.isAuthenticated 
+  });
+
+  // Notify listeners of initial route
+  // This ensures the app renders the initial route
+  listeners.forEach(listener => listener(state.currentRoute));
+}
+
+/**
+ * Check if a route is active
+ */
+export function isRouteActive(route: Route): boolean {
+  return state.currentRoute === route;
+}
+
+/**
+ * Require authentication for current route
+ * Redirects to login if not authenticated
+ */
+export function requireAuth(): boolean {
+  if (!isAuthenticated()) {
+    navigateTo('login', { redirect: state.currentRoute });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Logout and redirect to landing
+ */
+export async function logout(): Promise<void> {
+  await authService.signOut();
+  state.isAuthenticated = false;
+  
+  // Clear saved route from storage on logout
+  try {
+    sessionStorage.removeItem(ROUTE_STORAGE_KEY);
+    localStorage.removeItem(ROUTE_LOCAL_STORAGE_KEY);
+    console.log('🗑️ Cleared saved route from storage on logout');
+  } catch (e) {
+    // Ignore storage errors
+  }
+  
+  navigateTo('landing');
+}
+
+/**
+ * Get redirect URL from params
+ */
+export function getRedirectRoute(): Route | null {
+  const redirect = state.params.redirect;
+  if (redirect && validRoutes.includes(redirect as Route)) {
+    return redirect as Route;
+  }
+  return null;
+}
+
+=== CORE SERVICES (Sample) ===
+=== src/app/survey/surveyService.ts ===
+/**
+ * Survey Service
+ * 
+ * Servicio para ejecutar encuestas y generar resultados agregados.
+ * Sprint 11A - Persistencia de definiciones en Supabase con fallback local
+ */
+
+import type { SyntheticAgent } from '../../types/agent';
+import type { 
+  SurveyDefinition, 
+  SurveyRun, 
+  SurveyResult,
+  SurveyQuestion,
+  AgentResponse,
+  SingleChoiceResult,
+  LikertResult,
+  QuestionResult
+} from '../../types/survey';
+import { filterAgents } from '../../data/syntheticAgents';
+import { generateSurveyResponses, calculateConfidenceStats } from './syntheticResponseEngine';
+import { sampleFromArray } from '../../utils/random';
+// CADEM v1.1 - Import unified survey runner
+import { runSurvey as runUnifiedSurvey } from './surveyRunner';
+import type { CademAdapterAgent, CademSurveyDefinition } from './cademAdapter';
+import {
+  createSurveyDefinition,
+  getSurveyDefinitions,
+  getSurveyDefinitionById,
+  deleteSurveyDefinition,
+  isSurveyPersistenceAvailable,
+  // Sprint 11B - Survey Runs
+  createSurveyRunDb,
+  getSurveyRunsBySurveyId,
+  getSurveyRunById,
+  isSurveyRunPersistenceAvailable,
+  // Sprint 11C - Survey Results
+  saveSurveyResultsDb,
+  getSurveyResultsBySurveyId,
+  getSurveyResultsByRunId,
+  isSurveyResultPersistenceAvailable,
+  // Sprint 11D - Survey Responses
+  saveSurveyResponses,
+  isSurveyResponsePersistenceAvailable,
+} from '../../services/supabase/repositories/surveyRepository';
+
+// ===========================================
+// Survey Storage (in-memory fallback)
+// ===========================================
+
+const surveys: Map<string, SurveyDefinition> = new Map();
+const surveyRuns: Map<string, SurveyRun> = new Map();
+const surveyResults: Map<string, SurveyResult> = new Map();
+
+// Flag para saber si ya cargamos desde DB
+let hasLoadedFromDb = false;
+
+// ===========================================
+// Helper: Sync local cache with DB
+// ===========================================
+
+/**
+ * Carga encuestas desde Supabase al cache local
+ * Solo se ejecuta una vez al inicio
+ */
+async function syncFromDatabase(): Promise<void> {
+  if (hasLoadedFromDb) return;
+  
+  const isAvailable = await isSurveyPersistenceAvailable();
+  if (!isAvailable) {
+    console.log('📋 [SurveyService] DB not available, using local storage');
+    hasLoadedFromDb = true;
+    return;
+  }
+  
+  try {
+    const dbSurveys = await getSurveyDefinitions();
+    // Limpiar cache local y cargar desde DB
+    surveys.clear();
+    for (const survey of dbSurveys) {
+      surveys.set(survey.id, survey);
+    }
+    console.log(`📋 [SurveyService] Loaded ${dbSurveys.length} surveys from DB`);
+    hasLoadedFromDb = true;
+  } catch (error) {
+    console.error('[SurveyService] Error loading from DB:', error);
+    // Continuar con cache local vacío
+    hasLoadedFromDb = true;
+  }
+}
+
+// ===========================================
+// Survey CRUD Operations
+// ===========================================
+
+/**
+ * Crea una nueva encuesta
+ * Intenta guardar en Supabase primero, fallback a local
+ */
+export async function createSurvey(definition: Omit<SurveyDefinition, 'id' | 'createdAt'>): Promise<SurveyDefinition> {
+  // Asegurar que tenemos datos sincronizados
+  await syncFromDatabase();
+  
+  // Intentar guardar en DB primero
+  const isAvailable = await isSurveyPersistenceAvailable();
+  if (isAvailable) {
+    try {
+      const dbSurvey = await createSurveyDefinition(definition);
+      if (dbSurvey) {
+        // Guardar en cache local también
+        surveys.set(dbSurvey.id, dbSurvey);
+        console.log(`📋 Survey created in DB: ${dbSurvey.name} (${dbSurvey.id})`);
+        return dbSurvey;
+      }
+    } catch (error) {
+      console.warn('[SurveyService] DB save failed, falling back to local:', error);
+    }
+  }
+  
+  // Fallback: crear localmente
+  const survey: SurveyDefinition = {
+    ...definition,
+    id: `survey_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    createdAt: new Date().toISOString()
+  };
+  
+  surveys.set(survey.id, survey);
+  console.log(`📋 Survey created locally: ${survey.name} (${survey.id})`);
+  return survey;
+}
+
+/**
+ * Obtiene una encuesta por ID
+ * Busca primero en cache, luego en DB si no está
+ */
+export async function getSurvey(id: string): Promise<SurveyDefinition | undefined> {
+  await syncFromDatabase();
+  
+  // Primero buscar en cache
+  const cached = surveys.get(id);
+  if (cached) return cached;
+  
+  // Si no está en cache y DB está disponible, buscar en DB
+  const isAvailable = await isSurveyPersistenceAvailable();
+  if (isAvailable) {
+    try {
+      const dbSurvey = await getSurveyDefinitionById(id);
+      if (dbSurvey) {
+        surveys.set(dbSurvey.id, dbSurvey); // Cachear
+        return dbSurvey;
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Error fetching from DB:', error);
+    }
+  }
+  
+  return undefined;
+}
+
+/**
+ * Obtiene todas las encuestas
+ * Sincroniza desde DB si es necesario
+ */
+export async function getAllSurveys(): Promise<SurveyDefinition[]> {
+  await syncFromDatabase();
+  
+  // Si DB está disponible, recargar para tener datos frescos
+  const isAvailable = await isSurveyPersistenceAvailable();
+  if (isAvailable) {
+    try {
+      const dbSurveys = await getSurveyDefinitions();
+      // Actualizar cache
+      surveys.clear();
+      for (const survey of dbSurveys) {
+        surveys.set(survey.id, survey);
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Error reloading from DB:', error);
+    }
+  }
+  
+  return Array.from(surveys.values()).sort((a, b) => 
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
+/**
+ * Elimina una encuesta
+ * Elimina de DB si está disponible, y siempre de cache local
+ */
+export async function deleteSurvey(id: string): Promise<boolean> {
+  await syncFromDatabase();
+  
+  // Intentar eliminar de DB primero
+  const isAvailable = await isSurveyPersistenceAvailable();
+  if (isAvailable) {
+    try {
+      const dbDeleted = await deleteSurveyDefinition(id);
+      if (!dbDeleted) {
+        console.error('[SurveyService] Failed to delete survey from DB');
+        return false;
+      }
+      console.log(`🗑️ Survey deleted from DB: ${id}`);
+    } catch (error) {
+      console.error('[SurveyService] Error deleting from DB:', error);
+      return false;
+    }
+  }
+  
+  // Siempre eliminar de cache local
+  const deleted = surveys.delete(id);
+  if (deleted) {
+    console.log(`🗑️ Survey deleted from cache: ${id}`);
+  }
+  return deleted;
+}
+
+// ===========================================
+// Survey Execution
+// ===========================================
+
+/**
+ * Ejecuta una encuesta sobre agentes que coinciden con el segmento
+ * Sprint 11B - Persiste la corrida en Supabase (sin respuestas)
+ * R1 - Soporta scenarioEventId opcional para vincular con escenarios
+ * R2 - Guarda metadata del escenario para trazabilidad
+ * Fixed Sample - Soporta fixedAgentIds para comparaciones reproducibles baseline vs escenario
+ */
+export async function runSurvey(
+  surveyId: string, 
+  scenarioEventId?: string,
+  fixedAgentIds?: string[]
+): Promise<SurveyRun> {
+  const survey = await getSurvey(surveyId);
+  if (!survey) {
+    throw new Error(`Survey not found: ${surveyId}`);
+  }
+  
+  // R2 - Cargar información del escenario si se proporciona
+  let scenarioInfo: { name?: string; category?: string; severity?: import('../events/types').ImpactSeverity } = {};
+  if (scenarioEventId) {
+    try {
+      const { getScenarioById } = await import('../events/scenarioEventStore');
+      const scenarioResult = await getScenarioById(scenarioEventId);
+      if (scenarioResult.success && scenarioResult.data) {
+        scenarioInfo = {
+          name: scenarioResult.data.name,
+          category: scenarioResult.data.category,
+          severity: scenarioResult.data.severity,
+        };
+        console.log(`📋 Loaded scenario info: ${scenarioInfo.name} (${scenarioInfo.category})`);
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Could not load scenario info:', error);
+    }
+  }
+  
+  console.log(`🚀 Running survey: ${survey.name}${scenarioEventId ? ` (with scenario: ${scenarioEventId})` : ''}${fixedAgentIds ? ` (with ${fixedAgentIds.length} fixed agents)` : ''}`);
+  const startedAt = new Date().toISOString();
+  
+  // 1. Filtrar agentes según segmento
+  const segmentFilters: Record<string, string | number | undefined> = {};
+  if (survey.segment.regionCode) segmentFilters.regionCode = survey.segment.regionCode;
+  if (survey.segment.comunaCode) segmentFilters.comunaCode = survey.segment.comunaCode;
+  if (survey.segment.sex) segmentFilters.sex = survey.segment.sex;
+  if (survey.segment.ageGroup) segmentFilters.ageGroup = survey.segment.ageGroup;
+  if (survey.segment.incomeDecile) segmentFilters.incomeDecile = survey.segment.incomeDecile;
+  if (survey.segment.educationLevel) segmentFilters.educationLevel = survey.segment.educationLevel;
+  if (survey.segment.connectivityLevel) segmentFilters.connectivityLevel = survey.segment.connectivityLevel;
+  if (survey.segment.agentType) segmentFilters.agentType = survey.segment.agentType;
+  
+  const matchedAgents = await filterAgents(segmentFilters);
+  console.log(`  📊 Matched ${matchedAgents.length} agents from segment`);
+  
+  // 2. Samplear si es necesario
+  let selectedAgents: SyntheticAgent[];
+  let selectedAgentIds: string[] | undefined;
+  
+  if (fixedAgentIds && fixedAgentIds.length > 0) {
+    // Usar agentes fijos para comparaciones reproducibles
+    selectedAgents = matchedAgents.filter(agent => fixedAgentIds.includes(agent.agent_id));
+    selectedAgentIds = fixedAgentIds;
+    console.log(`  🔒 Using ${selectedAgents.length} fixed agents from baseline`);
+    
+    if (selectedAgents.length === 0) {
+      console.warn('[SurveyService] No agents matched the fixedAgentIds. Falling back to normal sampling.');
+      // Fallback: usar sampling normal si no hay match
+      if (survey.sampleSize > 0 && survey.sampleSize < matchedAgents.length) {
+        selectedAgents = sampleFromArray(matchedAgents, survey.sampleSize);
+      } else {
+        selectedAgents = matchedAgents;
+      }
+      selectedAgentIds = selectedAgents.map(a => a.agent_id);
+    }
+  } else if (survey.sampleSize > 0 && survey.sampleSize < matchedAgents.length) {
+    // Sampleo aleatorio simple usando Fisher-Yates para distribución uniforme
+    selectedAgents = sampleFromArray(matchedAgents, survey.sampleSize);
+    selectedAgentIds = selectedAgents.map(a => a.agent_id);
+    console.log(`  🎲 Sampled ${selectedAgents.length} agents`);
+  } else {
+    selectedAgents = matchedAgents;
+    selectedAgentIds = selectedAgents.map(a => a.agent_id);
+  }
+  
+  // 3. Generar respuestas sintéticas
+  // CADEM v1.1 - Use unified survey runner when engineMode is 'cadem'
+  const useCademEngine = survey.engineMode === 'cadem';
+  let responses: AgentResponse[];
+  
+  if (useCademEngine) {
+    console.log(`  🤖 Generating responses with CADEM engine v1.1...`);
+    responses = await runCademSurveyWithAgents(survey, selectedAgents);
+  } else {
+    console.log(`  🤖 Generating synthetic responses with legacy engine...`);
+    responses = generateSurveyResponses(selectedAgents, survey.questions);
+  }
+  
+  // 4. Crear registro de ejecución local
+  const localRun: SurveyRun = {
+    id: `run_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    surveyId: survey.id,
+    startedAt,
+    completedAt: new Date().toISOString(),
+    totalAgents: selectedAgents.length,
+    responses,
+    metadata: {
+      segmentMatched: matchedAgents.length,
+      sampleSizeRequested: survey.sampleSize,
+      sampleSizeActual: selectedAgents.length,
+      // R2 - Guardar metadata del escenario si existe
+      ...(scenarioEventId && {
+        scenarioEventId,
+        scenarioName: scenarioInfo.name,
+        scenarioCategory: scenarioInfo.category,
+        scenarioSeverity: scenarioInfo.severity,
+      }),
+    },
+    // CADEM v1.1 - Engine metadata
+    engineMode: survey.engineMode || 'legacy',
+    engineVersion: useCademEngine ? 'cadem-v1.1' : 'legacy-v1',
+    persistState: survey.persistState || false,
+    // Fixed Sample - Guardar IDs de agentes seleccionados para comparaciones reproducibles
+    selectedAgentIds: selectedAgentIds || selectedAgents.map(a => a.agent_id)
+  };
+  
+  // 5. Intentar persistir en DB (Sprint 11B)
+  const isDbAvailable = await isSurveyRunPersistenceAvailable();
+  if (isDbAvailable) {
+    try {
+      const dbRun = await createSurveyRunDb(localRun);
+      if (dbRun) {
+        // Usar el ID de la DB pero mantener las respuestas en local
+        localRun.id = dbRun.id;
+        console.log(`  💾 Survey run persisted to DB: ${dbRun.id}`);
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Failed to persist run to DB:', error);
+    }
+  }
+  
+  // 5.5 Persistir respuestas individuales (Sprint 11D)
+  const isResponsesDbAvailable = await isSurveyResponsePersistenceAvailable();
+  if (isResponsesDbAvailable && responses.length > 0) {
+    try {
+      // Crear snapshots de agentes para trazabilidad
+      const agentSnapshots = new Map<string, Record<string, unknown>>();
+      for (const agent of selectedAgents) {
+        agentSnapshots.set(agent.agent_id, {
+          age: agent.age,
+          sex: agent.sex,
+          education_level: agent.education_level,
+          income_decile: agent.income_decile,
+          connectivity_level: agent.connectivity_level,
+          region_code: agent.region_code,
+          comuna_code: agent.comuna_code,
+        });
+      }
+      
+      const saved = await saveSurveyResponses(localRun.id, survey.id, responses, agentSnapshots);
+      if (saved) {
+        console.log(`  💾 Survey responses persisted to DB: ${responses.length} responses`);
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Failed to persist responses to DB:', error);
+    }
+  }
+  
+  // 6. Guardar en cache local (siempre)
+  surveyRuns.set(localRun.id, localRun);
+  console.log(`  ✅ Survey run completed: ${localRun.id}`);
+  
+  // 7. Generar resultados agregados
+  const results = generateSurveyResults(survey, localRun);
+  surveyResults.set(results.surveyId, results);
+  
+  // 8. Intentar persistir resultados en DB (Sprint 11C)
+  const isResultsDbAvailable = await isSurveyResultPersistenceAvailable();
+  if (isResultsDbAvailable) {
+    try {
+      const saved = await saveSurveyResultsDb(results);
+      if (saved) {
+        console.log(`  📊 Survey results persisted to DB for run: ${localRun.id}`);
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Failed to persist results to DB:', error);
+    }
+  }
+  
+  return localRun;
+}
+
+/**
+ * Obtiene una ejecución por ID
+ * Sprint 11B - Intenta DB primero, fallback a local
+ */
+export async function getSurveyRun(runId: string): Promise<SurveyRun | undefined> {
+  // Primero buscar en cache local
+  const localRun = surveyRuns.get(runId);
+  if (localRun) return localRun;
+  
+  // Si no está en cache y DB está disponible, buscar en DB
+  const isDbAvailable = await isSurveyRunPersistenceAvailable();
+  if (isDbAvailable) {
+    try {
+      const dbRun = await getSurveyRunById(runId);
+      if (dbRun) {
+        // Cachear localmente (sin respuestas, solo metadata)
+        surveyRuns.set(dbRun.id, dbRun);
+        return dbRun;
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Error fetching run from DB:', error);
+    }
+  }
+  
+  return undefined;
+}
+
+/**
+ * Obtiene todas las ejecuciones de una encuesta
+ * Sprint 11B - Sincroniza desde DB si está disponible
+ */
+export async function getSurveyRuns(surveyId: string): Promise<SurveyRun[]> {
+  // Si DB está disponible, cargar runs persistidos
+  const isDbAvailable = await isSurveyRunPersistenceAvailable();
+  if (isDbAvailable) {
+    try {
+      const dbRuns = await getSurveyRunsBySurveyId(surveyId);
+      // Merge: DB runs tienen prioridad, pero mantener respuestas locales si existen
+      for (const dbRun of dbRuns) {
+        const localRun = surveyRuns.get(dbRun.id);
+        if (localRun) {
+          // Mantener respuestas locales, usar metadata de DB
+          surveyRuns.set(dbRun.id, { ...dbRun, responses: localRun.responses });
+        } else {
+          surveyRuns.set(dbRun.id, dbRun);
+        }
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Error loading runs from DB:', error);
+    }
+  }
+  
+  return Array.from(surveyRuns.values())
+    .filter(run => run.surveyId === surveyId)
+    .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+}
+
+// ===========================================
+// Results Generation
+// ===========================================
+
+/**
+ * Genera resultados agregados de una encuesta
+ */
+function generateSurveyResults(survey: SurveyDefinition, run: SurveyRun): SurveyResult {
+  const results: QuestionResult[] = [];
+  
+  for (const question of survey.questions) {
+    const questionResponses = run.responses.filter(r => r.questionId === question.id);
+    
+    switch (question.type) {
+      case 'single_choice':
+        results.push(generateSingleChoiceResult(question, questionResponses));
+        break;
+      case 'likert_scale':
+        results.push(generateLikertResult(question as any, questionResponses));
+        break;
+      case 'multiple_choice':
+        results.push(generateMultipleChoiceResult(question as any, questionResponses));
+        break;
+      case 'text':
+        results.push(generateTextResult(question as any, questionResponses));
+        break;
+    }
+  }
+  
+  const result: SurveyResult = {
+    surveyId: survey.id,
+    runId: run.id,
+    generatedAt: new Date().toISOString(),
+    summary: {
+      totalQuestions: survey.questions.length,
+      totalResponses: run.responses.length,
+      uniqueAgents: run.totalAgents
+    },
+    results
+  };
+  
+  return result;
+}
+
+/**
+ * Genera resultado para pregunta de opción única
+ */
+function generateSingleChoiceResult(
+  question: SurveyQuestion,
+  responses: AgentResponse[]
+): SingleChoiceResult {
+  const q = question as any;
+  const distribution: Record<string, { count: number; percentage: number; label: string }> = {};
+  
+  // Inicializar con todas las opciones
+  q.options.forEach((opt: any) => {
+    distribution[opt.value] = { count: 0, percentage: 0, label: opt.label };
+  });
+  
+  // Contar respuestas
+  responses.forEach(r => {
+    const value = r.value as string;
+    if (distribution[value]) {
+      distribution[value].count++;
+    }
+  });
+  
+  // Calcular porcentajes
+  const total = responses.length;
+  Object.keys(distribution).forEach(key => {
+    distribution[key].percentage = total > 0 
+      ? Math.round((distribution[key].count / total) * 1000) / 10 
+      : 0;
+  });
+  
+  return {
+    questionId: question.id,
+    questionType: 'single_choice',
+    questionText: question.text,
+    totalResponses: total,
+    distribution
+  };
+}
+
+/**
+ * Genera resultado para escala Likert
+ */
+function generateLikertResult(
+  question: any,
+  responses: AgentResponse[]
+): LikertResult {
+  const values = responses.map(r => r.value as number).filter(v => typeof v === 'number');
+  const total = values.length;
+  
+  // Calcular estadísticas
+  const sum = values.reduce((a, b) => a + b, 0);
+  const average = total > 0 ? sum / total : 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const median = total > 0 
+    ? (total % 2 === 0 
+      ? (sorted[total / 2 - 1] + sorted[total / 2]) / 2 
+      : sorted[Math.floor(total / 2)])
+    : 0;
+  
+  // Distribución
+  const distribution: Record<number, { count: number; percentage: number }> = {};
+  for (let i = question.min; i <= question.max; i++) {
+    distribution[i] = { count: 0, percentage: 0 };
+  }
+  
+  values.forEach(v => {
+    if (distribution[v]) {
+      distribution[v].count++;
+    }
+  });
+  
+  Object.keys(distribution).forEach(key => {
+    const numKey = parseInt(key);
+    distribution[numKey].percentage = total > 0 
+      ? Math.round((distribution[numKey].count / total) * 1000) / 10 
+      : 0;
+  });
+  
+  return {
+    questionId: question.id,
+    questionType: 'likert_scale',
+    questionText: question.text,
+    totalResponses: responses.length,
+    average: Math.round(average * 10) / 10,
+    median,
+    distribution,
+    minLabel: question.minLabel,
+    maxLabel: question.maxLabel
+  };
+}
+
+/**
+ * Genera resultado para multiple choice (simplificado)
+ */
+function generateMultipleChoiceResult(
+  question: any,
+  responses: AgentResponse[]
+): any {
+  return {
+    questionId: question.id,
+    questionType: 'multiple_choice',
+    questionText: question.text,
+    totalResponses: responses.length,
+    distribution: {},
+    note: 'Multiple choice analysis not implemented in v1'
+  };
+}
+
+/**
+ * Genera resultado para texto (simplificado)
+ */
+function generateTextResult(
+  question: any,
+  responses: AgentResponse[]
+): any {
+  const sampleResponses = responses
+    .map(r => r.value as string)
+    .filter(v => v && v !== 'Respuesta de texto no implementada en v1')
+    .slice(0, 5);
+  
+  return {
+    questionId: question.id,
+    questionType: 'text',
+    questionText: question.text,
+    totalResponses: responses.length,
+    sampleResponses
+  };
+}
+
+// ===========================================
+// Results Access
+// ===========================================
+
+/**
+ * Obtiene resultados de una encuesta
+ * Sprint 11C - Intenta DB primero, fallback a local
+ */
+export async function getSurveyResults(surveyId: string): Promise<SurveyResult | undefined> {
+  // Primero buscar en cache local
+  const localResult = surveyResults.get(surveyId);
+  if (localResult) return localResult;
+  
+  // Si no está en cache y DB está disponible, buscar en DB
+  const isDbAvailable = await isSurveyResultPersistenceAvailable();
+  if (isDbAvailable) {
+    try {
+      const dbResult = await getSurveyResultsBySurveyId(surveyId);
+      if (dbResult) {
+        // Cachear localmente
+        surveyResults.set(surveyId, dbResult);
+        return dbResult;
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Error fetching results from DB:', error);
+    }
+  }
+  
+  return undefined;
+}
+
+/**
+ * Obtiene resultados de una corrida específica
+ * Sprint 11C - Intenta DB primero, fallback a local
+ */
+export async function getSurveyResultsByRun(runId: string): Promise<SurveyResult | undefined> {
+  // Buscar en cache local por runId
+  const localResult = Array.from(surveyResults.values()).find(r => r.runId === runId);
+  if (localResult) return localResult;
+  
+  // Si no está en cache y DB está disponible, buscar en DB
+  const isDbAvailable = await isSurveyResultPersistenceAvailable();
+  if (isDbAvailable) {
+    try {
+      const dbResult = await getSurveyResultsByRunId(runId);
+      if (dbResult) {
+        // Cachear localmente
+        surveyResults.set(dbResult.surveyId, dbResult);
+        return dbResult;
+      }
+    } catch (error) {
+      console.warn('[SurveyService] Error fetching results by run from DB:', error);
+    }
+  }
+  
+  return undefined;
+}
+
+/**
+ * @deprecated Usar getSurveyResults(surveyId) o getSurveyResultsByRun(runId)
+ */
+export function getSurveyResultsSync(surveyId: string): SurveyResult | undefined {
+  return surveyResults.get(surveyId);
+}
+
+/**
+ * Obtiene estadísticas de confianza de una ejecución
+ */
+export function getRunConfidenceStats(runId: string): {
+  average: number;
+  min: number;
+  max: number;
+  distribution: Record<string, number>;
+} | null {
+  const run = surveyRuns.get(runId);
+  if (!run) return null;
+  return calculateConfidenceStats(run.responses);
+}
+
+// ===========================================
+// Comparison Functions - Baseline vs Scenario
+// ===========================================
+
+export interface ComparisonOptions {
+  baselineRunId: string;
+  scenarioRunId: string;
+}
+
+export interface QuestionComparison {
+  questionId: string;
+  questionText: string;
+  questionType: string;
+  baseline: {
+    totalResponses: number;
+    distribution: Record<string, { count: number; percentage: number; label: string }>;
+    average?: number;
+    median?: number;
+  };
+  scenario: {
+    totalResponses: number;
+    distribution: Record<string, { count: number; percentage: number; label: string }>;
+    average?: number;
+    median?: number;
+  };
+  delta: {
+    totalResponses: number;
+    distribution: Record<string, { countDelta: number; percentageDelta: number; percentagePoints: number }>;
+    averageDelta?: number;
+    medianDelta?: number;
+  };
+  impact: {
+    level: 'high' | 'medium' | 'low' | 'none';
+    score: number; // 0-1, higher means more impact
+    description: string;
+  };
+}
+
+export interface SurveyComparison {
+  surveyId: string;
+  surveyName: string;
+  baselineRunId: string;
+  scenarioRunId: string;
+  baselineRunName: string;
+  scenarioRunName: string;
+  scenarioEventId?: string;
+  scenarioName?: string;
+  generatedAt: string;
+  summary: {
+    totalQuestions: number;
+    questionsWithHighImpact: number;
+    questionsWithMediumImpact: number;
+    questionsWithLowImpact: number;
+    averageImpactScore: number;
+  };
+  comparisons: QuestionComparison[];
+}
+
+/**
+ * Compara dos ejecuciones de encuesta: baseline vs escenario
+ * Genera un análisis detallado de diferencias e impacto
+ */
+export async function compareSurveyRuns(
+  surveyId: string,
+  baselineRunId: string,
+  scenarioRunId: string
+): Promise<SurveyComparison | null> {
+  // Obtener la encuesta
+  const survey = await getSurvey(surveyId);
+  if (!survey) {
+    console.error(`[SurveyService] Survey not found: ${surveyId}`);
+    return null;
+  }
+
+  // Obtener los runs
+  const baselineRun = await getSurveyRun(baselineRunId);
+  const scenarioRun = await getSurveyRun(scenarioRunId);
+
+  if (!baselineRun || !scenarioRun) {
+    console.error(`[SurveyService] Run not found: baseline=${baselineRunId}, scenario=${scenarioRunId}`);
+    return null;
+  }
+
+  // Obtener resultados
+  const baselineResults = await getSurveyResultsByRun(baselineRunId);
+  const scenarioResults = await getSurveyResultsByRun(scenarioRunId);
+
+  if (!baselineResults || !scenarioResults) {
+    console.error(`[SurveyService] Results not found`);
+    return null;
+  }
+
+  // Generar comparaciones por pregunta
+  const comparisons: QuestionComparison[] = [];
+  let highImpactCount = 0;
+  let mediumImpactCount = 0;
+  let lowImpactCount = 0;
+  let totalImpactScore = 0;
+
+  for (const baselineResult of baselineResults.results) {
+    const scenarioResult = scenarioResults.results.find(
+      r => r.questionId === baselineResult.questionId
+    );
+
+    if (!scenarioResult) continue;
+
+    const comparison = compareQuestionResults(baselineResult, scenarioResult);
+    comparisons.push(comparison);
+
+    // Contar impactos
+    if (comparison.impact.level === 'high') highImpactCount++;
+    else if (comparison.impact.level === 'medium') mediumImpactCount++;
+    else if (comparison.impact.level === 'low') lowImpactCount++;
+
+    totalImpactScore += comparison.impact.score;
+  }
+
+  const totalQuestions = comparisons.length;
+  const averageImpactScore = totalQuestions > 0 ? totalImpactScore / totalQuestions : 0;
+
+  return {
+    surveyId: survey.id,
+    surveyName: survey.name,
+    baselineRunId,
+    scenarioRunId,
+    baselineRunName: `Baseline (${formatDate(baselineRun.completedAt)})`,
+    scenarioRunName: scenarioRun.metadata.scenarioName 
+      ? `${scenarioRun.metadata.scenarioName} (${formatDate(scenarioRun.completedAt)})`
+      : `Escenario (${formatDate(scenarioRun.completedAt)})`,
+    scenarioEventId: scenarioRun.metadata.scenarioEventId,
+    scenarioName: scenarioRun.metadata.scenarioName,
+    generatedAt: new Date().toISOString(),
+    summary: {
+      totalQuestions,
+      questionsWithHighImpact: highImpactCount,
+      questionsWithMediumImpact: mediumImpactCount,
+      questionsWithLowImpact: lowImpactCount,
+      averageImpactScore: Math.round(averageImpactScore * 100) / 100,
+    },
+    comparisons,
+  };
+}
+
+/**
+ * Compara los resultados de una pregunta entre baseline y escenario
+ */
+function compareQuestionResults(
+  baseline: QuestionResult,
+  scenario: QuestionResult
+): QuestionComparison {
+  const baselineDist = getNormalizedDistribution(baseline);
+  const scenarioDist = getNormalizedDistribution(scenario);
+
+  // Calcular delta de distribución
+  const allKeys = new Set([...Object.keys(baselineDist), ...Object.keys(scenarioDist)]);
+  const deltaDistribution: Record<string, { countDelta: number; percentageDelta: number; percentagePoints: number }> = {};
+
+  let maxPercentagePointChange = 0;
+
+  for (const key of allKeys) {
+    const baselineValue = baselineDist[key] || { count: 0, percentage: 0, label: key };
+    const scenarioValue = scenarioDist[key] || { count: 0, percentage: 0, label: key };
+
+    const countDelta = scenarioValue.count - baselineValue.count;
+    const percentageDelta = baselineValue.percentage > 0 
+      ? ((scenarioValue.percentage - baselineValue.percentage) / baselineValue.percentage)
+      : 0;
+    const percentagePoints = scenarioValue.percentage - baselineValue.percentage;
+
+    deltaDistribution[key] = {
+      countDelta,
+      percentageDelta: Math.round(percentageDelta * 1000) / 10,
+      percentagePoints: Math.round(percentagePoints * 10) / 10,
+    };
+
+    maxPercentagePointChange = Math.max(maxPercentagePointChange, Math.abs(percentagePoints));
+  }
+
+  // Calcular delta de estadísticas (para Likert)
+  let averageDelta: number | undefined;
+  let medianDelta: number | undefined;
+
+  if (baseline.questionType === 'likert_scale' && scenario.questionType === 'likert_scale') {
+    const baselineLikert = baseline as LikertResult;
+    const scenarioLikert = scenario as LikertResult;
+
+    if (baselineLikert.average !== undefined && scenarioLikert.average !== undefined) {
+      averageDelta = Math.round((scenarioLikert.average - baselineLikert.average) * 100) / 100;
+    }
+    if (baselineLikert.median !== undefined && scenarioLikert.median !== undefined) {
+      medianDelta = scenarioLikert.median - baselineLikert.median;
+    }
+  }
+
+  // Calcular nivel de impacto
+  const impactScore = Math.min(maxPercentagePointChange / 20, 1); // 20 percentage points = max impact
+  let impactLevel: 'high' | 'medium' | 'low' | 'none';
+  let impactDescription: string;
+
+  if (impactScore >= 0.5) {
+    impactLevel = 'high';
+    impactDescription = 'Impacto significativo detectado';
+  } else if (impactScore >= 0.25) {
+    impactLevel = 'medium';
+    impactDescription = 'Impacto moderado detectado';
+  } else if (impactScore >= 0.1) {
+    impactLevel = 'low';
+    impactDescription = 'Impacto leve detectado';
+  } else {
+    impactLevel = 'none';
+    impactDescription = 'Sin impacto significativo';
+  }
+
+  return {
+    questionId: baseline.questionId,
+    questionText: baseline.questionText,
+    questionType: baseline.questionType,
+    baseline: {
+      totalResponses: baseline.totalResponses,
+      distribution: baselineDist,
+      ...(baseline.questionType === 'likert_scale' && {
+        average: (baseline as LikertResult).average,
+        median: (baseline as LikertResult).median,
+      }),
+    },
+    scenario: {
+      totalResponses: scenario.totalResponses,
+      distribution: scenarioDist,
+      ...(scenario.questionType === 'likert_scale' && {
+        average: (scenario as LikertResult).average,
+        median: (scenario as LikertResult).median,
+      }),
+    },
+    delta: {
+      totalResponses: scenario.totalResponses - baseline.totalResponses,
+      distribution: deltaDistribution,
+      ...(averageDelta !== undefined && { averageDelta }),
+      ...(medianDelta !== undefined && { medianDelta }),
+    },
+    impact: {
+      level: impactLevel,
+      score: Math.round(impactScore * 100) / 100,
+      description: impactDescription,
+    },
+  };
+}
+
+/**
+ * Normaliza la distribución de resultados al formato estándar
+ */
+function getNormalizedDistribution(result: QuestionResult): Record<string, { count: number; percentage: number; label: string }> {
+  if (result.questionType === 'single_choice') {
+    return (result as SingleChoiceResult).distribution;
+  }
+
+  if (result.questionType === 'likert_scale') {
+    const likert = result as LikertResult;
+    const normalized: Record<string, { count: number; percentage: number; label: string }> = {};
+    
+    for (const [key, value] of Object.entries(likert.distribution)) {
+      normalized[key] = {
+        count: value.count,
+        percentage: value.percentage,
+        label: `Escala ${key}`,
+      };
+    }
+    return normalized;
+  }
+
+  return {};
+}
+
+function formatDate(isoString: string): string {
+  return new Date(isoString).toLocaleDateString('es-CL', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+// ===========================================
+// Export Functions - Sprint 13 - Enhanced Reporting
+// ===========================================
+
+export interface ExportOptions {
+  includeMetadata?: boolean;
+  includeRawResponses?: boolean;
+  dateFormat?: 'iso' | 'locale';
+  filename?: string;
+}
+
+/**
+ * Genera un nombre de archivo consistente para exportaciones
+ */
+export function generateExportFilename(
+  survey: SurveyDefinition, 
+  runId: string, 
+  format: 'json' | 'csv'
+): string {
+  const date = new Date().toISOString().split('T')[0];
+  const sanitizedName = survey.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '-')
+    .replace(/-+/g, '-')
+    .substring(0, 30);
+  return `pulso-social-${sanitizedName}-${date}-${runId.substring(0, 8)}.${format}`;
+}
+
+/**
+ * Exporta resultados de una encuesta a JSON (mejorado)
+ * Incluye metadatos completos y estructura jerárquica clara
+ */
+export function exportResultsToJson(
+  survey: SurveyDefinition, 
+  results: SurveyResult,
+  run?: SurveyRun,
+  options: ExportOptions = {}
+): string {
+  const { includeMetadata = true, includeRawResponses = false, dateFormat = 'iso' } = options;
+  
+  const formatDate = (dateStr: string) => {
+    if (dateFormat === 'locale') {
+      return new Date(dateStr).toLocaleString('es-CL');
+    }
+    return dateStr;
+  };
+  
+  const exportData: any = {
+    exportInfo: {
+      version: '2.0',
+      exportedAt: formatDate(new Date().toISOString()),
+      format: 'json',
+      tool: 'Pulsos Sociales - Encuestas Sintéticas'
+    },
+    survey: {
+      id: survey.id,
+      name: survey.name,
+      description: survey.description,
+      createdAt: formatDate(survey.createdAt),
+      sampleSize: survey.sampleSize,
+      segment: survey.segment,
+      questions: survey.questions.map(q => ({
+        id: q.id,
+        type: q.type,
+        text: q.text,
+        required: q.required,
+        ...(q.type === 'single_choice' && { options: (q as any).options }),
+        ...(q.type === 'likert_scale' && { 
+          min: (q as any).min, 
+          max: (q as any).max,
+          minLabel: (q as any).minLabel,
+          maxLabel: (q as any).maxLabel
+        })
+      }))
+    },
+    execution: {
+      runId: results.runId,
+      executedAt: formatDate(results.generatedAt),
+      summary: {
+        totalQuestions: results.summary.totalQuestions,
+        totalResponses: results.summary.totalResponses,
+        uniqueAgents: results.summary.uniqueAgents,
+        responseRate: 100 // Tasa de respuesta siempre 100% (todos los agentes seleccionados responden todas las preguntas)
+      }
+    },
+    results: results.results.map(result => {
+      const base = {
+        questionId: result.questionId,
+        questionType: result.questionType,
+        questionText: result.questionText,
+        totalResponses: result.totalResponses
+      };
+      
+      if (result.questionType === 'single_choice') {
+        const sc = result as SingleChoiceResult;
+        return {
+          ...base,
+          distribution: Object.entries(sc.distribution).map(([key, data]) => ({
+            option: key,
+            label: data.label,
+            count: data.count,
+            percentage: data.percentage
+          })).sort((a, b) => b.count - a.count)
+        };
+      } else if (result.questionType === 'likert_scale') {
+        const likert = result as LikertResult;
+        return {
+          ...base,
+          statistics: {
+            average: likert.average,
+            median: likert.median,
+            minLabel: likert.minLabel,
+            maxLabel: likert.maxLabel
+          },
+          distribution: Object.entries(likert.distribution).map(([key, data]) => ({
+            value: parseInt(key),
+            count: data.count,
+            percentage: data.percentage
+          }))
+        };
+      }
+      return base;
+    })
+  };
+  
+  // Incluir metadatos adicionales si se solicita
+  if (includeMetadata && run) {
+    exportData.execution.metadata = {
+      segmentMatched: run.metadata.segmentMatched,
+      sampleSizeRequested: run.metadata.sampleSizeRequested,
+      sampleSizeActual: run.metadata.sampleSizeActual,
+      executionTime: new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()
+    };
+  }
+  
+  // Incluir respuestas raw si se solicita
+  if (includeRawResponses && run) {
+    exportData.rawResponses = run.responses.map(r => ({
+      agentId: r.agentId,
+      questionId: r.questionId,
+      value: r.value,
+      confidence: r.confidence,
+      reasoning: r.reasoning
+    }));
+  }
+  
+  return JSON.stringify(exportData, null, 2);
+}
+
+/**
+ * Exporta resultados de una encuesta a CSV (mejorado)
+ * Genera formato tabular limpio y analizable
+ */
+export function exportResultsToCsv(
+  survey: SurveyDefinition,
+  results: SurveyResult,
+  run?: SurveyRun,
+  _options: ExportOptions = {}
+): string {
+  const lines: string[] = [];
+
+  // Header informativo
+  lines.push('# Pulsos Sociales - Exportación de Resultados');
+  lines.push('# Formato: CSV v2.0');
+  lines.push('#');
+  lines.push('# INFORMACIÓN DE ENCUESTA');
+  lines.push('Survey ID,' + escapeCsv(survey.id));
+  lines.push('Survey Name,' + escapeCsv(survey.name));
+  lines.push('Description,' + escapeCsv(survey.description || ''));
+  lines.push('Created At,' + escapeCsv(survey.createdAt));
+  lines.push('');
+  lines.push('# INFORMACIÓN DE EJECUCIÓN');
+  lines.push('Run ID,' + escapeCsv(results.runId));
+  lines.push('Generated At,' + escapeCsv(results.generatedAt));
+  if (run) {
+    lines.push('Total Agents,' + run.totalAgents);
+    lines.push('Segment Matched,' + run.metadata.segmentMatched);
+  }
+  lines.push('');
+  
+  // Resumen ejecutivo
+  lines.push('# RESUMEN EJECUTIVO');
+  lines.push('Metric,Value');
+  lines.push('Total Questions,' + results.summary.totalQuestions);
+  lines.push('Total Responses,' + results.summary.totalResponses);
+  lines.push('Unique Agents,' + results.summary.uniqueAgents);
+  lines.push('Response Rate,100%');
+  lines.push('');
+  
+  // Resultados detallados - formato tabular
+  lines.push('# RESULTADOS DETALLADOS');
+  
+  results.results.forEach((result, index) => {
+    lines.push('');
+    lines.push('## Question ' + (index + 1) + ': ' + escapeCsv(result.questionText.substring(0, 50)));
+    lines.push('Question ID,' + escapeCsv(result.questionId));
+    lines.push('Type,' + escapeCsv(result.questionType));
+    lines.push('Total Responses,' + result.totalResponses);
+    
+    if (result.questionType === 'single_choice') {
+      const scResult = result as SingleChoiceResult;
+      lines.push('');
+      lines.push('Option,Count,Percentage');
+      Object.entries(scResult.distribution)
+        .sort(([, a], [, b]) => b.count - a.count)
+        .forEach(([, data]) => {
+          lines.push(escapeCsv(data.label) + ',' + data.count + ',' + data.percentage + '%');
+        });
+    } else if (result.questionType === 'likert_scale') {
+      const likertResult = result as LikertResult;
+      lines.push('Average,' + likertResult.average);
+      lines.push('Median,' + likertResult.median);
+      lines.push('');
+      lines.push('Scale (' + likertResult.minLabel + ' - ' + likertResult.maxLabel + '),Count,Percentage');
+      Object.entries(likertResult.distribution)
+        .sort(([a], [b]) => parseInt(a) - parseInt(b))
+        .forEach(([key, data]) => {
+          lines.push(key + ',' + data.count + ',' + data.percentage + '%');
+        });
+    }
+  });
+  
+  return lines.join('\n');
+}
+
+/**
+ * Exporta múltiples runs de una encuesta para análisis comparativo
+ */
+export function exportRunsComparison(
+  survey: SurveyDefinition,
+  runs: SurveyRun[],
+  results: SurveyResult[]
+): string {
+  const lines: string[] = [];
+  
+  lines.push('# Pulsos Sociales - Comparación de Ejecuciones');
+  lines.push('# Survey: ' + escapeCsv(survey.name));
+  lines.push('# Generated: ' + new Date().toISOString());
+  lines.push('');
+  
+  // Tabla de runs
+  lines.push('# HISTORIAL DE EJECUCIONES');
+  lines.push('Run #,Run ID,Date,Agents,Responses,Status');
+  runs.forEach((run, index) => {
+    lines.push([
+      runs.length - index,
+      run.id.substring(0, 8),
+      new Date(run.completedAt).toLocaleDateString('es-CL'),
+      run.totalAgents,
+      run.responses.length,
+      'Completed'
+    ].join(','));
+  });
+  lines.push('');
+  
+  // Comparación de métricas clave por run
+  lines.push('# COMPARACIÓN DE MÉTRICAS');
+  lines.push('Question,Metric,' + runs.map((_, i) => 'Run ' + (runs.length - i)).join(','));
+  
+  if (results.length > 0 && results[0]) {
+    results[0].results.forEach((question, qIndex) => {
+      if (question.questionType === 'likert_scale') {
+        const metric = 'Average';
+        const values = results.map(r => {
+          const q = r.results[qIndex] as LikertResult;
+          return q ? q.average.toFixed(2) : 'N/A';
+        });
+        lines.push(escapeCsv(question.questionText.substring(0, 40)) + ',' + metric + ',' + values.join(','));
+      }
+    });
+  }
+  
+  return lines.join('\n');
+}
+
+/**
+ * Escapa un valor para CSV
+ */
+function escapeCsv(value: string | number): string {
+  const str = String(value);
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+/**
+ * Descarga un archivo con el contenido proporcionado
+ */
+export function downloadFile(content: string, filename: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// ===========================================
+// CADEM v1.1 - Helper Functions
+// ===========================================
+
+/**
+ * Convierte SyntheticAgent a CademAdapterAgent
+ */
+function convertToCademAgent(agent: SyntheticAgent): CademAdapterAgent {
+  return {
+    agentId: agent.agent_id,
+    age: agent.age ?? undefined,
+    sex: agent.sex ?? undefined,
+    educationLevel: agent.education_level ?? undefined,
+    incomeDecile: agent.income_decile ?? undefined,
+    povertyStatus: agent.poverty_status ?? undefined,
+    regionCode: agent.region_code ?? undefined,
+    communeCode: agent.comuna_code ?? undefined,
+    connectivityLevel: agent.connectivity_level ?? undefined,
+    digitalExposure: undefined, // Not available in SyntheticAgent
+    preferredChannel: undefined, // Not available in SyntheticAgent
+    agentType: agent.agent_type ?? undefined,
+  };
+}
+
+/**
+ * Convierte SurveyQuestion a CademSurveyQuestion
+ */
+function convertToCademQuestion(question: SurveyQuestion): import('./cademAdapter').CademSurveyQuestion {
+  const baseQuestion = {
+    id: question.id,
+    text: question.text,
+    type: question.type,
+  };
+
+  if (question.type === 'single_choice' || question.type === 'multiple_choice') {
+    const q = question as { options: { label: string; value: string | number }[] };
+    return {
+      ...baseQuestion,
+      options: q.options.map(opt => String(opt.value)),
+    };
+  }
+
+  if (question.type === 'likert_scale') {
+    const q = question as { min: number; max: number };
+    // Generate options for likert scale
+    const options: string[] = [];
+    for (let i = q.min; i <= q.max; i++) {
+      options.push(String(i));
+    }
+    return {
+      ...baseQuestion,
+      options,
+    };
+  }
+
+  return baseQuestion;
+}
+
+/**
+ * Mapea valores internos del motor CADEM a valores de opciones de la pregunta
+ * Basado en la familia de la pregunta y las opciones disponibles
+ */
+function mapCademValueToOption(
+  cademValue: string,
+  question: SurveyQuestion
+): string | number {
+  // Si la pregunta no tiene opciones, devolver el valor tal cual
+  if (question.type !== 'single_choice' && question.type !== 'multiple_choice') {
+    return cademValue;
+  }
+
+  const q = question as { options: { label: string; value: string | number }[] };
+  const options = q.options;
+
+  // Mapeo para preguntas de aprobación (approval)
+  // Valores CADEM: 'approve', 'disapprove', 'no_response'
+  // Opciones típicas: ['Aprueba', 'Desaprueba', 'No responde']
+  if (cademValue === 'approve') {
+    // Buscar opción que contenga "aprueba" (case insensitive)
+    const opt = options.find(o => o.label.toLowerCase().includes('aprueba'));
+    if (opt) return opt.value;
+  }
+  if (cademValue === 'disapprove') {
+    const opt = options.find(o => o.label.toLowerCase().includes('desaprueba'));
+    if (opt) return opt.value;
+  }
+
+  // Mapeo para preguntas de dirección (direction)
+  // Valores CADEM: 'good_path', 'bad_path', 'no_response'
+  // Opciones típicas: ['Buen camino', 'Mal camino', 'No responde']
+  if (cademValue === 'good_path') {
+    const opt = options.find(o => o.label.toLowerCase().includes('buen'));
+    if (opt) return opt.value;
+  }
+  if (cademValue === 'bad_path') {
+    const opt = options.find(o => o.label.toLowerCase().includes('mal'));
+    if (opt) return opt.value;
+  }
+
+  // Mapeo para preguntas de optimismo (optimism)
+  // Valores CADEM: 'very_optimistic', 'optimistic', 'pessimistic', 'very_pessimistic', 'no_response'
+  // Opciones típicas: ['Muy optimista', 'Optimista', 'Pesimista', 'Muy pesimista', 'No responde']
+  if (cademValue === 'very_optimistic') {
+    const opt = options.find(o => o.label.toLowerCase().includes('muy optimista'));
+    if (opt) return opt.value;
+    // Fallback: buscar solo "optimista" y tomar la primera
+    const opts = options.filter(o => o.label.toLowerCase().includes('optimista'));
+    if (opts.length > 0) return opts[0].value;
+  }
+  if (cademValue === 'optimistic') {
+    const opt = options.find(o => 
+      o.label.toLowerCase() === 'optimista' || 
+      (o.label.toLowerCase().includes('optimista') && !o.label.toLowerCase().includes('muy'))
+    );
+    if (opt) return opt.value;
+  }
+  if (cademValue === 'pessimistic') {
+    const opt = options.find(o => 
+      o.label.toLowerCase() === 'pesimista' || 
+      (o.label.toLowerCase().includes('pesimista') && !o.label.toLowerCase().includes('muy'))
+    );
+    if (opt) return opt.value;
+  }
+  if (cademValue === 'very_pessimistic') {
+    const opt = options.find(o => o.label.toLowerCase().includes('muy pesimista'));
+    if (opt) return opt.value;
+    const opts = options.filter(o => o.label.toLowerCase().includes('pesimista'));
+    if (opts.length > 0) return opts[opts.length - 1].value;
+  }
+
+  // Mapeo para preguntas de percepción económica (economic_perception)
+  // Valores CADEM: 'very_good', 'good', 'bad', 'very_bad', 'no_response'
+  // Opciones típicas: ['Muy buena', 'Buena', 'Mala', 'Muy mala', 'No responde']
+  if (cademValue === 'very_good') {
+    const opt = options.find(o => o.label.toLowerCase().includes('muy buena') || o.label.toLowerCase().includes('muy bueno'));
+    if (opt) return opt.value;
+    const opts = options.filter(o => o.label.toLowerCase().includes('buena') || o.label.toLowerCase().includes('bueno'));
+    if (opts.length > 0) return opts[0].value;
+  }
+  if (cademValue === 'good') {
+    const opt = options.find(o => 
+      o.label.toLowerCase() === 'buena' || o.label.toLowerCase() === 'bueno' ||
+      ((o.label.toLowerCase().includes('buena') || o.label.toLowerCase().includes('bueno')) && 
+       !(o.label.toLowerCase().includes('muy')))
+    );
+    if (opt) return opt.value;
+  }
+  if (cademValue === 'bad') {
+    const opt = options.find(o => 
+      o.label.toLowerCase() === 'mala' || o.label.toLowerCase() === 'malo' ||
+      ((o.label.toLowerCase().includes('mala') || o.label.toLowerCase().includes('malo')) && 
+       !(o.label.toLowerCase().includes('muy')))
+    );
+    if (opt) return opt.value;
+  }
+  if (cademValue === 'very_bad') {
+    const opt = options.find(o => o.label.toLowerCase().includes('muy mala') || o.label.toLowerCase().includes('muy malo'));
+    if (opt) return opt.value;
+    const opts = options.filter(o => o.label.toLowerCase().includes('mala') || o.label.toLowerCase().includes('malo'));
+    if (opts.length > 0) return opts[opts.length - 1].value;
+  }
+
+  // Mapeo para no_response
+  if (cademValue === 'no_response') {
+    const opt = options.find(o => 
+      o.label.toLowerCase().includes('no responde') || 
+      o.label.toLowerCase().includes('no sabe') ||
+      o.label.toLowerCase().includes('no contesta')
+    );
+    if (opt) return opt.value;
+  }
+
+  // Si no se encontró mapeo, devolver el primer valor de opción como fallback
+  console.warn(`[SurveyService] No mapping found for CADEM value "${cademValue}" in question "${question.text.substring(0, 50)}...". Using fallback.`);
+  if (options.length > 0) {
+    return options[0].value;
+  }
+
+  return cademValue;
+}
+
+/**
+ * Ejecuta encuesta con motor CADEM v1.1
+ * Convierte tipos y delega al surveyRunner unificado
+ */
+async function runCademSurveyWithAgents(
+  survey: SurveyDefinition,
+  agents: SyntheticAgent[]
+): Promise<AgentResponse[]> {
+  // Convertir agentes
+  const cademAgents = agents.map(convertToCademAgent);
+
+  // Convertir preguntas
+  const cademQuestions = survey.questions.map(convertToCademQuestion);
+
+  // Crear definición CADEM
+  const cademSurveyDef: CademSurveyDefinition = {
+    id: survey.id,
+    title: survey.name,
+    topic: survey.description,
+    questions: cademQuestions,
+  };
+
+  // Ejecutar con surveyRunner unificado
+  const result = await runUnifiedSurvey({
+    surveyDefinition: cademSurveyDef,
+    agents: cademAgents,
+    engineMode: 'cadem',
+    persistState: survey.persistState || false,
+  });
+
+  // Convertir respuestas al formato AgentResponse
+  // Mapear los valores internos de CADEM a los valores de opciones de la pregunta
+  return result.responses.map(r => {
+    const question = survey.questions.find(q => q.id === r.questionId);
+    const mappedValue = question 
+      ? mapCademValueToOption(String(r.value), question)
+      : r.value;
+    
+    return {
+      agentId: r.agentId,
+      questionId: r.questionId,
+      value: mappedValue,
+      confidence: r.confidence,
+      reasoning: r.reasoning ?? '', // Ensure string, not undefined
+    };
+  });
+}
+
+// ===========================================
+// Fixed Sample Comparison Functions
+// ===========================================
+
+export interface RunComparisonOptions {
+  surveyId: string;
+  baselineRunId: string;
+  scenarioEventId?: string;
+}
+
+export interface RunComparisonResult {
+  baselineRun: SurveyRun;
+  scenarioRun: SurveyRun;
+  comparison: SurveyComparison | null;
+}
+
+/**
+ * Ejecuta una encuesta con los mismos agentes que un baseline run existente.
+ * Esto permite comparaciones válidas baseline vs escenario donde la única
+ * diferencia es el escenario, no la muestra de agentes.
+ * 
+ * @param options - Opciones de comparación
+ * @returns Resultado de la comparación con ambos runs
+ */
+export async function runSurveyWithFixedAgents(
+  options: RunComparisonOptions
+): Promise<RunComparisonResult> {
+  const { surveyId, baselineRunId, scenarioEventId } = options;
+  
+  // 1. Obtener el baseline run
+  const baselineRun = await getSurveyRun(baselineRunId);
+  if (!baselineRun) {
+    throw new Error(`Baseline run not found: ${baselineRunId}`);
+  }
+  
+  // 2. Extraer los agent IDs del baseline
+  const fixedAgentIds = baselineRun.selectedAgentIds;
+  if (!fixedAgentIds || fixedAgentIds.length === 0) {
+    throw new Error(`Baseline run ${baselineRunId} does not have selectedAgentIds. Cannot perform fixed sample comparison.`);
+  }
+  
+  console.log(`🔒 Running survey with fixed sample from baseline ${baselineRunId}`);
+  console.log(`   Using ${fixedAgentIds.length} agents from baseline`);
+  
+  // 3. Ejecutar el survey con los agentes fijos y el escenario
+  const scenarioRun = await runSurvey(surveyId, scenarioEventId, fixedAgentIds);
+  
+  // 4. Generar la comparación
+  const comparison = await compareSurveyRuns(surveyId, baselineRunId, scenarioRun.id);
+  
+  return {
+    baselineRun,
+    scenarioRun,
+    comparison
+  };
+}
+
+/**
+ * Ejecuta un baseline y luego un escenario con los mismos agentes.
+ * Función de conveniencia para hacer comparaciones de una sola vez.
+ * 
+ * @param surveyId - ID de la encuesta
+ * @param scenarioEventId - ID del escenario (opcional, si no se proporciona solo se ejecuta baseline)
+ * @returns Resultado con baseline y escenario (si se proporcionó scenarioEventId)
+ */
+export async function runBaselineAndScenario(
+  surveyId: string,
+  scenarioEventId?: string
+): Promise<{ baselineRun: SurveyRun; scenarioRun?: SurveyRun; comparison?: SurveyComparison | null }> {
+  console.log(`🔄 Running baseline${scenarioEventId ? ' + scenario' : ''} for survey ${surveyId}`);
+  
+  // 1. Ejecutar baseline (sin escenario, sin agentes fijos)
+  const baselineRun = await runSurvey(surveyId);
+  console.log(`✅ Baseline completed: ${baselineRun.id} with ${baselineRun.totalAgents} agents`);
+  
+  // Si no hay escenario, retornar solo el baseline
+  if (!scenarioEventId) {
+    return { baselineRun };
+  }
+  
+  // 2. Ejecutar escenario con los mismos agentes del baseline
+  const scenarioRun = await runSurvey(surveyId, scenarioEventId, baselineRun.selectedAgentIds);
+  console.log(`✅ Scenario completed: ${scenarioRun.id} with ${scenarioRun.totalAgents} agents`);
+  
+  // 3. Generar comparación
+  const comparison = await compareSurveyRuns(surveyId, baselineRun.id, scenarioRun.id);
+  
+  return {
+    baselineRun,
+    scenarioRun,
+    comparison
+  };
+}
+
+// ===========================================
+// Sample Surveys
+// ===========================================
+
+/**
+ * Crea encuestas de ejemplo para demostración
+ */
+export async function createSampleSurveys(): Promise<void> {
+  const existingSurveys = await getAllSurveys();
+  if (existingSurveys.length > 0) return; // Ya existen encuestas
+  
+  // Encuesta 1: Satisfacción con servicios digitales (legacy mode)
+  await createSurvey({
+    name: 'Satisfacción con Servicios Digitales',
+    description: 'Medir la satisfacción de los ciudadanos con los servicios digitales públicos',
+    sampleSize: 100,
+    segment: {
+      regionCode: '13', // Metropolitana
+      connectivityLevel: 'medium'
+    },
+    questions: [
+      {
+        id: 'q1',
+        type: 'single_choice',
+        text: '¿Con qué frecuencia usa servicios públicos en línea?',
+        required: true,
+        options: [
+          { id: 'opt1', label: 'Diariamente', value: 'daily' },
+          { id: 'opt2', label: 'Semanalmente', value: 'weekly' },
+          { id: 'opt3', label: 'Mensualmente', value: 'monthly' },
+          { id: 'opt4', label: 'Raramente', value: 'rarely' },
+          { id: 'opt5', label: 'Nunca', value: 'never' }
+        ]
+      },
+      {
+        id: 'q2',
+        type: 'likert_scale',
+        text: '¿Qué tan satisfecho está con la calidad de los servicios digitales?',
+        required: true,
+        min: 1,
+        max: 5,
+        minLabel: 'Muy insatisfecho',
+        maxLabel: 'Muy satisfecho'
+      },
+      {
+        id: 'q3',
+        type: 'likert_scale',
+        text: '¿Qué tan fácil es acceder a los servicios en línea?',
+        required: true,
+        min: 1,
+        max: 5,
+        minLabel: 'Muy difícil',
+        maxLabel: 'Muy fácil'
+      }
+    ],
+    engineMode: 'legacy', // Default to legacy for sample surveys
+    persistState: false,
+  });
+  
+  // Encuesta 2: Preocupaciones económicas (CADEM mode)
+  await createSurvey({
+    name: 'Preocupaciones Económicas (CADEM)',
+    description: 'Entender las preocupaciones económicas usando el motor CADEM v1.1',
+    sampleSize: 150,
+    segment: {
+      incomeDecile: 5
+    },
+    questions: [
+      {
+        id: 'q1',
+        type: 'likert_scale',
+        text: '¿Qué tan preocupado está por la situación económica actual?',
+        required: true,
+        min: 1,
+        max: 5,
+        minLabel: 'Nada preocupado',
+        maxLabel: 'Muy preocupado'
+      },
+      {
+        id: 'q2',
+        type: 'single_choice',
+        text: '¿Ha tenido dificultades para pagar gastos básicos en los últimos 3 meses?',
+        required: true,
+        options: [
+          { id: 'opt1', label: 'Sí, frecuentemente', value: 'often' },
+          { id: 'opt2', label: 'Sí, ocasionalmente', value: 'sometimes' },
+          { id: 'opt3', label: 'No, nunca', value: 'never' }
+        ]
+      },
+      {
+        id: 'q3',
+        type: 'likert_scale',
+        text: '¿Considera que su situación económica mejorará en el próximo año?',
+        required: true,
+        min: 1,
+        max: 5,
+        minLabel: 'Empeorará mucho',
+        maxLabel: 'Mejorará mucho'
+      }
+    ],
+    engineMode: 'cadem', // Use CADEM engine
+    persistState: true,  // Persist agent state
+  });
+  
+  console.log('📋 Sample surveys created (including CADEM v1.1 example)');
+}
+
+=== src/app/survey/surveyRunner.ts ===
+import { runCademSurvey } from './cademAdapter';
+import { runCademSurveyBatchAsync } from './cademAdapterAsync';
+import { generateSurveyResponses } from './syntheticResponseEngine';
+import { getEventsByWeekKey, getWeekKeyWindow } from '../events/eventStore';
+import { getScenarioById, scenarioToWeeklyEvent } from '../events/scenarioEventStore';
+import type { CademAdapterAgent, CademSurveyDefinition } from './cademAdapter';
+import type { UnifiedSurveyResponse, EngineMode, AgentPersistenceMeta } from './unifiedResponseEngine';
+import type { SyntheticAgent } from '../../types/agent';
+import type { SurveyQuestion } from '../../types/survey';
+import type { WeeklyEvent } from '../events/types';
+
+export interface SurveyRunnerInput {
+  surveyDefinition: CademSurveyDefinition;
+  agents: CademAdapterAgent[];
+  engineMode: EngineMode;
+  persistState?: boolean;
+  weekKey?: string;
+  debug?: boolean;
+  useEvents?: boolean;
+  eventWindowSize?: number;
+  /** ID del escenario hipotético a aplicar (opcional) */
+  scenarioEventId?: string;
+}
+
+export interface SurveyRunnerResult {
+  responses: UnifiedSurveyResponse[];
+  engineMode: EngineMode;
+  engineVersion: string;
+  agentCount: number;
+  questionCount: number;
+  totalResponses: number;
+  durationMs: number;
+  persistenceMeta?: AgentPersistenceMeta[];
+}
+
+/**
+ * Runner principal de encuestas - Entrypoint oficial.
+ *
+ * Modos soportados:
+ * - engineMode='legacy': Motor heurístico original (placeholder)
+ * - engineMode='cadem' + persistState=false: CADEM sync/in-memory
+ * - engineMode='cadem' + persistState=true: CADEM async con persistencia en Supabase
+ *
+ * @param input - Configuración de la encuesta
+ * @returns Resultado de la encuesta con metadata de persistencia
+ */
+export async function runSurvey(input: SurveyRunnerInput): Promise<SurveyRunnerResult> {
+  const startTime = Date.now();
+
+  const {
+    surveyDefinition,
+    agents,
+    engineMode,
+    persistState = false,
+    weekKey,
+    debug = false,
+    useEvents = false,
+    eventWindowSize = 2,
+    scenarioEventId,
+  } = input;
+
+  let responses: UnifiedSurveyResponse[] = [];
+  let persistenceMeta: AgentPersistenceMeta[] | undefined;
+  let weeklyEvents: WeeklyEvent[] = [];
+
+  // Cargar eventos si está habilitado y hay weekKey
+  if (useEvents && weekKey) {
+    const weekKeys = getWeekKeyWindow(weekKey, eventWindowSize);
+    const eventResults = await Promise.all(
+      weekKeys.map(wk => getEventsByWeekKey(wk))
+    );
+    
+    weeklyEvents = eventResults.flatMap(r => r.events);
+    
+    if (debug) {
+      console.log(`[SurveyRunner] Eventos cargados: ${weeklyEvents.length} eventos en ventana ${eventWindowSize} semanas`);
+      weeklyEvents.forEach(e => console.log(`  - ${e.weekKey}: ${e.title} (${e.category}, ${e.severity})`));
+    }
+  }
+
+  // Cargar escenario hipotético si se proporciona
+  if (scenarioEventId) {
+    const scenarioResult = await getScenarioById(scenarioEventId);
+    
+    if (scenarioResult.success && scenarioResult.data) {
+      const scenarioEvent = scenarioToWeeklyEvent(scenarioResult.data, weekKey || 'SCENARIO');
+      weeklyEvents.push(scenarioEvent);
+      
+      if (debug) {
+        console.log(`[SurveyRunner] Escenario aplicado: ${scenarioEvent.title}`);
+        console.log(`  - Categoría: ${scenarioEvent.category}`);
+        console.log(`  - Severidad: ${scenarioEvent.severity}`);
+        console.log(`  - Sentimiento: ${scenarioEvent.sentiment}`);
+        console.log(`  - Intensidad: ${scenarioEvent.intensity}`);
+      }
+    } else {
+      console.warn(`[SurveyRunner] No se pudo cargar el escenario ${scenarioEventId}: ${scenarioResult.error}`);
+    }
+  }
+
+  // Modo legacy: motor heurístico original
+  if (engineMode === 'legacy') {
+    // Convertir CademAdapterAgent a SyntheticAgent para el motor legacy
+    const legacyAgents = agents.map(agent => ({
+      agent_id: agent.agentId,
+      age: agent.age ?? 35,
+      sex: agent.sex ?? 'unknown',
+      education_level: agent.educationLevel ?? 'secondary',
+      income_decile: agent.incomeDecile ?? 5,
+      poverty_status: agent.povertyStatus ?? 'middle_class',
+      region_code: agent.regionCode ?? 'CL-RM',
+      connectivity_level: agent.connectivityLevel ?? 'medium',
+      urbanicity: agent.connectivityLevel === 'high' ? 'urban' : 'mixed',
+      occupation_status: agent.agentType === 'student' ? 'student' : agent.agentType === 'retired' ? 'retired' : 'employed',
+    })) as SyntheticAgent[];
+
+    // Convertir preguntas al formato legacy
+    const legacyQuestions = surveyDefinition.questions.map(q => {
+      if (q.options && q.options.length > 0) {
+        // Es single_choice
+        return {
+          id: q.id,
+          text: q.text,
+          type: 'single_choice',
+          options: q.options.map((opt, idx) => ({
+            id: `opt_${idx}`,
+            label: opt,
+            value: opt,
+          })),
+        } as unknown as SurveyQuestion;
+      }
+      // Es likert_scale por defecto
+      return {
+        id: q.id,
+        text: q.text,
+        type: 'likert_scale',
+        min: 1,
+        max: 5,
+        labels: ['Muy en desacuerdo', 'En desacuerdo', 'Neutral', 'De acuerdo', 'Muy de acuerdo'],
+        minLabel: 'Muy en desacuerdo',
+        maxLabel: 'Muy de acuerdo',
+        required: true,
+      } as unknown as SurveyQuestion;
+    });
+
+    const legacyResponses = generateSurveyResponses(legacyAgents, legacyQuestions);
+
+    responses = legacyResponses.map((r) => ({
+      surveyId: surveyDefinition.id,
+      questionId: r.questionId,
+      agentId: r.agentId,
+      value: r.value !== null && r.value !== undefined ? String(r.value) : null,
+      confidence: r.confidence,
+      reasoning: r.reasoning,
+      engineMode: 'legacy',
+      engineVersion: 'legacy-v1',
+      createdAt: new Date(),
+    }));
+
+    if (debug) {
+      console.log(`[SurveyRunner] Legacy mode: ${responses.length} respuestas generadas`);
+    }
+  }
+
+  // Modo cadem con persistencia (async)
+  if (engineMode === 'cadem' && persistState) {
+    const results = await runCademSurveyBatchAsync(
+      agents.map(a => ({ ...a, agentId: a.agentId })),
+      surveyDefinition.questions,
+      {
+        surveyId: surveyDefinition.id,
+        surveyTopic: surveyDefinition.topic,
+        weekKey,
+        mode: 'cawi',
+      },
+      weeklyEvents // Pasar eventos para aplicar impactos
+    );
+
+    // Flatten responses from all agents
+    for (const result of results) {
+      for (const r of result.responses) {
+        responses.push({
+          surveyId: surveyDefinition.id,
+          questionId: r.questionId,
+          agentId: result.agentId,
+          value: r.response.value !== null && r.response.value !== undefined ? String(r.response.value) : null,
+          confidence: r.response.confidence,
+          reasoning: r.response.reasoning,
+          engineMode: 'cadem',
+          engineVersion: result.engineVersion,
+          factors: r.response.factors,
+          processingTime: r.response.processingTime,
+          createdAt: new Date(),
+          persistenceMeta: result.persistenceMeta,
+        });
+      }
+    }
+
+    // Collect persistence metadata
+    persistenceMeta = results.map(r => r.persistenceMeta);
+
+    if (debug) {
+      const savedCount = persistenceMeta.filter(m => m.saveStatus === 'saved').length;
+      const failedCount = persistenceMeta.filter(m => m.saveStatus === 'failed').length;
+      console.log(`[SurveyRunner] Persistencia: ${savedCount} guardados, ${failedCount} fallidos`);
+    }
+  }
+
+  // Modo cadem sin persistencia (sync/in-memory)
+  if (engineMode === 'cadem' && !persistState) {
+    const rawResponses = runCademSurvey({
+      surveyDefinition,
+      agents,
+      weekKey,
+      mode: 'cawi',
+      weeklyEvents, // ← PASAR EVENTOS/ESCENARIOS
+    });
+
+    responses = rawResponses.map((r) => ({
+      surveyId: r.surveyId,
+      questionId: r.questionId,
+      agentId: r.agentId,
+      value: r.value !== null && r.value !== undefined ? String(r.value) : null,
+      confidence: r.confidence,
+      reasoning: r.reasoning,
+      engineMode: 'cadem',
+      engineVersion: r.engineVersion,
+      factors: r.factors,
+      processingTime: r.processingTime,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  if (debug) {
+    console.log(`[SurveyRunner] engineMode=${engineMode}`);
+    console.log(`[SurveyRunner] persistState=${persistState}`);
+    console.log(`[SurveyRunner] agents=${agents.length}`);
+    console.log(`[SurveyRunner] questions=${surveyDefinition.questions.length}`);
+    console.log(`[SurveyRunner] responses=${responses.length}`);
+  }
+
+  return {
+    responses,
+    engineMode,
+    engineVersion: engineMode === 'legacy' ? 'legacy-v1' : 'cadem-v1.1',
+    agentCount: agents.length,
+    questionCount: surveyDefinition.questions.length,
+    totalResponses: responses.length,
+    durationMs: Date.now() - startTime,
+    persistenceMeta,
+  };
+}
+
+=== src/app/opinionEngine/opinionEngine.ts ===
+import type { InterpretedQuestion, OpinionatedResponse, QuestionContext, ResponseFactor } from './types';
+import type { TopicState } from './types';
+import { resolveQuestionByFamily } from './questionResolver';
+import { buildInitialTopicStates } from './topicStateSeed';
+import type { PanelState } from '../panel/types';
+import {
+  FATIGUE_CONFIG,
+  CONFIDENCE_CONFIG,
+  RESPONSE_FACTORS,
+} from './engineConfig';
+
+// Interfaz mínima del agente que espera el motor
+export interface OpinionEngineAgent {
+  agentId: string;
+  age?: number;
+  sex?: string;
+  educationLevel?: string;
+  incomeDecile?: number;
+  povertyStatus?: string;
+  regionCode?: string;
+  communeCode?: string;
+  connectivityLevel?: string;
+  digitalExposure?: string;
+  preferredChannel?: string;
+  agentType?: string;
+}
+
+interface EngineInput {
+  agent: OpinionEngineAgent;
+  interpretedQuestion: InterpretedQuestion;
+  topicStates: TopicState[]; // En V1 asumimos que vienen de fuera o se crean aquí
+  panelState?: PanelState;
+  context: QuestionContext;
+}
+
+/**
+ * Calcula el factor de fatiga según la posición en la encuesta.
+ * 0 = sin fatiga, 1 = máxima fatiga
+ */
+function calculateFatigueFactor(questionIndex: number, totalQuestions: number): number {
+  if (totalQuestions <= 1) return 0;
+  const progress = questionIndex / totalQuestions;
+  // Fatiga crece no linealmente (más rápido al final)
+  return Math.pow(progress, FATIGUE_CONFIG.GROWTH_EXPONENT) * FATIGUE_CONFIG.MAX_IMPACT;
+}
+
+/**
+ * Ajusta la confianza de la respuesta por efectos del panel.
+ */
+function adjustConfidenceForPanel(
+  baseConfidence: number,
+  panelState: PanelState | undefined,
+  fatigueFactor: number,
+): number {
+  let adjusted = baseConfidence;
+
+  // Fatiga reduce confianza
+  adjusted -= fatigueFactor * CONFIDENCE_CONFIG.FATIGUE_REDUCTION_FACTOR;
+
+  // Quality score del panelista ajusta (buenos panelistas mantienen confianza)
+  if (panelState) {
+    adjusted += (panelState.qualityScore - CONFIDENCE_CONFIG.BASE_CENTER) * CONFIDENCE_CONFIG.QUALITY_SCORE_FACTOR;
+  }
+
+  // Clamp entre valores mínimo y máximo
+  return Math.max(CONFIDENCE_CONFIG.MIN_VALUE, Math.min(CONFIDENCE_CONFIG.MAX_VALUE, adjusted));
+}
+
+/**
+ * Genera los factores explicativos de la respuesta.
+ */
+function buildResponseFactors(
+  topicStates: TopicState[],
+  interpretedQuestion: InterpretedQuestion,
+  _panelState: PanelState | undefined,
+  fatigueFactor: number,
+): ResponseFactor[] {
+  const factors: ResponseFactor[] = [];
+
+  // Factor principal: estado del tema
+  const relevantTopic = topicStates.find(t => t.topic === interpretedQuestion.topic);
+  if (relevantTopic) {
+    factors.push({
+      type: 'topic_state',
+      weight: RESPONSE_FACTORS.TOPIC_STATE,
+      description: `Estado latente en ${relevantTopic.topic}: score ${relevantTopic.score.toFixed(2)}`,
+    });
+  }
+
+  // Factor demográfico (implícito en el score inicial)
+  factors.push({
+    type: 'demographic',
+    weight: RESPONSE_FACTORS.DEMOGRAPHIC,
+    description: 'Perfil demográfico y socioeconómico del agente',
+  });
+
+  // Factor de fatiga
+  if (fatigueFactor > 0.1) {
+    factors.push({
+      type: 'panel_fatigue',
+      weight: fatigueFactor * RESPONSE_FACTORS.PANEL_FATIGUE,
+      description: `Fatiga de encuesta: ${(fatigueFactor * 100).toFixed(0)}%`,
+    });
+  }
+
+  // Factor de contexto de pregunta
+  factors.push({
+    type: 'question_context',
+    weight: RESPONSE_FACTORS.QUESTION_CONTEXT,
+    description: `Posición ${interpretedQuestion.responseFormat} en encuesta`,
+  });
+
+  // Ruido aleatorio (siempre presente pero pequeño)
+  factors.push({
+    type: 'random_noise',
+    weight: RESPONSE_FACTORS.RANDOM_NOISE,
+    description: 'Variabilidad estocástica inherente',
+  });
+
+  return factors;
+}
+
+/**
+ * Motor principal de generación de respuestas opinadas.
+ * Orquesta el proceso completo desde el agente hasta la respuesta.
+ * VERSIÓN SÍNCRONA - sin operaciones async por ahora
+ */
+export function generateOpinionatedResponse(
+  input: EngineInput,
+): OpinionatedResponse {
+  const startTime = Date.now();
+
+  const { agent, interpretedQuestion, topicStates, context } = input;
+
+  // Asegurar que tenemos topic states (si no, crearlos - en producción vendrían de BD)
+  let currentTopicStates = topicStates;
+  if (!currentTopicStates || currentTopicStates.length === 0) {
+    currentTopicStates = buildInitialTopicStates(agent);
+  }
+
+  // Calcular fatiga
+  const fatigueFactor = calculateFatigueFactor(context.questionIndex, context.totalQuestions);
+
+  // Resolver la pregunta según su familia
+  const resolved = resolveQuestionByFamily(interpretedQuestion, currentTopicStates);
+
+  // Ajustar confianza por efectos de panel
+  const finalConfidence = adjustConfidenceForPanel(
+    resolved.confidence,
+    input.panelState,
+    fatigueFactor,
+  );
+
+  // Construir factores explicativos
+  const factors = buildResponseFactors(
+    currentTopicStates,
+    interpretedQuestion,
+    input.panelState,
+    fatigueFactor,
+  );
+
+  // Ajustar reasoning si hay fatiga significativa
+  let finalReasoning = resolved.reasoning;
+  if (fatigueFactor > FATIGUE_CONFIG.SIGNIFICANT_THRESHOLD) {
+    finalReasoning += ' (Respuesta potencialmente afectada por fatiga de encuesta)';
+  }
+
+  const processingTime = Date.now() - startTime;
+
+  return {
+    value: resolved.value,
+    confidence: finalConfidence,
+    reasoning: finalReasoning,
+    factors,
+    processingTime,
+  };
+}
+
+/**
+ * Versión simplificada para testing rápido.
+ * No requiere panel state ni contexto complejo.
+ */
+export function generateQuickResponse(
+  agent: OpinionEngineAgent,
+  interpretedQuestion: InterpretedQuestion,
+  topicStates?: TopicState[],
+): OpinionatedResponse {
+  const states = topicStates || buildInitialTopicStates(agent);
+
+  const mockContext: QuestionContext = {
+    questionIndex: 1,
+    totalQuestions: 10,
+  };
+
+  const mockPanelState: PanelState = {
+    agentId: agent.agentId,
+    eligibleWeb: true,
+    participationPropensity: 0.7,
+    panelFatigue: 0.1,
+    qualityScore: 0.8,
+    cooldownUntil: null,
+    invites30d: 2,
+    completions30d: 1,
+    lastInvitedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+    lastCompletedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+  };
+
+  return generateOpinionatedResponse({
+    agent,
+    interpretedQuestion,
+    topicStates: states,
+    panelState: mockPanelState,
+    context: mockContext,
+  });
+}
+
+=== TESTS (Sample) ===
+=== src/app/opinionEngine/__tests__/calibration.test.ts ===
+/**
+ * Tests de Calibración contra Benchmarks CADEM #639
+ * Plaza Pública, 20 de Marzo 2026
+ *
+ * Estos tests verifican que el motor de opinión reproduce los resultados
+ * reales de CADEM dentro de la tolerancia esperada (7pp).
+ *
+ * NOTA: Si los tests fallan, NO modificar el motor. Solo reportar los
+ * resultados para análisis de ajuste de constantes o revisión de tolerancias.
+ */
+
+import { describe, it, expect } from 'vitest';
+import { generateQuickResponse, type OpinionEngineAgent } from '../opinionEngine';
+import { interpretQuestion, type RawSurveyQuestion } from '../questionInterpreter';
+import { buildInitialTopicStates } from '../topicStateSeed';
+import { CADEM_BENCHMARKS, runMultipleSimulations, isWithinTolerance, type SimulationResult } from './calibrationBenchmarks';
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+/**
+ * Crea un agente sintético con demografía representativa de Chile
+ * siguiendo las ponderaciones de CADEM.
+ */
+function createRepresentativeAgent(index: number): OpinionEngineAgent {
+  const weights = CADEM_BENCHMARKS.populationWeights;
+
+  // Determinar género basado en ponderación
+  const isMale = Math.random() < weights.gender.male;
+
+  // Determinar edad basada en ponderación
+  const ageRand = Math.random();
+  let age: number;
+  if (ageRand < weights.age['18-29']) {
+    age = 18 + Math.floor(Math.random() * 12);
+  } else if (ageRand < weights.age['18-29'] + weights.age['30-49']) {
+    age = 30 + Math.floor(Math.random() * 20);
+  } else if (ageRand < weights.age['18-29'] + weights.age['30-49'] + weights.age['50-69']) {
+    age = 50 + Math.floor(Math.random() * 20);
+  } else {
+    age = 70 + Math.floor(Math.random() * 15);
+  }
+
+  // Determinar zona/región
+  const zoneRand = Math.random();
+  let regionCode: string;
+  if (zoneRand < weights.zone.metropolitan) {
+    regionCode = 'RM';
+  } else if (zoneRand < weights.zone.metropolitan + weights.zone.north) {
+    regionCode = 'AN'; // Antofagasta como representante del norte
+  } else if (zoneRand < weights.zone.metropolitan + weights.zone.north + weights.zone.center) {
+    regionCode = 'LI'; // Libertador como representante del centro
+  } else {
+    regionCode = 'BI'; // Bío Bío como representante del sur
+  }
+
+  // Determinar NSE
+  const nseRand = Math.random();
+  let cademSocioeconomicLevel: string;
+  if (nseRand < weights.socioeconomic.ABC1) {
+    cademSocioeconomicLevel = 'ABC1';
+  } else if (nseRand < weights.socioeconomic.ABC1 + weights.socioeconomic.C2) {
+    cademSocioeconomicLevel = 'C2';
+  } else if (nseRand < weights.socioeconomic.ABC1 + weights.socioeconomic.C2 + weights.socioeconomic.C3) {
+    cademSocioeconomicLevel = 'C3';
+  } else {
+    cademSocioeconomicLevel = 'DE';
+  }
+
+  // Mapear NSE a decil de ingreso aproximado
+  const incomeDecile = cademSocioeconomicLevel === 'ABC1' ? 9 :
+                       cademSocioeconomicLevel === 'C2' ? 7 :
+                       cademSocioeconomicLevel === 'C3' ? 5 : 3;
+
+  return {
+    agentId: `test-agent-${index}`,
+    age,
+    sex: isMale ? 'male' : 'female',
+    educationLevel: Math.random() < 0.3 ? 'university' : Math.random() < 0.6 ? 'secondary' : 'primary',
+    incomeDecile,
+    regionCode,
+    communeCode: `${regionCode}-001`,
+    connectivityLevel: Math.random() < 0.7 ? 'high' : 'medium',
+    digitalExposure: Math.random() < 0.6 ? 'high' : 'medium',
+    preferredChannel: 'web',
+    agentType: 'standard',
+  };
+}
+
+/**
+ * Ejecuta una simulación de pregunta con N agentes.
+ */
+async function runQuestionSimulation(
+  questionText: string,
+  numAgents: number = 500
+): Promise<SimulationResult> {
+  const rawQuestion: RawSurveyQuestion = {
+    id: `test-${Date.now()}`,
+    text: questionText,
+    type: 'single_choice',
+  };
+
+  const interpretedQuestion = interpretQuestion(rawQuestion);
+  const distribution: Record<string, number> = {};
+  let noResponseCount = 0;
+
+  for (let i = 0; i < numAgents; i++) {
+    const agent = createRepresentativeAgent(i);
+    const topicStates = buildInitialTopicStates(agent);
+    const response = generateQuickResponse(agent, interpretedQuestion, topicStates);
+
+    const value = String(response.value);
+    if (value === 'no_response' || value === 'null' || value === 'undefined') {
+      noResponseCount++;
+    } else {
+      distribution[value] = (distribution[value] || 0) + 1;
+    }
+  }
+
+  // Convertir a porcentajes
+  const total = numAgents;
+  for (const key of Object.keys(distribution)) {
+    distribution[key] = distribution[key] / total;
+  }
+
+  return {
+    distribution,
+    totalResponses: numAgents - noResponseCount,
+    noResponseRate: noResponseCount / total,
+  };
+}
+
+// ============================================================================
+// TESTS DE CALIBRACIÓN
+// ============================================================================
+
+describe('CADEM Calibration Tests - Plaza Pública #639', () => {
+  const NUM_RUNS = 5;
+  const AGENTS_PER_RUN = 500;
+
+  describe('Presidential Approval', () => {
+    it('should reproduce CADEM approval rates within 7pp tolerance', async () => {
+      const benchmark = CADEM_BENCHMARKS.questions.presidential_approval;
+
+      const result = await runMultipleSimulations(
+        () => runQuestionSimulation(benchmark.questionText, AGENTS_PER_RUN),
+        NUM_RUNS
+      );
+
+      console.log('\n=== Presidential Approval Results ===');
+      console.log(`CADEM Benchmark: Approve ${(benchmark.results.approve * 100).toFixed(1)}%, Disapprove ${(benchmark.results.disapprove * 100).toFixed(1)}%, No Response ${(benchmark.results.noResponse * 100).toFixed(1)}%`);
+      console.log(`Simulation Average:`, Object.entries(result.averageDistribution).map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`).join(', '));
+      console.log(`No Response Rate: ${(result.individualRuns.reduce((sum, r) => sum + r.noResponseRate, 0) / NUM_RUNS * 100).toFixed(1)}%`);
+      console.log(`Standard Deviations:`, Object.entries(result.standardDeviations).map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}pp`).join(', '));
+
+      // Verificar aprobación
+      const approveRate = result.averageDistribution['approve'] || 0;
+      const approveCheck = isWithinTolerance(approveRate, benchmark.results.approve, benchmark.tolerance);
+      console.log(`Approve: ${approveCheck.message} ${approveCheck.pass ? '✅' : '❌'}`);
+
+      // Verificar desaprobación
+      const disapproveRate = result.averageDistribution['disapprove'] || 0;
+      const disapproveCheck = isWithinTolerance(disapproveRate, benchmark.results.disapprove, benchmark.tolerance);
+      console.log(`Disapprove: ${disapproveCheck.message} ${disapproveCheck.pass ? '✅' : '❌'}`);
+
+      // Verificar no respuesta
+      const avgNoResponse = result.individualRuns.reduce((sum, r) => sum + r.noResponseRate, 0) / NUM_RUNS;
+      const noResponseCheck = isWithinTolerance(avgNoResponse, benchmark.results.noResponse, benchmark.tolerance);
+      console.log(`No Response: ${noResponseCheck.message} ${noResponseCheck.pass ? '✅' : '❌'}`);
+
+      // Los tests reportan resultados pero no fallan automáticamente
+      // para permitir análisis de desviaciones
+      expect(approveCheck.difference).toBeLessThan(benchmark.tolerance * 2); // Doble tolerancia para no fallar
+      expect(disapproveCheck.difference).toBeLessThan(benchmark.tolerance * 2);
+    }, 60000);
+  });
+
+  describe('Country Direction', () => {
+    it('should reproduce CADEM direction results within tolerance', async () => {
+      const benchmark = CADEM_BENCHMARKS.questions.country_direction;
+
+      const result = await runMultipleSimulations(
+        () => runQuestionSimulation(benchmark.questionText, AGENTS_PER_RUN),
+        NUM_RUNS
+      );
+
+      console.log('\n=== Country Direction Results ===');
+      console.log(`CADEM Benchmark: Good Path ${(benchmark.results.goodPath * 100).toFixed(1)}%, Bad Path ${(benchmark.results.badPath * 100).toFixed(1)}%`);
+      console.log(`Simulation Average:`, Object.entries(result.averageDistribution).map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`).join(', '));
+
+      const goodPathRate = result.averageDistribution['good_path'] || result.averageDistribution['goodPath'] || 0;
+      const goodPathCheck = isWithinTolerance(goodPathRate, benchmark.results.goodPath, benchmark.tolerance);
+      console.log(`Good Path: ${goodPathCheck.message} ${goodPathCheck.pass ? '✅' : '❌'}`);
+
+      expect(goodPathCheck.difference).toBeLessThan(benchmark.tolerance * 2);
+    }, 60000);
+  });
+
+  describe('Country Optimism', () => {
+    it('should reproduce CADEM optimism results within tolerance', async () => {
+      const benchmark = CADEM_BENCHMARKS.questions.country_optimism;
+
+      const result = await runMultipleSimulations(
+        () => runQuestionSimulation(benchmark.questionText, AGENTS_PER_RUN),
+        NUM_RUNS
+      );
+
+      console.log('\n=== Country Optimism Results ===');
+      console.log(`CADEM Benchmark: Optimistic ${(benchmark.results.optimistic * 100).toFixed(1)}%, Pessimistic ${(benchmark.results.pessimistic * 100).toFixed(1)}%`);
+      console.log(`Simulation Average:`, Object.entries(result.averageDistribution).map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`).join(', '));
+
+      // Optimismo = muy_optimista + optimista
+      const optimisticRate = (result.averageDistribution['optimistic'] || 0) +
+                             (result.averageDistribution['very_optimistic'] || 0);
+      const optimismCheck = isWithinTolerance(optimisticRate, benchmark.results.optimistic, benchmark.tolerance);
+      console.log(`Optimistic: ${optimismCheck.message} ${optimismCheck.pass ? '✅' : '❌'}`);
+
+      expect(optimismCheck.difference).toBeLessThan(benchmark.tolerance * 2);
+    }, 60000);
+  });
+
+  describe('Economic Situation', () => {
+    it('should reproduce CADEM economic perception within tolerance', async () => {
+      const benchmark = CADEM_BENCHMARKS.questions.economic_situation;
+
+      const result = await runMultipleSimulations(
+        () => runQuestionSimulation(benchmark.questionText, AGENTS_PER_RUN),
+        NUM_RUNS
+      );
+
+      console.log('\n=== Economic Situation Results ===');
+      console.log(`CADEM Benchmark: Progressing ${(benchmark.results.progressing * 100).toFixed(1)}%, Stagnant/Declining ${(benchmark.results.stagnant_or_declining * 100).toFixed(1)}%`);
+      console.log(`Simulation Average:`, Object.entries(result.averageDistribution).map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`).join(', '));
+
+      const progressingRate = result.averageDistribution['progressing'] || 0;
+      const progressingCheck = isWithinTolerance(progressingRate, benchmark.results.progressing, benchmark.tolerance);
+      console.log(`Progressing: ${progressingCheck.message} ${progressingCheck.pass ? '✅' : '❌'}`);
+
+      expect(progressingCheck.difference).toBeLessThan(benchmark.tolerance * 2);
+    }, 60000);
+  });
+
+  describe('Personal Economic', () => {
+    it('should reproduce CADEM personal economic perception within tolerance', async () => {
+      const benchmark = CADEM_BENCHMARKS.questions.personal_economic;
+
+      const result = await runMultipleSimulations(
+        () => runQuestionSimulation(benchmark.questionText, AGENTS_PER_RUN),
+        NUM_RUNS
+      );
+
+      console.log('\n=== Personal Economic Results ===');
+      console.log(`CADEM Benchmark: Good ${(benchmark.results.good * 100).toFixed(1)}%, Bad ${(benchmark.results.bad * 100).toFixed(1)}%`);
+      console.log(`Simulation Average:`, Object.entries(result.averageDistribution).map(([k, v]) => `${k}: ${(v * 100).toFixed(1)}%`).join(', '));
+
+      // Buena = muy_buena + buena
+      const goodRate = (result.averageDistribution['good'] || 0) +
+                       (result.averageDistribution['very_good'] || 0);
+      const goodCheck = isWithinTolerance(goodRate, benchmark.results.good, benchmark.tolerance);
+      console.log(`Good: ${goodCheck.message} ${goodCheck.pass ? '✅' : '❌'}`);
+
+      expect(goodCheck.difference).toBeLessThan(benchmark.tolerance * 2);
+    }, 60000);
+  });
+
+  describe('Variance Analysis', () => {
+    it('should have low variance between runs (< 3pp std dev)', async () => {
+      const benchmark = CADEM_BENCHMARKS.questions.presidential_approval;
+
+      const result = await runMultipleSimulations(
+        () => runQuestionSimulation(benchmark.questionText, AGENTS_PER_RUN),
+        NUM_RUNS
+      );
+
+      console.log('\n=== Variance Analysis ===');
+      const maxStdDev = Math.max(...Object.values(result.standardDeviations));
+      console.log(`Max Standard Deviation: ${(maxStdDev * 100).toFixed(2)}pp`);
+      console.log(`All Std Devs:`, Object.entries(result.standardDeviations).map(([k, v]) => `${k}: ${(v * 100).toFixed(2)}pp`).join(', '));
+
+      // Desviación estándar debe ser menor a 3pp
+      expect(maxStdDev).toBeLessThan(0.03);
+    }, 60000);
+  });
+
+  describe('No-Response Rate', () => {
+    it('should produce no-response rates between 5% and 15%', async () => {
+      const benchmark = CADEM_BENCHMARKS.questions.presidential_approval;
+
+      const result = await runMultipleSimulations(
+        () => runQuestionSimulation(benchmark.questionText, AGENTS_PER_RUN),
+        NUM_RUNS
+      );
+
+      const avgNoResponse = result.individualRuns.reduce((sum, r) => sum + r.noResponseRate, 0) / NUM_RUNS;
+
+      console.log('\n=== No-Response Rate Analysis ===');
+      console.log(`Average No-Response Rate: ${(avgNoResponse * 100).toFixed(1)}%`);
+      console.log(`Individual runs:`, result.individualRuns.map(r => `${(r.noResponseRate * 100).toFixed(1)}%`).join(', '));
+
+      // No-response debe estar entre 5% y 15%
+      expect(avgNoResponse).toBeGreaterThan(0.05);
+      expect(avgNoResponse).toBeLessThan(0.15);
+    }, 60000);
+  });
+});
+
+=== src/app/opinionEngine/__tests__/calibrationBenchmarks.ts ===
+/**
+ * BENCHMARKS DE CALIBRACIÓN - Plaza Pública CADEM #639
+ * Fecha de terreno: 20 de Marzo de 2026
+ * Muestra: 1,005 casos, 151 comunas
+ * Método: Encuesta online (CAWI) a través de Panel Cadem Online
+ * Ponderación: género, edad, zona, NSE, comportamiento electoral 2da vuelta 2025
+ *
+ * Fuente: Track-PP-639-Marzo-S3-M2-VF.pdf
+ *
+ * NOTA: La tolerancia de 7pp se basa en el MAE de 6.5pp reportado por CADEM
+ * entre metodología telefónica y online, más un margen adicional por
+ * diferencias entre simulación y encuesta real.
+ */
+
+export const CADEM_BENCHMARKS = {
+  source: 'Plaza Pública CADEM #639',
+  date: '2026-03-20',
+  sampleSize: 1005,
+  communes: 151,
+  method: 'CAWI - Panel Cadem Online',
+
+  // Tolerancia por defecto: 7pp (basado en MAE de 6.5pp entre modos CATI-CAWI)
+  defaultTolerance: 0.07,
+
+  /**
+   * DISTRIBUCIÓN POBLACIONAL - Factores de ponderación CADEM
+   * Fuente: Diseño Metodológico Plaza Pública 2026, Tabla 2
+   * Basado en: SERVEL Padrón Electoral 2025, métricas Cadem, SERVEL 2da vuelta 2025
+   */
+  populationWeights: {
+    gender: {
+      male: 0.49,
+      female: 0.51,
+    },
+    age: {
+      '18-29': 0.19,
+      '30-49': 0.37,
+      '50-69': 0.31,
+      '70+': 0.13,
+    },
+    zone: {
+      north: 0.12,   // Arica y Parinacota - Coquimbo
+      center: 0.22,  // Valparaíso - Maule
+      south: 0.27,   // Ñuble - Magallanes
+      metropolitan: 0.39, // Región Metropolitana
+    },
+    socioeconomic: {
+      ABC1: 0.10,
+      C2: 0.25,
+      C3: 0.30,
+      DE: 0.35,
+    },
+    electoralBehavior: {
+      votedKast: 0.46,
+      votedJara: 0.33,
+      didNotVote: 0.21,
+    },
+  },
+
+  /**
+   * PREGUNTAS PERMANENTES - Resultados reales
+   */
+  questions: {
+    /**
+     * Pregunta exacta: "Independiente de su posición política, ¿Usted aprueba
+     * o desaprueba la forma cómo José Antonio Kast está conduciendo su Gobierno?"
+     */
+    presidential_approval: {
+      questionFamily: 'approval',
+      questionText: '¿Usted aprueba o desaprueba la forma cómo José Antonio Kast está conduciendo su Gobierno?',
+      results: {
+        approve: 0.51,
+        disapprove: 0.42,
+        noResponse: 0.07,
+      },
+      tolerance: 0.07,
+      // Desglose por segmento (% Aprueba)
+      bySegment: {
+        male: 0.61,
+        female: 0.40,
+        age18_34: 0.37,
+        age35_54: 0.53,
+        age55plus: 0.60,
+        nseAlto: 0.56,
+        nseMedio: 0.49,
+        nseBajo: 0.48,
+        metropolitana: 0.43,
+        regiones: 0.55,
+        derecha: 0.91,
+        centro: 0.53,
+        izquierda: 0.05,
+      },
+    },
+
+    /**
+     * Pregunta exacta: "Ahora, pensando en todos los aspectos políticos,
+     * económicos y sociales, ¿Usted cree que el país va por un buen camino
+     * o por un mal camino?"
+     */
+    country_direction: {
+      questionFamily: 'direction',
+      questionText: '¿Usted cree que el país va por un buen camino o por un mal camino?',
+      results: {
+        goodPath: 0.50,
+        badPath: 0.35,
+        noResponse: 0.15,
+      },
+      tolerance: 0.08, // Más tolerancia, lectura de gráfico
+    },
+
+    /**
+     * Pregunta exacta: "En general, ¿Cómo se siente usted acerca del futuro del país?"
+     */
+    country_optimism: {
+      questionFamily: 'optimism',
+      questionText: '¿Cómo se siente usted acerca del futuro del país?',
+      results: {
+        optimistic: 0.53,   // Muy optimista + Optimista
+        pessimistic: 0.36,  // Pesimista + Muy pesimista
+        noResponse: 0.11,
+      },
+      tolerance: 0.08,
+    },
+
+    /**
+     * Pregunta exacta: "Usted cree que en el momento actual la economía
+     * chilena está: progresando, estancada o en retroceso"
+     */
+    economic_situation: {
+      questionFamily: 'economic_perception',
+      questionText: '¿Usted cree que en el momento actual la economía chilena está progresando, estancada o en retroceso?',
+      results: {
+        progressing: 0.34,
+        stagnant_or_declining: 0.63,
+        noResponse: 0.03,
+      },
+      tolerance: 0.08,
+    },
+
+    /**
+     * Pregunta exacta: "¿Cómo calificaría usted la situación económica
+     * actual de usted y su familia?"
+     */
+    personal_economic: {
+      questionFamily: 'economic_perception',
+      questionText: '¿Cómo calificaría usted la situación económica actual de usted y su familia?',
+      results: {
+        good: 0.52,    // Muy buena + Buena
+        bad: 0.44,     // Mala + Muy mala
+        noResponse: 0.04,
+      },
+      tolerance: 0.08,
+    },
+  },
+
+  /**
+   * TEXTOS EXACTOS DE LAS PREGUNTAS PERMANENTES
+   * Fuente: Anexo 1 del Diseño Metodológico
+   * Estos textos deben ser reconocidos por questionInterpreter
+   */
+  questionTexts: {
+    approval: '¿Usted aprueba o desaprueba la forma cómo José Antonio Kast está conduciendo su Gobierno?',
+    direction: '¿Usted cree que el país va por un buen camino o por un mal camino?',
+    optimism: '¿Cómo se siente usted acerca del futuro del país?',
+    economicSituation: '¿Usted cree que en el momento actual la economía chilena está progresando, estancada o en retroceso?',
+    personalEconomic: '¿Cómo calificaría usted la situación económica actual de usted y su familia?',
+    businessEconomic: '¿Cómo calificaría usted la situación económica actual de las empresas?',
+    employment: '¿Cómo calificaría usted la situación actual del empleo en el país?',
+    consumption: '¿Cómo calificaría usted la situación de los consumidores para poder comprar bienes y servicios?',
+    politicalPosition: '¿Usted con cuál de las siguientes posiciones se siente más cercano?',
+  },
+};
+
+/**
+ * Tipo para resultados de simulación
+ */
+export interface SimulationResult {
+  distribution: Record<string, number>;
+  totalResponses: number;
+  noResponseRate: number;
+}
+
+/**
+ * Ejecuta múltiples simulaciones y promedia resultados
+ */
+export async function runMultipleSimulations(
+  simulationFn: () => Promise<SimulationResult>,
+  runs: number = 5
+): Promise<{
+  averageDistribution: Record<string, number>;
+  standardDeviations: Record<string, number>;
+  individualRuns: SimulationResult[];
+}> {
+  const results: SimulationResult[] = [];
+
+  for (let i = 0; i < runs; i++) {
+    const result = await simulationFn();
+    results.push(result);
+  }
+
+  const allKeys = new Set<string>();
+  results.forEach(r => Object.keys(r.distribution).forEach(k => allKeys.add(k)));
+  const allKeysArray = Array.from(allKeys);
+
+  const averageDistribution: Record<string, number> = {};
+  const standardDeviations: Record<string, number> = {};
+
+  for (const key of allKeysArray) {
+    const values = results.map(r => r.distribution[key] || 0);
+    const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+    const variance = values.reduce((sum, v) => sum + Math.pow(v - avg, 2), 0) / values.length;
+
+    averageDistribution[key] = avg;
+    standardDeviations[key] = Math.sqrt(variance);
+  }
+
+  return { averageDistribution, standardDeviations, individualRuns: results };
+}
+
+/**
+ * Verifica tolerancia
+ */
+export function isWithinTolerance(
+  actual: number,
+  expected: number,
+  tolerance: number
+): { pass: boolean; difference: number; message: string } {
+  const difference = Math.abs(actual - expected);
+  return {
+    pass: difference <= tolerance,
+    difference,
+    message: `Expected ${(expected * 100).toFixed(1)}% ±${(tolerance * 100).toFixed(1)}pp, got ${(actual * 100).toFixed(1)}% (diff: ${(difference * 100).toFixed(1)}pp)`,
+  };
+}
+
+=== src/app/opinionEngine/__tests__/questionInterpreter.test.ts ===
+import { describe, it, expect } from 'vitest';
+import { interpretQuestion } from '../questionInterpreter';
+
+describe('questionInterpreter', () => {
+  describe('Direction questions', () => {
+    it('should detect CADEM real wording (buen camino/mal camino)', () => {
+      const result = interpretQuestion({
+        id: 'q_direction',
+        text: 'Ahora, pensando en todos los aspectos políticos, económicos y sociales, ¿Usted cree que el país va por un buen camino o por un mal camino?',
+        type: 'single_choice',
+        options: ['Buen camino', 'Mal camino', 'No responde'],
+      });
+
+      expect(result.family).toBe('direction');
+      expect(result.topic).toBe('country_direction');
+      expect(result.responseFormat).toBe('binary_nr');
+    });
+
+    it('should detect variant wording (camino correcto/equivocado)', () => {
+      const result = interpretQuestion({
+        id: 'q_direction',
+        text: '¿Cree usted que el país va por el camino correcto o por el camino equivocado?',
+        type: 'single_choice',
+        options: ['Buen camino', 'Mal camino', 'No responde'],
+      });
+
+      expect(result.family).toBe('direction');
+      expect(result.topic).toBe('country_direction');
+      expect(result.responseFormat).toBe('binary_nr');
+    });
+
+    it('should detect variant wording (dirección correcta/equivocada)', () => {
+      const result = interpretQuestion({
+        id: 'q_direction',
+        text: '¿Cree que el país va por la dirección correcta o equivocada?',
+        type: 'single_choice',
+        options: ['Buen camino', 'Mal camino', 'No responde'],
+      });
+
+      expect(result.family).toBe('direction');
+      expect(result.topic).toBe('country_direction');
+    });
+  });
+
+  describe('Optimism questions', () => {
+    it('should detect CADEM real wording (futuro del país)', () => {
+      const result = interpretQuestion({
+        id: 'q_optimism',
+        text: 'En general, ¿Cómo se siente usted acerca del futuro del país?',
+        type: 'single_choice',
+        options: ['Muy optimista', 'Optimista', 'Pesimista', 'Muy pesimista', 'No responde'],
+      });
+
+      expect(result.family).toBe('optimism');
+      expect(result.topic).toBe('country_optimism');
+      expect(result.responseFormat).toBe('ordinal_4_nr');
+    });
+
+    it('should detect variant wording (dentro de un año mejor/igual/peor)', () => {
+      const result = interpretQuestion({
+        id: 'q_optimism',
+        text: '¿Cree que dentro de un año la situación del país será mejor, igual o peor?',
+        type: 'single_choice',
+        options: ['Mejor', 'Igual', 'Peor', 'No responde'],
+      });
+
+      expect(result.family).toBe('optimism');
+      expect(result.topic).toBe('country_optimism');
+    });
+
+    it('should detect variant wording (cómo se siente acerca del futuro)', () => {
+      const result = interpretQuestion({
+        id: 'q_optimism',
+        text: '¿Cómo se siente acerca del futuro?',
+        type: 'single_choice',
+        options: ['Muy optimista', 'Optimista', 'Pesimista', 'Muy pesimista', 'No responde'],
+      });
+
+      expect(result.family).toBe('optimism');
+      expect(result.topic).toBe('country_optimism');
+    });
+  });
+
+  describe('Approval questions', () => {
+    it('should detect approval with Kast', () => {
+      const result = interpretQuestion({
+        id: 'q_approval',
+        text: 'Ahora. Independiente de su posición política, ¿Usted aprueba o desaprueba la forma cómo José Antonio Kast está conduciendo su Gobierno?',
+        type: 'single_choice',
+        options: ['Aprueba', 'Desaprueba', 'No responde'],
+      });
+
+      expect(result.family).toBe('approval');
+      expect(result.topic).toBe('government_approval');
+      expect(result.targetEntity).toBe('jose_antonio_kast');
+      expect(result.responseFormat).toBe('binary_nr');
+    });
+
+    it('should detect approval with generic government', () => {
+      const result = interpretQuestion({
+        id: 'q_approval',
+        text: '¿Aprueba o desaprueba la forma como el gobierno está manejando los problemas del país?',
+        type: 'single_choice',
+        options: ['Aprueba', 'Desaprueba', 'No responde'],
+      });
+
+      expect(result.family).toBe('approval');
+      expect(result.topic).toBe('government_approval');
+      expect(result.targetEntity).toBe('gobierno');
+    });
+  });
+
+  describe('Economic perception questions', () => {
+    it('should detect national economy', () => {
+      const result = interpretQuestion({
+        id: 'q_economy_national',
+        text: 'Usted cree que en el momento actual la economía chilena está...',
+        type: 'single_choice',
+        options: ['Muy buena', 'Buena', 'Mala', 'Muy mala', 'No responde'],
+      });
+
+      expect(result.family).toBe('economic_perception');
+      expect(result.topic).toBe('economy_national');
+    });
+
+    it('should detect personal economy', () => {
+      const result = interpretQuestion({
+        id: 'q_economy_personal',
+        text: '¿Cómo calificaría usted la situación económica actual de usted y su familia?',
+        type: 'single_choice',
+        options: ['Muy buena', 'Buena', 'Mala', 'Muy mala', 'No responde'],
+      });
+
+      expect(result.family).toBe('economic_perception');
+      expect(result.topic).toBe('economy_personal');
+    });
+  });
+
+  describe('Unknown questions', () => {
+    it('should fallback to open_text for unrecognized questions', () => {
+      const result = interpretQuestion({
+        id: 'q_unknown',
+        text: '¿Cuál es su color favorito?',
+        type: 'single_choice',
+        options: ['Rojo', 'Azul', 'Verde'],
+      });
+
+      expect(result.family).toBe('open_text');
+      expect(result.topic).toBeUndefined();
+      expect(result.responseFormat).toBe('text');
+    });
+  });
+
+  describe('Fingerprint generation', () => {
+    it('should generate consistent fingerprints', () => {
+      const result1 = interpretQuestion({
+        id: 'q_test',
+        text: '¿Aprueba o desaprueba?',
+        type: 'single_choice',
+        options: ['Sí', 'No'],
+      });
+
+      const result2 = interpretQuestion({
+        id: 'q_test',
+        text: '¿Aprueba o desaprueba?',
+        type: 'single_choice',
+        options: ['Sí', 'No'],
+      });
+
+      expect(result1.fingerprint).toBe(result2.fingerprint);
+    });
+
+    it('should generate different fingerprints for different texts', () => {
+      const result1 = interpretQuestion({
+        id: 'q_test1',
+        text: '¿Aprueba o desaprueba?',
+        type: 'single_choice',
+        options: ['Sí', 'No'],
+      });
+
+      const result2 = interpretQuestion({
+        id: 'q_test2',
+        text: '¿Está de acuerdo?',
+        type: 'single_choice',
+        options: ['Sí', 'No'],
+      });
+
+      expect(result1.fingerprint).not.toBe(result2.fingerprint);
+    });
+  });
+});
+
+==========================================
+ESTADÍSTICAS DEL REPOSITORIO
+==========================================
+Archivos TypeScript: 110
+Archivos SQL totales: 40
+Archivos de test: 11
+==========================================

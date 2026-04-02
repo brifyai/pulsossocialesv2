@@ -1,0 +1,3470 @@
+==========================================
+AUDITORÍA TÉCNICA INTEGRAL - PARTE 5/6
+MIGRACIONES SQL - DATOS Y TIPOS TYPESCRIPT
+Fecha: 2026-04-01 18:24:33 UTC
+Repositorio: Pulso
+==========================================
+
+INSTRUCCIONES:
+1. Usar con: docs/PROMPT_AUDITORIA_DEFINITIVO_V2.md
+2. Esta es la Parte 5 de 6
+3. Procesar en orden: Parte 1 → Parte 2 → ... → Parte 6
+4. Cada parte debe analizarse secuencialmente
+
+=== DATA MIGRATIONS (Sample) ===
+=== migrations/20250318_create_survey_results.sql ===
+-- =============================================================================
+-- MIGRACIÓN: Crear tabla survey_results
+-- =============================================================================
+-- Descripción: Tabla para almacenar resultados agregados de ejecuciones de encuestas
+-- Fecha: 2025-03-18
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- 1. CREAR TABLA
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS survey_results (
+    -- Identificador único
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    
+    -- Relación con la ejecución de encuesta (survey_runs)
+    run_id UUID NOT NULL,
+    
+    -- Relación con la definición de encuesta (survey_definitions)
+    -- Nota: También disponible vía survey_runs, pero incluido para facilitar queries
+    survey_id UUID NOT NULL,
+    
+    -- Tipo de resultado (ej: 'aggregated', 'demographic_breakdown', 'territorial')
+    result_type VARCHAR(50) NOT NULL DEFAULT 'aggregated',
+    
+    -- Datos del resultado en formato JSONB (flexible para diferentes estructuras)
+    result_data JSONB NOT NULL DEFAULT '{}',
+    
+    -- Metadata adicional opcional
+    metadata JSONB DEFAULT '{}',
+    
+    -- Timestamps automáticos
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- -----------------------------------------------------------------------------
+-- 2. COMENTARIOS EN COLUMNAS (documentación)
+-- -----------------------------------------------------------------------------
+COMMENT ON TABLE survey_results IS 'Resultados agregados de ejecuciones de encuestas';
+COMMENT ON COLUMN survey_results.id IS 'Identificador único del resultado';
+COMMENT ON COLUMN survey_results.run_id IS 'Referencia a la ejecución de encuesta (survey_runs.id)';
+COMMENT ON COLUMN survey_results.survey_id IS 'Referencia a la definición de encuesta (survey_definitions.id)';
+COMMENT ON COLUMN survey_results.result_type IS 'Tipo de resultado: aggregated, demographic_breakdown, territorial, etc.';
+COMMENT ON COLUMN survey_results.result_data IS 'Datos del resultado en formato JSONB';
+COMMENT ON COLUMN survey_results.metadata IS 'Metadata adicional opcional';
+COMMENT ON COLUMN survey_results.created_at IS 'Fecha de creación del registro';
+COMMENT ON COLUMN survey_results.updated_at IS 'Fecha de última actualización';
+
+-- -----------------------------------------------------------------------------
+-- 3. ÍNDICES
+-- -----------------------------------------------------------------------------
+-- Índice para búsquedas por run_id (más común)
+CREATE INDEX IF NOT EXISTS idx_survey_results_run_id 
+    ON survey_results(run_id);
+
+-- Índice para búsquedas por survey_id
+CREATE INDEX IF NOT EXISTS idx_survey_results_survey_id 
+    ON survey_results(survey_id);
+
+-- Índice compuesto para queries frecuentes
+CREATE INDEX IF NOT EXISTS idx_survey_results_survey_run 
+    ON survey_results(survey_id, run_id);
+
+-- Índice para búsquedas por tipo de resultado
+CREATE INDEX IF NOT EXISTS idx_survey_results_type 
+    ON survey_results(result_type);
+
+-- Índice GIN para búsquedas dentro de result_data JSONB
+CREATE INDEX IF NOT EXISTS idx_survey_results_data_gin 
+    ON survey_results USING GIN(result_data);
+
+-- Índice para ordenamiento por fecha de creación
+CREATE INDEX IF NOT EXISTS idx_survey_results_created 
+    ON survey_results(created_at DESC);
+
+-- -----------------------------------------------------------------------------
+-- 4. FOREIGN KEYS
+-- -----------------------------------------------------------------------------
+-- Nota: Solo agregamos FK si las tablas referenciadas existen
+-- La FK a survey_runs
+ALTER TABLE survey_results 
+    ADD CONSTRAINT fk_survey_results_run 
+    FOREIGN KEY (run_id) 
+    REFERENCES survey_runs(id) 
+    ON DELETE CASCADE;
+
+-- La FK a survey_definitions
+ALTER TABLE survey_results 
+    ADD CONSTRAINT fk_survey_results_survey 
+    FOREIGN KEY (survey_id) 
+    REFERENCES survey_definitions(id) 
+    ON DELETE CASCADE;
+
+-- -----------------------------------------------------------------------------
+-- 5. TRIGGER PARA updated_at
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_survey_results_updated_at
+    BEFORE UPDATE ON survey_results
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- -----------------------------------------------------------------------------
+-- 6. POLÍTICAS RLS (Row Level Security)
+-- -----------------------------------------------------------------------------
+-- Habilitar RLS
+ALTER TABLE survey_results ENABLE ROW LEVEL SECURITY;
+
+-- Política: Permitir lectura a usuarios anónimos (anon)
+CREATE POLICY "Allow anonymous read access" ON survey_results
+    FOR SELECT
+    TO anon
+    USING (true);
+
+-- Política: Permitir escritura a usuarios anónimos (anon)
+-- Nota: Ajustar según necesidades de seguridad del proyecto
+CREATE POLICY "Allow anonymous insert access" ON survey_results
+    FOR INSERT
+    TO anon
+    WITH CHECK (true);
+
+-- Política: Permitir actualización a usuarios anónimos
+CREATE POLICY "Allow anonymous update access" ON survey_results
+    FOR UPDATE
+    TO anon
+    USING (true)
+    WITH CHECK (true);
+
+-- Política: Permitir eliminación a usuarios anónimos
+CREATE POLICY "Allow anonymous delete access" ON survey_results
+    FOR DELETE
+    TO anon
+    USING (true);
+
+-- -----------------------------------------------------------------------------
+-- 7. VERIFICACIÓN
+-- -----------------------------------------------------------------------------
+SELECT 'Tabla survey_results creada exitosamente' AS status;
+
+=== migrations/20250318_create_survey_results_idempotent.sql ===
+-- =============================================================================
+-- MIGRACIÓN: Crear tabla survey_results (IDEMPOTENTE)
+-- =============================================================================
+-- Descripción: Tabla para almacenar resultados agregados de ejecuciones de encuestas
+-- Fecha: 2025-03-18
+-- Versión: Idempotente - puede ejecutarse múltiples veces sin errores
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- 1. CREAR TABLA
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS survey_results (
+    -- Identificador único
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Relación con la ejecución de encuesta (survey_runs)
+    run_id UUID NOT NULL,
+
+    -- Relación con la definición de encuesta (survey_definitions)
+    -- Nota: También disponible vía survey_runs, pero incluido para facilitar queries
+    survey_id UUID NOT NULL,
+
+    -- Tipo de resultado (ej: 'aggregated', 'demographic_breakdown', 'territorial')
+    result_type VARCHAR(50) NOT NULL DEFAULT 'aggregated',
+
+    -- Datos del resultado en formato JSONB (flexible para diferentes estructuras)
+    result_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+    -- Metadata adicional opcional
+    metadata JSONB DEFAULT '{}'::jsonb,
+
+    -- Timestamps automáticos
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- -----------------------------------------------------------------------------
+-- 2. COMENTARIOS EN COLUMNAS (documentación)
+-- -----------------------------------------------------------------------------
+COMMENT ON TABLE survey_results IS 'Resultados agregados de ejecuciones de encuestas';
+COMMENT ON COLUMN survey_results.id IS 'Identificador único del resultado';
+COMMENT ON COLUMN survey_results.run_id IS 'Referencia a la ejecución de encuesta (survey_runs.id)';
+COMMENT ON COLUMN survey_results.survey_id IS 'Referencia a la definición de encuesta (survey_definitions.id)';
+COMMENT ON COLUMN survey_results.result_type IS 'Tipo de resultado: aggregated, demographic_breakdown, territorial, etc.';
+COMMENT ON COLUMN survey_results.result_data IS 'Datos del resultado en formato JSONB';
+COMMENT ON COLUMN survey_results.metadata IS 'Metadata adicional opcional';
+COMMENT ON COLUMN survey_results.created_at IS 'Fecha de creación del registro';
+COMMENT ON COLUMN survey_results.updated_at IS 'Fecha de última actualización';
+
+-- -----------------------------------------------------------------------------
+-- 3. ÍNDICES (IF NOT EXISTS)
+-- -----------------------------------------------------------------------------
+-- Índice para búsquedas por run_id (más común)
+CREATE INDEX IF NOT EXISTS idx_survey_results_run_id
+    ON survey_results(run_id);
+
+-- Índice para búsquedas por survey_id
+CREATE INDEX IF NOT EXISTS idx_survey_results_survey_id
+    ON survey_results(survey_id);
+
+-- Índice compuesto para queries frecuentes
+CREATE INDEX IF NOT EXISTS idx_survey_results_survey_run
+    ON survey_results(survey_id, run_id);
+
+-- Índice para búsquedas por tipo de resultado
+CREATE INDEX IF NOT EXISTS idx_survey_results_type
+    ON survey_results(result_type);
+
+-- Índice GIN para búsquedas dentro de result_data JSONB
+CREATE INDEX IF NOT EXISTS idx_survey_results_data_gin
+    ON survey_results USING GIN(result_data);
+
+-- Índice para ordenamiento por fecha de creación
+CREATE INDEX IF NOT EXISTS idx_survey_results_created
+    ON survey_results(created_at DESC);
+
+-- -----------------------------------------------------------------------------
+-- 4. FOREIGN KEYS (IDEMPOTENTES - verificar antes de crear)
+-- -----------------------------------------------------------------------------
+DO $$
+BEGIN
+    -- FK a survey_runs (verificar si no existe)
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'fk_survey_results_run'
+        AND table_name = 'survey_results'
+    ) THEN
+        ALTER TABLE survey_results
+            ADD CONSTRAINT fk_survey_results_run
+            FOREIGN KEY (run_id)
+            REFERENCES survey_runs(id)
+            ON DELETE CASCADE;
+    END IF;
+
+    -- FK a survey_definitions (verificar si no existe)
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'fk_survey_results_survey'
+        AND table_name = 'survey_results'
+    ) THEN
+        ALTER TABLE survey_results
+            ADD CONSTRAINT fk_survey_results_survey
+            FOREIGN KEY (survey_id)
+            REFERENCES survey_definitions(id)
+            ON DELETE CASCADE;
+    END IF;
+END $$;
+
+-- -----------------------------------------------------------------------------
+-- 5. TRIGGER PARA updated_at (IDEMPOTENTE)
+-- -----------------------------------------------------------------------------
+-- Crear o reemplazar la función
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Crear trigger solo si no existe
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger
+        WHERE tgname = 'update_survey_results_updated_at'
+        AND tgrelid = 'survey_results'::regclass
+    ) THEN
+        CREATE TRIGGER update_survey_results_updated_at
+            BEFORE UPDATE ON survey_results
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
+
+-- -----------------------------------------------------------------------------
+-- 6. POLÍTICAS RLS (Row Level Security) - IDEMPOTENTES
+-- -----------------------------------------------------------------------------
+-- Habilitar RLS
+ALTER TABLE survey_results ENABLE ROW LEVEL SECURITY;
+
+-- Política: Permitir lectura a usuarios anónimos (anon)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE policyname = 'Allow anonymous read access'
+        AND tablename = 'survey_results'
+    ) THEN
+        CREATE POLICY "Allow anonymous read access" ON survey_results
+            FOR SELECT
+            TO anon
+            USING (true);
+    END IF;
+END $$;
+
+-- Política: Permitir escritura a usuarios anónimos (anon)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE policyname = 'Allow anonymous insert access'
+        AND tablename = 'survey_results'
+    ) THEN
+        CREATE POLICY "Allow anonymous insert access" ON survey_results
+            FOR INSERT
+            TO anon
+            WITH CHECK (true);
+    END IF;
+END $$;
+
+-- Política: Permitir actualización a usuarios anónimos
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE policyname = 'Allow anonymous update access'
+        AND tablename = 'survey_results'
+    ) THEN
+        CREATE POLICY "Allow anonymous update access" ON survey_results
+            FOR UPDATE
+            TO anon
+            USING (true)
+            WITH CHECK (true);
+    END IF;
+END $$;
+
+-- Política: Permitir eliminación a usuarios anónimos
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE policyname = 'Allow anonymous delete access'
+        AND tablename = 'survey_results'
+    ) THEN
+        CREATE POLICY "Allow anonymous delete access" ON survey_results
+            FOR DELETE
+            TO anon
+            USING (true);
+    END IF;
+END $$;
+
+-- -----------------------------------------------------------------------------
+-- 7. VERIFICACIÓN
+-- -----------------------------------------------------------------------------
+SELECT 'Tabla survey_results creada/actualizada exitosamente' AS status;
+
+=== migrations/20250318_create_users_table.sql ===
+-- ===========================================
+-- Migration: Create users table
+-- Description: Tabla de usuarios personalizada
+-- para autenticación sin Supabase Auth
+-- ===========================================
+
+-- Enable UUID extension if not already enabled
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ===========================================
+-- Table: users
+-- ===========================================
+CREATE TABLE IF NOT EXISTS public.users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    name VARCHAR(255),
+    avatar VARCHAR(500),
+    role VARCHAR(50) DEFAULT 'user',
+    is_active BOOLEAN DEFAULT true,
+    email_verified BOOLEAN DEFAULT false,
+    last_login_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_users_email ON public.users(email);
+CREATE INDEX IF NOT EXISTS idx_users_role ON public.users(role);
+CREATE INDEX IF NOT EXISTS idx_users_is_active ON public.users(is_active);
+
+-- ===========================================
+-- RLS Policies
+-- ===========================================
+
+-- Enable RLS
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Users can read their own data
+CREATE POLICY "Users can read own data" ON public.users
+    FOR SELECT
+    USING (id = current_setting('app.current_user_id', true)::UUID);
+
+-- Policy: Users can update their own data (except role)
+CREATE POLICY "Users can update own data" ON public.users
+    FOR UPDATE
+    USING (id = current_setting('app.current_user_id', true)::UUID)
+    WITH CHECK (id = current_setting('app.current_user_id', true)::UUID);
+
+-- Policy: Allow insert for registration (anon)
+CREATE POLICY "Allow registration" ON public.users
+    FOR INSERT
+    WITH CHECK (true);
+
+-- ===========================================
+-- Function: Update updated_at timestamp
+-- ===========================================
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Trigger to auto-update updated_at
+DROP TRIGGER IF EXISTS update_users_updated_at ON public.users;
+CREATE TRIGGER update_users_updated_at
+    BEFORE UPDATE ON public.users
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- ===========================================
+-- Function: Update last_login_at
+-- ===========================================
+CREATE OR REPLACE FUNCTION update_last_login()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.last_login_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- ===========================================
+-- Insert default admin user (optional)
+-- Password: admin123 (bcrypt hash)
+-- ===========================================
+-- Uncomment if you want a default admin
+-- INSERT INTO public.users (email, password_hash, name, role)
+-- VALUES (
+--     'admin@pulsossociales.com',
+--     '$2a$10$YourBcryptHashHere', -- Generate with: bcrypt.hashSync('admin123', 10)
+--     'Administrador',
+--     'admin'
+-- )
+-- ON CONFLICT (email) DO NOTHING;
+
+=== migrations/20250324_add_all_missing_agent_columns.sql ===
+-- ============================================================================
+-- Migración: Agregar TODOS los campos faltantes a synthetic_agents
+-- Fecha: 24 de marzo de 2026
+-- Descripción: Completa la tabla synthetic_agents con todos los campos
+--              definidos en el tipo TypeScript DbSyntheticAgent
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 1. CAMPOS CRÍTICOS (Primary Key y Foreign Keys)
+-- ----------------------------------------------------------------------------
+
+-- Nota: El campo 'id' como UUID primary key ya debería existir
+-- Si no existe, descomentar la siguiente línea:
+-- ALTER TABLE synthetic_agents ADD COLUMN IF NOT EXISTS id UUID PRIMARY KEY DEFAULT gen_random_uuid();
+
+-- Foreign Key a territories
+ALTER TABLE synthetic_agents 
+ADD COLUMN IF NOT EXISTS territory_id UUID REFERENCES territories(id) ON DELETE SET NULL;
+
+-- Crear índice para mejorar performance de joins
+CREATE INDEX IF NOT EXISTS idx_synthetic_agents_territory_id 
+ON synthetic_agents(territory_id);
+
+-- ----------------------------------------------------------------------------
+-- 2. CAMPOS DEMOGRÁFICOS
+-- ----------------------------------------------------------------------------
+
+-- Tamaño del hogar (número de personas)
+ALTER TABLE synthetic_agents 
+ADD COLUMN IF NOT EXISTS household_size INTEGER CHECK (household_size > 0 AND household_size <= 20);
+
+-- ----------------------------------------------------------------------------
+-- 3. CAMPOS SOCIOECONÓMICOS
+-- ----------------------------------------------------------------------------
+
+-- Nivel socioeconómico (low, medium, high)
+ALTER TABLE synthetic_agents 
+ADD COLUMN IF NOT EXISTS socioeconomic_level VARCHAR(20) CHECK (socioeconomic_level IN ('low', 'medium', 'high'));
+
+-- Grupo ocupacional (más específico que occupation_status)
+ALTER TABLE synthetic_agents 
+ADD COLUMN IF NOT EXISTS occupation_group VARCHAR(50);
+
+-- ----------------------------------------------------------------------------
+-- 4. CAMPOS DE CLASIFICACIÓN
+-- ----------------------------------------------------------------------------
+
+-- Tipo de agente para comportamiento específico
+ALTER TABLE synthetic_agents 
+ADD COLUMN IF NOT EXISTS agent_type VARCHAR(20) CHECK (agent_type IN ('resident', 'retiree', 'student', 'entrepreneur', 'worker'));
+
+-- Crear índice para filtros por tipo de agente
+CREATE INDEX IF NOT EXISTS idx_synthetic_agents_agent_type 
+ON synthetic_agents(agent_type);
+
+-- ----------------------------------------------------------------------------
+-- 5. CAMPOS DE TRACEABILIDAD (Data Pipeline)
+-- ----------------------------------------------------------------------------
+
+-- Referencia a la población backbone usada para generar el agente
+ALTER TABLE synthetic_agents 
+ADD COLUMN IF NOT EXISTS backbone_key VARCHAR(100);
+
+-- Referencia al perfil SUBTEL usado
+ALTER TABLE synthetic_agents 
+ADD COLUMN IF NOT EXISTS subtel_profile_key VARCHAR(100);
+
+-- Referencia al perfil CASEN usado
+ALTER TABLE synthetic_agents 
+ADD COLUMN IF NOT EXISTS casen_profile_key VARCHAR(100);
+
+-- Notas sobre la generación del agente
+ALTER TABLE synthetic_agents 
+ADD COLUMN IF NOT EXISTS generation_notes TEXT;
+
+-- ----------------------------------------------------------------------------
+-- 6. ACTUALIZAR DATOS EXISTENTES (si hay registros previos)
+-- ----------------------------------------------------------------------------
+
+-- Actualizar territory_id basado en comuna_code
+UPDATE synthetic_agents sa
+SET territory_id = t.id
+FROM territories t
+WHERE sa.territory_id IS NULL 
+  AND t.code = sa.comuna_code
+  AND t.level = 'comuna';
+
+-- Extraer socioeconomic_level desde metadata JSONB si existe
+UPDATE synthetic_agents
+SET socioeconomic_level = metadata->>'socioeconomic_level'
+WHERE socioeconomic_level IS NULL 
+  AND metadata ? 'socioeconomic_level';
+
+-- Asignar agent_type basado en edad y ocupación
+UPDATE synthetic_agents
+SET agent_type = CASE
+    WHEN age < 18 THEN 'student'
+    WHEN age >= 65 THEN 'retiree'
+    WHEN occupation_status = 'self_employed' OR occupation_status = 'employed' THEN 'worker'
+    ELSE 'resident'
+END
+WHERE agent_type IS NULL;
+
+-- ----------------------------------------------------------------------------
+-- 7. VERIFICACIÓN
+-- ----------------------------------------------------------------------------
+
+-- Verificar que todos los campos fueron agregados
+SELECT 
+    column_name,
+    data_type,
+    is_nullable
+FROM information_schema.columns
+WHERE table_name = 'synthetic_agents'
+ORDER BY ordinal_position;
+
+-- ----------------------------------------------------------------------------
+-- 8. ÍNDICES ADICIONALES RECOMENDADOS
+-- ----------------------------------------------------------------------------
+
+-- Índice compuesto para consultas frecuentes por región y comuna
+CREATE INDEX IF NOT EXISTS idx_synthetic_agents_region_comuna 
+ON synthetic_agents(region_code, comuna_code);
+
+-- Índice para filtros por nivel socioeconómico
+CREATE INDEX IF NOT EXISTS idx_synthetic_agents_ses 
+ON synthetic_agents(socioeconomic_level);
+
+-- Índice para búsquedas por backbone_key (debugging)
+CREATE INDEX IF NOT EXISTS idx_synthetic_agents_backbone 
+ON synthetic_agents(backbone_key);
+
+-- ============================================================================
+-- FIN DE LA MIGRACIÓN
+-- ============================================================================
+
+=== migrations/20250324_add_missing_agent_columns.sql ===
+-- =============================================================================
+-- Migración: Agregar columnas faltantes a synthetic_agents
+-- Fecha: 2025-03-24
+-- =============================================================================
+
+-- Agregar columnas faltantes para el enriquecimiento de agentes
+ALTER TABLE synthetic_agents 
+ADD COLUMN IF NOT EXISTS version VARCHAR(20),
+ADD COLUMN IF NOT EXISTS country_code VARCHAR(2) DEFAULT 'CL',
+ADD COLUMN IF NOT EXISTS region_code VARCHAR(10),
+ADD COLUMN IF NOT EXISTS comuna_code VARCHAR(10),
+ADD COLUMN IF NOT EXISTS province_code VARCHAR(10),
+ADD COLUMN IF NOT EXISTS urbanicity VARCHAR(20) CHECK (urbanicity IN ('urban', 'rural', 'mixed')),
+ADD COLUMN IF NOT EXISTS household_type VARCHAR(20),
+ADD COLUMN IF NOT EXISTS poverty_status VARCHAR(20),
+ADD COLUMN IF NOT EXISTS occupation_status VARCHAR(50),
+ADD COLUMN IF NOT EXISTS employment_status VARCHAR(50),
+ADD COLUMN IF NOT EXISTS preferred_survey_channel VARCHAR(20) CHECK (preferred_survey_channel IN ('online', 'phone', 'in_person', 'mixed'));
+
+-- Actualizar columnas existentes para permitir NULL si es necesario
+ALTER TABLE synthetic_agents 
+ALTER COLUMN location_lat DROP NOT NULL,
+ALTER COLUMN location_lng DROP NOT NULL;
+
+-- Crear índices para las nuevas columnas
+CREATE INDEX IF NOT EXISTS idx_agents_region_code ON synthetic_agents(region_code);
+CREATE INDEX IF NOT EXISTS idx_agents_comuna_code ON synthetic_agents(comuna_code);
+CREATE INDEX IF NOT EXISTS idx_agents_employment_status ON synthetic_agents(employment_status);
+CREATE INDEX IF NOT EXISTS idx_agents_urbanicity ON synthetic_agents(urbanicity);
+
+-- Comentarios
+COMMENT ON COLUMN synthetic_agents.version IS 'Versión del agente sintético';
+COMMENT ON COLUMN synthetic_agents.country_code IS 'Código del país (CL para Chile)';
+COMMENT ON COLUMN synthetic_agents.region_code IS 'Código de la región';
+COMMENT ON COLUMN synthetic_agents.comuna_code IS 'Código de la comuna';
+COMMENT ON COLUMN synthetic_agents.province_code IS 'Código de la provincia';
+COMMENT ON COLUMN synthetic_agents.urbanicity IS 'Tipo de zona: urban, rural, mixed';
+COMMENT ON COLUMN synthetic_agents.household_type IS 'Tipo de hogar';
+COMMENT ON COLUMN synthetic_agents.poverty_status IS 'Estado de pobreza';
+COMMENT ON COLUMN synthetic_agents.occupation_status IS 'Estado ocupacional';
+COMMENT ON COLUMN synthetic_agents.employment_status IS 'Estado de empleo';
+COMMENT ON COLUMN synthetic_agents.preferred_survey_channel IS 'Canal preferido para encuestas';
+
+-- Verificar que las columnas se agregaron correctamente
+SELECT column_name, data_type, is_nullable 
+FROM information_schema.columns 
+WHERE table_name = 'synthetic_agents' 
+ORDER BY ordinal_position;
+=== migrations/20250324_create_benchmarks_tables.sql ===
+-- ===========================================
+-- Benchmarks Tables - Sprint 12C
+-- Tablas para almacenar benchmarks de referencia
+-- ===========================================
+
+-- Tabla principal de benchmarks
+CREATE TABLE IF NOT EXISTS benchmarks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_id VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    organization VARCHAR(255) NOT NULL,
+    year INTEGER NOT NULL,
+    description TEXT,
+    url VARCHAR(500),
+    coverage_geographic TEXT[] DEFAULT '{}',
+    coverage_temporal_start DATE,
+    coverage_temporal_end DATE,
+    pdf_url VARCHAR(500), -- URL del PDF subido
+    pdf_extracted_data JSONB, -- Datos extraídos del PDF por IA
+    status VARCHAR(50) DEFAULT 'active', -- active, processing, error, archived
+    created_by UUID REFERENCES auth.users(id),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Tabla de indicadores de benchmarks
+CREATE TABLE IF NOT EXISTS benchmark_indicators (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    benchmark_id UUID NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
+    indicator_id VARCHAR(100) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    category VARCHAR(100) NOT NULL,
+    unit VARCHAR(50) NOT NULL, -- percentage, average, count
+    value DECIMAL(10,4) NOT NULL,
+    percentage DECIMAL(5,2), -- Si aplica
+    sample_size INTEGER,
+    margin_of_error DECIMAL(5,2),
+    confidence_interval JSONB, -- {lower: x, upper: y}
+    compatible_question_types TEXT[] DEFAULT '{}',
+    compatible_segments TEXT[] DEFAULT '{}',
+    page_number INTEGER, -- Página del PDF donde se encontró
+    extracted_confidence DECIMAL(3,2), -- Confianza de la extracción (0-1)
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(benchmark_id, indicator_id)
+);
+
+-- Tabla para almacenar comparaciones realizadas
+CREATE TABLE IF NOT EXISTS benchmark_comparisons (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    survey_id UUID NOT NULL REFERENCES surveys(id) ON DELETE CASCADE,
+    benchmark_id UUID NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
+    compared_by UUID REFERENCES auth.users(id),
+    compared_at TIMESTAMPTZ DEFAULT NOW(),
+    summary JSONB NOT NULL, -- Resumen de la comparación
+    comparisons JSONB NOT NULL, -- Detalle de cada indicador comparado
+    notes TEXT
+);
+
+-- Tabla para tracking de extracción de PDFs
+CREATE TABLE IF NOT EXISTS benchmark_pdf_extractions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    benchmark_id UUID NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
+    pdf_url VARCHAR(500) NOT NULL,
+    extraction_status VARCHAR(50) DEFAULT 'pending', -- pending, processing, completed, error
+    extracted_data JSONB,
+    error_message TEXT,
+    processing_started_at TIMESTAMPTZ,
+    processing_completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ===========================================
+-- Indexes
+-- ===========================================
+
+CREATE INDEX IF NOT EXISTS idx_benchmarks_status ON benchmarks(status);
+CREATE INDEX IF NOT EXISTS idx_benchmarks_year ON benchmarks(year);
+CREATE INDEX IF NOT EXISTS idx_benchmarks_organization ON benchmarks(organization);
+
+CREATE INDEX IF NOT EXISTS idx_benchmark_indicators_benchmark_id ON benchmark_indicators(benchmark_id);
+CREATE INDEX IF NOT EXISTS idx_benchmark_indicators_category ON benchmark_indicators(category);
+
+CREATE INDEX IF NOT EXISTS idx_benchmark_comparisons_survey ON benchmark_comparisons(survey_id);
+CREATE INDEX IF NOT EXISTS idx_benchmark_comparisons_benchmark ON benchmark_comparisons(benchmark_id);
+
+-- ===========================================
+-- RLS Policies
+-- ===========================================
+
+ALTER TABLE benchmarks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE benchmark_indicators ENABLE ROW LEVEL SECURITY;
+ALTER TABLE benchmark_comparisons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE benchmark_pdf_extractions ENABLE ROW LEVEL SECURITY;
+
+-- Benchmarks: todos pueden ver los activos, solo admins pueden modificar
+CREATE POLICY "Benchmarks visible to all" ON benchmarks
+    FOR SELECT USING (status = 'active');
+
+CREATE POLICY "Benchmarks manageable by admins" ON benchmarks
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM user_profiles 
+            WHERE id = auth.uid() AND role = 'admin'
+        )
+    );
+
+-- Indicators: mismo acceso que benchmarks
+CREATE POLICY "Indicators visible to all" ON benchmark_indicators
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM benchmarks 
+            WHERE id = benchmark_indicators.benchmark_id AND status = 'active'
+        )
+    );
+
+CREATE POLICY "Indicators manageable by admins" ON benchmark_indicators
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM user_profiles 
+            WHERE id = auth.uid() AND role = 'admin'
+        )
+    );
+
+-- Comparisons: usuarios ven las suyas
+CREATE POLICY "Comparisons visible to owner" ON benchmark_comparisons
+    FOR SELECT USING (compared_by = auth.uid());
+
+CREATE POLICY "Comparisons insertable by authenticated" ON benchmark_comparisons
+    FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+-- ===========================================
+-- Functions
+-- ===========================================
+
+-- Función para actualizar updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER update_benchmarks_updated_at 
+    BEFORE UPDATE ON benchmarks 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_benchmark_indicators_updated_at 
+    BEFORE UPDATE ON benchmark_indicators 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Función para buscar benchmarks por texto
+CREATE OR REPLACE FUNCTION search_benchmarks(search_query TEXT)
+RETURNS TABLE (
+    id UUID,
+    name VARCHAR,
+    organization VARCHAR,
+    year INTEGER,
+    relevance DECIMAL
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        b.id,
+        b.name,
+        b.organization,
+        b.year,
+        ts_rank(
+            to_tsvector('spanish', b.name || ' ' || COALESCE(b.description, '')),
+            plainto_tsquery('spanish', search_query)
+        )::DECIMAL as relevance
+    FROM benchmarks b
+    WHERE b.status = 'active'
+    AND (
+        b.name ILIKE '%' || search_query || '%'
+        OR b.organization ILIKE '%' || search_query || '%'
+        OR b.description ILIKE '%' || search_query || '%'
+    )
+    ORDER BY relevance DESC, b.year DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ===========================================
+-- Comments
+-- ===========================================
+
+COMMENT ON TABLE benchmarks IS 'Tabla de benchmarks de referencia para comparar con encuestas sintéticas';
+COMMENT ON TABLE benchmark_indicators IS 'Indicadores individuales dentro de cada benchmark';
+COMMENT ON TABLE benchmark_comparisons IS 'Historial de comparaciones entre encuestas y benchmarks';
+COMMENT ON TABLE benchmark_pdf_extractions IS 'Tracking de extracción de datos desde PDFs';
+
+=== migrations/20250324_create_benchmarks_tables_fixed.sql ===
+-- ===========================================
+-- Benchmarks Tables - Sprint 12C (Fixed)
+-- Tablas para almacenar benchmarks de referencia
+-- IDEMPOTENTE - Puede ejecutarse múltiples veces
+-- ===========================================
+
+-- ===========================================
+-- Tabla principal de benchmarks
+-- ===========================================
+DO $$
+BEGIN
+    -- Crear tabla si no existe
+    CREATE TABLE IF NOT EXISTS benchmarks (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        source_id VARCHAR(100) UNIQUE NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        organization VARCHAR(255) NOT NULL,
+        year INTEGER NOT NULL,
+        description TEXT,
+        url VARCHAR(500),
+        coverage_geographic TEXT[] DEFAULT '{}',
+        coverage_temporal_start DATE,
+        coverage_temporal_end DATE,
+        pdf_url VARCHAR(500),
+        pdf_extracted_data JSONB,
+        status VARCHAR(50) DEFAULT 'active',
+        created_by UUID REFERENCES auth.users(id),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- Agregar columnas si no existen
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'benchmarks' AND column_name = 'status') THEN
+        ALTER TABLE benchmarks ADD COLUMN status VARCHAR(50) DEFAULT 'active';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'benchmarks' AND column_name = 'pdf_url') THEN
+        ALTER TABLE benchmarks ADD COLUMN pdf_url VARCHAR(500);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'benchmarks' AND column_name = 'pdf_extracted_data') THEN
+        ALTER TABLE benchmarks ADD COLUMN pdf_extracted_data JSONB;
+    END IF;
+END $$;
+
+-- ===========================================
+-- Tabla de indicadores de benchmarks
+-- ===========================================
+CREATE TABLE IF NOT EXISTS benchmark_indicators (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    benchmark_id UUID NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
+    indicator_id VARCHAR(100) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    category VARCHAR(100) NOT NULL,
+    unit VARCHAR(50) NOT NULL,
+    value DECIMAL(10,4) NOT NULL,
+    percentage DECIMAL(5,2),
+    sample_size INTEGER,
+    margin_of_error DECIMAL(5,2),
+    confidence_interval JSONB,
+    compatible_question_types TEXT[] DEFAULT '{}',
+    compatible_segments TEXT[] DEFAULT '{}',
+    page_number INTEGER,
+    extracted_confidence DECIMAL(3,2),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(benchmark_id, indicator_id)
+);
+
+-- ===========================================
+-- Tabla para almacenar comparaciones realizadas
+-- ===========================================
+CREATE TABLE IF NOT EXISTS benchmark_comparisons (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    survey_id UUID NOT NULL REFERENCES surveys(id) ON DELETE CASCADE,
+    benchmark_id UUID NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
+    compared_by UUID REFERENCES auth.users(id),
+    compared_at TIMESTAMPTZ DEFAULT NOW(),
+    summary JSONB NOT NULL,
+    comparisons JSONB NOT NULL,
+    notes TEXT
+);
+
+-- ===========================================
+-- Tabla para tracking de extracción de PDFs
+-- ===========================================
+CREATE TABLE IF NOT EXISTS benchmark_pdf_extractions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    benchmark_id UUID NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
+    pdf_url VARCHAR(500) NOT NULL,
+    extraction_status VARCHAR(50) DEFAULT 'pending',
+    extracted_data JSONB,
+    error_message TEXT,
+    processing_started_at TIMESTAMPTZ,
+    processing_completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ===========================================
+-- Indexes
+-- ===========================================
+CREATE INDEX IF NOT EXISTS idx_benchmarks_status ON benchmarks(status);
+CREATE INDEX IF NOT EXISTS idx_benchmarks_year ON benchmarks(year);
+CREATE INDEX IF NOT EXISTS idx_benchmarks_organization ON benchmarks(organization);
+
+CREATE INDEX IF NOT EXISTS idx_benchmark_indicators_benchmark_id ON benchmark_indicators(benchmark_id);
+CREATE INDEX IF NOT EXISTS idx_benchmark_indicators_category ON benchmark_indicators(category);
+
+CREATE INDEX IF NOT EXISTS idx_benchmark_comparisons_survey ON benchmark_comparisons(survey_id);
+CREATE INDEX IF NOT EXISTS idx_benchmark_comparisons_benchmark ON benchmark_comparisons(benchmark_id);
+
+-- ===========================================
+-- RLS Policies
+-- ===========================================
+ALTER TABLE benchmarks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE benchmark_indicators ENABLE ROW LEVEL SECURITY;
+ALTER TABLE benchmark_comparisons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE benchmark_pdf_extractions ENABLE ROW LEVEL SECURITY;
+
+-- Eliminar policies existentes si las hay (para evitar errores)
+DROP POLICY IF EXISTS "Benchmarks visible to all" ON benchmarks;
+DROP POLICY IF EXISTS "Benchmarks manageable by admins" ON benchmarks;
+DROP POLICY IF EXISTS "Indicators visible to all" ON benchmark_indicators;
+DROP POLICY IF EXISTS "Indicators manageable by admins" ON benchmark_indicators;
+DROP POLICY IF EXISTS "Comparisons visible to owner" ON benchmark_comparisons;
+DROP POLICY IF EXISTS "Comparisons insertable by authenticated" ON benchmark_comparisons;
+
+-- Benchmarks: todos pueden ver los activos, solo admins pueden modificar
+CREATE POLICY "Benchmarks visible to all" ON benchmarks
+    FOR SELECT USING (status = 'active');
+
+CREATE POLICY "Benchmarks manageable by admins" ON benchmarks
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM user_profiles 
+            WHERE id = auth.uid() AND role = 'admin'
+        )
+    );
+
+-- Indicators: mismo acceso que benchmarks
+CREATE POLICY "Indicators visible to all" ON benchmark_indicators
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM benchmarks 
+            WHERE id = benchmark_indicators.benchmark_id AND status = 'active'
+        )
+    );
+
+CREATE POLICY "Indicators manageable by admins" ON benchmark_indicators
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM user_profiles 
+            WHERE id = auth.uid() AND role = 'admin'
+        )
+    );
+
+-- Comparisons: usuarios ven las suyas
+CREATE POLICY "Comparisons visible to owner" ON benchmark_comparisons
+    FOR SELECT USING (compared_by = auth.uid());
+
+CREATE POLICY "Comparisons insertable by authenticated" ON benchmark_comparisons
+    FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+-- ===========================================
+-- Functions
+-- ===========================================
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Triggers (eliminar si existen para recrear)
+DROP TRIGGER IF EXISTS update_benchmarks_updated_at ON benchmarks;
+DROP TRIGGER IF EXISTS update_benchmark_indicators_updated_at ON benchmark_indicators;
+
+CREATE TRIGGER update_benchmarks_updated_at 
+    BEFORE UPDATE ON benchmarks 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_benchmark_indicators_updated_at 
+    BEFORE UPDATE ON benchmark_indicators 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Función para buscar benchmarks por texto
+CREATE OR REPLACE FUNCTION search_benchmarks(search_query TEXT)
+RETURNS TABLE (
+    id UUID,
+    name VARCHAR,
+    organization VARCHAR,
+    year INTEGER,
+    relevance DECIMAL
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        b.id,
+        b.name,
+        b.organization,
+        b.year,
+        ts_rank(
+            to_tsvector('spanish', b.name || ' ' || COALESCE(b.description, '')),
+            plainto_tsquery('spanish', search_query)
+        )::DECIMAL as relevance
+    FROM benchmarks b
+    WHERE b.status = 'active'
+    AND (
+        b.name ILIKE '%' || search_query || '%'
+        OR b.organization ILIKE '%' || search_query || '%'
+        OR b.description ILIKE '%' || search_query || '%'
+    )
+    ORDER BY relevance DESC, b.year DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ===========================================
+-- Comments
+-- ===========================================
+COMMENT ON TABLE benchmarks IS 'Tabla de benchmarks de referencia para comparar con encuestas sintéticas';
+COMMENT ON TABLE benchmark_indicators IS 'Indicadores individuales dentro de cada benchmark';
+COMMENT ON TABLE benchmark_comparisons IS 'Historial de comparaciones entre encuestas y benchmarks';
+COMMENT ON TABLE benchmark_pdf_extractions IS 'Tracking de extracción de datos desde PDFs';
+
+-- ===========================================
+-- Verificación
+-- ===========================================
+SELECT 'Tablas creadas exitosamente' as status;
+
+=== migrations/20250324_fix_benchmarks_schema.sql ===
+-- ===========================================
+-- Fix Benchmarks Schema - Sprint 12C
+-- Agrega columnas faltantes a tabla existente
+-- ===========================================
+
+-- Verificar qué columnas existen actualmente
+DO $$
+DECLARE
+    col_name TEXT;
+    col_exists BOOLEAN;
+BEGIN
+    -- Lista de columnas que deben existir
+    FOR col_name IN 
+        SELECT unnest(ARRAY[
+            'source_id', 'name', 'organization', 'year', 'description', 
+            'url', 'coverage_geographic', 'coverage_temporal_start', 
+            'coverage_temporal_end', 'pdf_url', 'pdf_extracted_data', 
+            'status', 'created_by', 'created_at', 'updated_at'
+        ])
+    LOOP
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'benchmarks' AND column_name = col_name
+        ) INTO col_exists;
+        
+        IF NOT col_exists THEN
+            RAISE NOTICE 'Columna % no existe, necesita ser agregada', col_name;
+        END IF;
+    END LOOP;
+END $$;
+
+-- ===========================================
+-- Agregar columnas faltantes a benchmarks
+-- ===========================================
+ALTER TABLE benchmarks 
+    ADD COLUMN IF NOT EXISTS source_id VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS name VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS organization VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS year INTEGER,
+    ADD COLUMN IF NOT EXISTS description TEXT,
+    ADD COLUMN IF NOT EXISTS url VARCHAR(500),
+    ADD COLUMN IF NOT EXISTS coverage_geographic TEXT[] DEFAULT '{}',
+    ADD COLUMN IF NOT EXISTS coverage_temporal_start DATE,
+    ADD COLUMN IF NOT EXISTS coverage_temporal_end DATE,
+    ADD COLUMN IF NOT EXISTS pdf_url VARCHAR(500),
+    ADD COLUMN IF NOT EXISTS pdf_extracted_data JSONB,
+    ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active',
+    ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES auth.users(id),
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- ===========================================
+-- Crear constraints si no existen
+-- ===========================================
+DO $$
+BEGIN
+    -- Verificar si ya existe el constraint UNIQUE
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'benchmarks_source_id_key' 
+        AND conrelid = 'benchmarks'::regclass
+    ) THEN
+        -- Solo agregar UNIQUE si no hay duplicados
+        IF NOT EXISTS (
+            SELECT source_id, COUNT(*) 
+            FROM benchmarks 
+            WHERE source_id IS NOT NULL 
+            GROUP BY source_id 
+            HAVING COUNT(*) > 1
+        ) THEN
+            ALTER TABLE benchmarks ADD CONSTRAINT benchmarks_source_id_key UNIQUE (source_id);
+        END IF;
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'No se pudo agregar constraint UNIQUE: %', SQLERRM;
+END $$;
+
+-- ===========================================
+-- Crear tablas relacionadas si no existen
+-- ===========================================
+
+-- Tabla de indicadores
+CREATE TABLE IF NOT EXISTS benchmark_indicators (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    benchmark_id UUID NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
+    indicator_id VARCHAR(100) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    category VARCHAR(100) NOT NULL,
+    unit VARCHAR(50) NOT NULL,
+    value DECIMAL(10,4) NOT NULL,
+    percentage DECIMAL(5,2),
+    sample_size INTEGER,
+    margin_of_error DECIMAL(5,2),
+    confidence_interval JSONB,
+    compatible_question_types TEXT[] DEFAULT '{}',
+    compatible_segments TEXT[] DEFAULT '{}',
+    page_number INTEGER,
+    extracted_confidence DECIMAL(3,2),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(benchmark_id, indicator_id)
+);
+
+-- Tabla de comparaciones
+CREATE TABLE IF NOT EXISTS benchmark_comparisons (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    survey_id UUID NOT NULL REFERENCES surveys(id) ON DELETE CASCADE,
+    benchmark_id UUID NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
+    compared_by UUID REFERENCES auth.users(id),
+    compared_at TIMESTAMPTZ DEFAULT NOW(),
+    summary JSONB NOT NULL,
+    comparisons JSONB NOT NULL,
+    notes TEXT
+);
+
+-- Tabla de extracciones PDF
+CREATE TABLE IF NOT EXISTS benchmark_pdf_extractions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    benchmark_id UUID NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
+    pdf_url VARCHAR(500) NOT NULL,
+    extraction_status VARCHAR(50) DEFAULT 'pending',
+    extracted_data JSONB,
+    error_message TEXT,
+    processing_started_at TIMESTAMPTZ,
+    processing_completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ===========================================
+-- Indexes
+-- ===========================================
+CREATE INDEX IF NOT EXISTS idx_benchmarks_status ON benchmarks(status);
+CREATE INDEX IF NOT EXISTS idx_benchmarks_year ON benchmarks(year);
+CREATE INDEX IF NOT EXISTS idx_benchmarks_organization ON benchmarks(organization);
+
+CREATE INDEX IF NOT EXISTS idx_benchmark_indicators_benchmark_id ON benchmark_indicators(benchmark_id);
+CREATE INDEX IF NOT EXISTS idx_benchmark_indicators_category ON benchmark_indicators(category);
+
+CREATE INDEX IF NOT EXISTS idx_benchmark_comparisons_survey ON benchmark_comparisons(survey_id);
+CREATE INDEX IF NOT EXISTS idx_benchmark_comparisons_benchmark ON benchmark_comparisons(benchmark_id);
+
+-- ===========================================
+-- RLS Policies
+-- ===========================================
+ALTER TABLE benchmarks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE benchmark_indicators ENABLE ROW LEVEL SECURITY;
+ALTER TABLE benchmark_comparisons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE benchmark_pdf_extractions ENABLE ROW LEVEL SECURITY;
+
+-- Eliminar policies existentes
+DROP POLICY IF EXISTS "Benchmarks visible to all" ON benchmarks;
+DROP POLICY IF EXISTS "Benchmarks manageable by admins" ON benchmarks;
+DROP POLICY IF EXISTS "Indicators visible to all" ON benchmark_indicators;
+DROP POLICY IF EXISTS "Indicators manageable by admins" ON benchmark_indicators;
+DROP POLICY IF EXISTS "Comparisons visible to owner" ON benchmark_comparisons;
+DROP POLICY IF EXISTS "Comparisons insertable by authenticated" ON benchmark_comparisons;
+
+-- Crear policies
+CREATE POLICY "Benchmarks visible to all" ON benchmarks
+    FOR SELECT USING (status = 'active' OR status IS NULL);
+
+CREATE POLICY "Benchmarks manageable by admins" ON benchmarks
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM user_profiles 
+            WHERE id = auth.uid() AND role = 'admin'
+        )
+    );
+
+CREATE POLICY "Indicators visible to all" ON benchmark_indicators
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM benchmarks 
+            WHERE id = benchmark_indicators.benchmark_id 
+            AND (status = 'active' OR status IS NULL)
+        )
+    );
+
+CREATE POLICY "Indicators manageable by admins" ON benchmark_indicators
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM user_profiles 
+            WHERE id = auth.uid() AND role = 'admin'
+        )
+    );
+
+CREATE POLICY "Comparisons visible to owner" ON benchmark_comparisons
+    FOR SELECT USING (compared_by = auth.uid());
+
+CREATE POLICY "Comparisons insertable by authenticated" ON benchmark_comparisons
+    FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+-- ===========================================
+-- Functions y Triggers
+-- ===========================================
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+DROP TRIGGER IF EXISTS update_benchmarks_updated_at ON benchmarks;
+DROP TRIGGER IF EXISTS update_benchmark_indicators_updated_at ON benchmark_indicators;
+
+CREATE TRIGGER update_benchmarks_updated_at 
+    BEFORE UPDATE ON benchmarks 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_benchmark_indicators_updated_at 
+    BEFORE UPDATE ON benchmark_indicators 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ===========================================
+-- Verificación final
+-- ===========================================
+SELECT 
+    'benchmarks' as tabla,
+    COUNT(*) as columnas
+FROM information_schema.columns 
+WHERE table_name = 'benchmarks'
+UNION ALL
+SELECT 
+    'benchmark_indicators' as tabla,
+    COUNT(*) as columnas
+FROM information_schema.columns 
+WHERE table_name = 'benchmark_indicators'
+UNION ALL
+SELECT 
+    'benchmark_comparisons' as tabla,
+    COUNT(*) as columnas
+FROM information_schema.columns 
+WHERE table_name = 'benchmark_comparisons'
+UNION ALL
+SELECT 
+    'benchmark_pdf_extractions' as tabla,
+    COUNT(*) as columnas
+FROM information_schema.columns 
+WHERE table_name = 'benchmark_pdf_extractions';
+
+=== migrations/20250324_fix_benchmarks_simple.sql ===
+-- ===========================================
+-- Fix Benchmarks Schema - Versión Simple
+-- Sin dependencia de user_profiles
+-- ===========================================
+
+-- ===========================================
+-- Agregar columnas faltantes a benchmarks
+-- ===========================================
+ALTER TABLE benchmarks 
+    ADD COLUMN IF NOT EXISTS source_id VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS name VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS organization VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS year INTEGER,
+    ADD COLUMN IF NOT EXISTS description TEXT,
+    ADD COLUMN IF NOT EXISTS url VARCHAR(500),
+    ADD COLUMN IF NOT EXISTS coverage_geographic TEXT[] DEFAULT '{}',
+    ADD COLUMN IF NOT EXISTS coverage_temporal_start DATE,
+    ADD COLUMN IF NOT EXISTS coverage_temporal_end DATE,
+    ADD COLUMN IF NOT EXISTS pdf_url VARCHAR(500),
+    ADD COLUMN IF NOT EXISTS pdf_extracted_data JSONB,
+    ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active',
+    ADD COLUMN IF NOT EXISTS created_by UUID,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- ===========================================
+-- Crear tablas relacionadas si no existen
+-- ===========================================
+
+-- Tabla de indicadores
+CREATE TABLE IF NOT EXISTS benchmark_indicators (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    benchmark_id UUID NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
+    indicator_id VARCHAR(100) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    category VARCHAR(100) NOT NULL,
+    unit VARCHAR(50) NOT NULL,
+    value DECIMAL(10,4) NOT NULL,
+    percentage DECIMAL(5,2),
+    sample_size INTEGER,
+    margin_of_error DECIMAL(5,2),
+    confidence_interval JSONB,
+    compatible_question_types TEXT[] DEFAULT '{}',
+    compatible_segments TEXT[] DEFAULT '{}',
+    page_number INTEGER,
+    extracted_confidence DECIMAL(3,2),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(benchmark_id, indicator_id)
+);
+
+-- Tabla de comparaciones
+CREATE TABLE IF NOT EXISTS benchmark_comparisons (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    survey_id UUID NOT NULL REFERENCES surveys(id) ON DELETE CASCADE,
+    benchmark_id UUID NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
+    compared_by UUID,
+    compared_at TIMESTAMPTZ DEFAULT NOW(),
+    summary JSONB NOT NULL,
+    comparisons JSONB NOT NULL,
+    notes TEXT
+);
+
+-- Tabla de extracciones PDF
+CREATE TABLE IF NOT EXISTS benchmark_pdf_extractions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    benchmark_id UUID NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
+    pdf_url VARCHAR(500) NOT NULL,
+    extraction_status VARCHAR(50) DEFAULT 'pending',
+    extracted_data JSONB,
+    error_message TEXT,
+    processing_started_at TIMESTAMPTZ,
+    processing_completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ===========================================
+-- Indexes
+-- ===========================================
+CREATE INDEX IF NOT EXISTS idx_benchmarks_status ON benchmarks(status);
+CREATE INDEX IF NOT EXISTS idx_benchmarks_year ON benchmarks(year);
+CREATE INDEX IF NOT EXISTS idx_benchmarks_organization ON benchmarks(organization);
+
+CREATE INDEX IF NOT EXISTS idx_benchmark_indicators_benchmark_id ON benchmark_indicators(benchmark_id);
+CREATE INDEX IF NOT EXISTS idx_benchmark_indicators_category ON benchmark_indicators(category);
+
+CREATE INDEX IF NOT EXISTS idx_benchmark_comparisons_survey ON benchmark_comparisons(survey_id);
+CREATE INDEX IF NOT EXISTS idx_benchmark_comparisons_benchmark ON benchmark_comparisons(benchmark_id);
+
+-- ===========================================
+-- RLS Policies (simplificadas)
+-- ===========================================
+ALTER TABLE benchmarks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE benchmark_indicators ENABLE ROW LEVEL SECURITY;
+ALTER TABLE benchmark_comparisons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE benchmark_pdf_extractions ENABLE ROW LEVEL SECURITY;
+
+-- Eliminar policies existentes
+DROP POLICY IF EXISTS "Benchmarks visible to all" ON benchmarks;
+DROP POLICY IF EXISTS "Indicators visible to all" ON benchmark_indicators;
+DROP POLICY IF EXISTS "Comparisons visible to all" ON benchmark_comparisons;
+
+-- Policies simples: todos pueden ver todo
+CREATE POLICY "Benchmarks visible to all" ON benchmarks
+    FOR SELECT USING (true);
+
+CREATE POLICY "Indicators visible to all" ON benchmark_indicators
+    FOR SELECT USING (true);
+
+CREATE POLICY "Comparisons visible to all" ON benchmark_comparisons
+    FOR SELECT USING (true);
+
+-- Solo usuarios autenticados pueden insertar/modificar
+CREATE POLICY "Benchmarks insertable by authenticated" ON benchmarks
+    FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+CREATE POLICY "Benchmarks updatable by authenticated" ON benchmarks
+    FOR UPDATE USING (auth.uid() IS NOT NULL);
+
+CREATE POLICY "Indicators insertable by authenticated" ON benchmark_indicators
+    FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+CREATE POLICY "Comparisons insertable by authenticated" ON benchmark_comparisons
+    FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+-- ===========================================
+-- Functions y Triggers
+-- ===========================================
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+DROP TRIGGER IF EXISTS update_benchmarks_updated_at ON benchmarks;
+DROP TRIGGER IF EXISTS update_benchmark_indicators_updated_at ON benchmark_indicators;
+
+CREATE TRIGGER update_benchmarks_updated_at 
+    BEFORE UPDATE ON benchmarks 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_benchmark_indicators_updated_at 
+    BEFORE UPDATE ON benchmark_indicators 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ===========================================
+-- Verificación final
+-- ===========================================
+SELECT 
+    'benchmarks' as tabla,
+    COUNT(*) as columnas
+FROM information_schema.columns 
+WHERE table_name = 'benchmarks'
+UNION ALL
+SELECT 
+    'benchmark_indicators' as tabla,
+    COUNT(*) as columnas
+FROM information_schema.columns 
+WHERE table_name = 'benchmark_indicators'
+UNION ALL
+SELECT 
+    'benchmark_comparisons' as tabla,
+    COUNT(*) as columnas
+FROM information_schema.columns 
+WHERE table_name = 'benchmark_comparisons'
+UNION ALL
+SELECT 
+    'benchmark_pdf_extractions' as tabla,
+    COUNT(*) as columnas
+FROM information_schema.columns 
+WHERE table_name = 'benchmark_pdf_extractions';
+
+=== migrations/20250324_seed_benchmarks_casen.sql ===
+-- ===========================================
+-- Seed Benchmarks - CASEN 2022
+-- Inserta benchmarks de referencia desde datos CASEN
+-- ===========================================
+
+-- Limpiar datos existentes (opcional - descomentar si se necesita)
+-- DELETE FROM benchmark_indicators WHERE benchmark_id IN (SELECT id FROM benchmarks WHERE source_id = 'casen_2022');
+-- DELETE FROM benchmarks WHERE source_id = 'casen_2022';
+
+-- ===========================================
+-- Insertar Benchmark Principal: CASEN 2022
+-- ===========================================
+INSERT INTO benchmarks (
+    id,
+    source_id,
+    name,
+    organization,
+    year,
+    description,
+    url,
+    coverage_geographic,
+    coverage_temporal_start,
+    coverage_temporal_end,
+    status
+) VALUES (
+    gen_random_uuid(),
+    'casen_2022',
+    'CASEN 2022',
+    'Ministerio de Desarrollo Social y Familia',
+    2022,
+    'Encuesta de Caracterización Socioeconómica Nacional 2022. Principales indicadores de ingresos, educación, salud y vivienda para Chile.',
+    'https://www.midesocial.gob.cl/encuesta-casen-2022/',
+    ARRAY['Chile', 'Región Metropolitana', 'Valparaíso', 'Biobío', 'Araucanía'],
+    '2022-01-01',
+    '2022-12-31',
+    'active'
+)
+ON CONFLICT (source_id) DO UPDATE SET
+    name = EXCLUDED.name,
+    organization = EXCLUDED.organization,
+    year = EXCLUDED.year,
+    description = EXCLUDED.description,
+    url = EXCLUDED.url,
+    coverage_geographic = EXCLUDED.coverage_geographic,
+    status = 'active',
+    updated_at = NOW();
+
+-- Obtener el ID del benchmark
+DO $$
+DECLARE
+    v_benchmark_id UUID;
+BEGIN
+    SELECT id INTO v_benchmark_id FROM benchmarks WHERE source_id = 'casen_2022';
+    
+    -- ===========================================
+    -- Insertar Indicadores: Ingresos
+    -- ===========================================
+    
+    -- Ingreso promedio mensual
+    INSERT INTO benchmark_indicators (
+        benchmark_id,
+        indicator_id,
+        name,
+        description,
+        category,
+        unit,
+        value,
+        sample_size,
+        compatible_question_types,
+        compatible_segments
+    ) VALUES (
+        v_benchmark_id,
+        'ingreso_promedio_mensual',
+        'Ingreso Promedio Mensual',
+        'Ingreso total promedio per cápita mensual de los hogares',
+        'Ingresos',
+        'average',
+        650000,
+        85000,
+        ARRAY['single_choice', 'likert_scale'],
+        ARRAY['nacional', 'regional', 'comunal']
+    )
+    ON CONFLICT (benchmark_id, indicator_id) DO UPDATE SET
+        value = EXCLUDED.value,
+        sample_size = EXCLUDED.sample_size,
+        updated_at = NOW();
+    
+    -- Mediana de ingresos
+    INSERT INTO benchmark_indicators (
+        benchmark_id,
+        indicator_id,
+        name,
+        description,
+        category,
+        unit,
+        value,
+        sample_size,
+        compatible_question_types,
+        compatible_segments
+    ) VALUES (
+        v_benchmark_id,
+        'mediana_ingresos',
+        'Mediana de Ingresos',
+        'Mediana del ingreso total per cápita mensual',
+        'Ingresos',
+        'average',
+        480000,
+        85000,
+        ARRAY['single_choice', 'likert_scale'],
+        ARRAY['nacional', 'regional']
+    )
+    ON CONFLICT (benchmark_id, indicator_id) DO UPDATE SET
+        value = EXCLUDED.value,
+        sample_size = EXCLUDED.sample_size,
+        updated_at = NOW();
+    
+    -- ===========================================
+    -- Insertar Indicadores: Educación
+    -- ===========================================
+    
+    -- Escolaridad promedio
+    INSERT INTO benchmark_indicators (
+        benchmark_id,
+        indicator_id,
+        name,
+        description,
+        category,
+        unit,
+        value,
+        percentage,
+        sample_size,
+        compatible_question_types,
+        compatible_segments
+    ) VALUES (
+        v_benchmark_id,
+        'escolaridad_promedio',
+        'Escolaridad Promedio',
+        'Años de escolaridad promedio de la población de 15 años y más',
+        'Educación',
+        'average',
+        11.2,
+        NULL,
+        82000,
+        ARRAY['single_choice', 'likert_scale'],
+        ARRAY['nacional', 'regional', 'comunal']
+    )
+    ON CONFLICT (benchmark_id, indicator_id) DO UPDATE SET
+        value = EXCLUDED.value,
+        sample_size = EXCLUDED.sample_size,
+        updated_at = NOW();
+    
+    -- Población con educación universitaria
+    INSERT INTO benchmark_indicators (
+        benchmark_id,
+        indicator_id,
+        name,
+        description,
+        category,
+        unit,
+        value,
+        percentage,
+        sample_size,
+        compatible_question_types,
+        compatible_segments
+    ) VALUES (
+        v_benchmark_id,
+        'educacion_universitaria',
+        'Población con Educación Universitaria',
+        'Porcentaje de población con educación universitaria completa o incompleta',
+        'Educación',
+        'percentage',
+        28.5,
+        28.5,
+        82000,
+        ARRAY['single_choice'],
+        ARRAY['nacional', 'regional']
+    )
+    ON CONFLICT (benchmark_id, indicator_id) DO UPDATE SET
+        value = EXCLUDED.value,
+        percentage = EXCLUDED.percentage,
+        sample_size = EXCLUDED.sample_size,
+        updated_at = NOW();
+    
+    -- ===========================================
+    -- Insertar Indicadores: Empleo
+    -- ===========================================
+    
+    -- Tasa de ocupación
+    INSERT INTO benchmark_indicators (
+        benchmark_id,
+        indicator_id,
+        name,
+        description,
+        category,
+        unit,
+        value,
+        percentage,
+        sample_size,
+        compatible_question_types,
+        compatible_segments
+    ) VALUES (
+        v_benchmark_id,
+        'tasa_ocupacion',
+        'Tasa de Ocupación',
+        'Porcentaje de la población en edad de trabajar que está ocupada',
+        'Empleo',
+        'percentage',
+        56.8,
+        56.8,
+        78000,
+        ARRAY['single_choice'],
+        ARRAY['nacional', 'regional']
+    )
+    ON CONFLICT (benchmark_id, indicator_id) DO UPDATE SET
+        value = EXCLUDED.value,
+        percentage = EXCLUDED.percentage,
+        sample_size = EXCLUDED.sample_size,
+        updated_at = NOW();
+    
+    -- Tasa de desempleo
+    INSERT INTO benchmark_indicators (
+        benchmark_id,
+        indicator_id,
+        name,
+        description,
+        category,
+        unit,
+        value,
+        percentage,
+        sample_size,
+        compatible_question_types,
+        compatible_segments
+    ) VALUES (
+        v_benchmark_id,
+        'tasa_desempleo',
+        'Tasa de Desempleo',
+        'Porcentaje de la fuerza de trabajo que está desempleada',
+        'Empleo',
+        'percentage',
+        7.9,
+        7.9,
+        78000,
+        ARRAY['single_choice'],
+        ARRAY['nacional', 'regional']
+    )
+    ON CONFLICT (benchmark_id, indicator_id) DO UPDATE SET
+        value = EXCLUDED.value,
+        percentage = EXCLUDED.percentage,
+        sample_size = EXCLUDED.sample_size,
+        updated_at = NOW();
+    
+    -- ===========================================
+    -- Insertar Indicadores: Salud
+    -- ===========================================
+    
+    -- Afiliación a sistema de salud (FONASA)
+    INSERT INTO benchmark_indicators (
+        benchmark_id,
+        indicator_id,
+        name,
+        description,
+        category,
+        unit,
+        value,
+        percentage,
+        sample_size,
+        compatible_question_types,
+        compatible_segments
+    ) VALUES (
+        v_benchmark_id,
+        'afiliacion_fonasa',
+        'Afiliación FONASA',
+        'Porcentaje de población afiliada a FONASA',
+        'Salud',
+        'percentage',
+        78.2,
+        78.2,
+        85000,
+        ARRAY['single_choice'],
+        ARRAY['nacional', 'regional']
+    )
+    ON CONFLICT (benchmark_id, indicator_id) DO UPDATE SET
+        value = EXCLUDED.value,
+        percentage = EXCLUDED.percentage,
+        sample_size = EXCLUDED.sample_size,
+        updated_at = NOW();
+    
+    -- Afiliación a sistema de salud (ISAPRE)
+    INSERT INTO benchmark_indicators (
+        benchmark_id,
+        indicator_id,
+        name,
+        description,
+        category,
+        unit,
+        value,
+        percentage,
+        sample_size,
+        compatible_question_types,
+        compatible_segments
+    ) VALUES (
+        v_benchmark_id,
+        'afiliacion_isapre',
+        'Afiliación ISAPRE',
+        'Porcentaje de población afiliada a ISAPRE',
+        'Salud',
+        'percentage',
+        12.8,
+        12.8,
+        85000,
+        ARRAY['single_choice'],
+        ARRAY['nacional', 'regional']
+    )
+    ON CONFLICT (benchmark_id, indicator_id) DO UPDATE SET
+        value = EXCLUDED.value,
+        percentage = EXCLUDED.percentage,
+        sample_size = EXCLUDED.sample_size,
+        updated_at = NOW();
+    
+    -- ===========================================
+    -- Insertar Indicadores: Vivienda
+    -- ===========================================
+    
+    -- Hacinamiento
+    INSERT INTO benchmark_indicators (
+        benchmark_id,
+        indicator_id,
+        name,
+        description,
+        category,
+        unit,
+        value,
+        percentage,
+        sample_size,
+        compatible_question_types,
+        compatible_segments
+    ) VALUES (
+        v_benchmark_id,
+        'hacinamiento',
+        'Hacinamiento',
+        'Porcentaje de hogares con hacinamiento (más de 2 personas por dormitorio)',
+        'Vivienda',
+        'percentage',
+        18.5,
+        18.5,
+        85000,
+        ARRAY['single_choice'],
+        ARRAY['nacional', 'regional', 'comunal']
+    )
+    ON CONFLICT (benchmark_id, indicator_id) DO UPDATE SET
+        value = EXCLUDED.value,
+        percentage = EXCLUDED.percentage,
+        sample_size = EXCLUDED.sample_size,
+        updated_at = NOW();
+    
+    -- Materialidad de la vivienda (deficit)
+    INSERT INTO benchmark_indicators (
+        benchmark_id,
+        indicator_id,
+        name,
+        description,
+        category,
+        unit,
+        value,
+        percentage,
+        sample_size,
+        compatible_question_types,
+        compatible_segments
+    ) VALUES (
+        v_benchmark_id,
+        'deficit_material',
+        'Déficit Material de Vivienda',
+        'Porcentaje de hogares con déficit material de vivienda',
+        'Vivienda',
+        'percentage',
+        12.3,
+        12.3,
+        85000,
+        ARRAY['single_choice'],
+        ARRAY['nacional', 'regional']
+    )
+    ON CONFLICT (benchmark_id, indicator_id) DO UPDATE SET
+        value = EXCLUDED.value,
+        percentage = EXCLUDED.percentage,
+        sample_size = EXCLUDED.sample_size,
+        updated_at = NOW();
+    
+    -- ===========================================
+    -- Insertar Indicadores: Tecnología
+    -- ===========================================
+    
+    -- Acceso a internet
+    INSERT INTO benchmark_indicators (
+        benchmark_id,
+        indicator_id,
+        name,
+        description,
+        category,
+        unit,
+        value,
+        percentage,
+        sample_size,
+        compatible_question_types,
+        compatible_segments
+    ) VALUES (
+        v_benchmark_id,
+        'acceso_internet',
+        'Acceso a Internet',
+        'Porcentaje de hogares con acceso a internet',
+        'Tecnología',
+        'percentage',
+        92.4,
+        92.4,
+        85000,
+        ARRAY['single_choice'],
+        ARRAY['nacional', 'regional', 'comunal']
+    )
+    ON CONFLICT (benchmark_id, indicator_id) DO UPDATE SET
+        value = EXCLUDED.value,
+        percentage = EXCLUDED.percentage,
+        sample_size = EXCLUDED.sample_size,
+        updated_at = NOW();
+    
+    -- Acceso a smartphone
+    INSERT INTO benchmark_indicators (
+        benchmark_id,
+        indicator_id,
+        name,
+        description,
+        category,
+        unit,
+        value,
+        percentage,
+        sample_size,
+        compatible_question_types,
+        compatible_segments
+    ) VALUES (
+        v_benchmark_id,
+        'acceso_smartphone',
+        'Acceso a Smartphone',
+        'Porcentaje de personas con acceso a smartphone',
+        'Tecnología',
+        'percentage',
+        88.7,
+        88.7,
+        85000,
+        ARRAY['single_choice'],
+        ARRAY['nacional', 'regional']
+    )
+    ON CONFLICT (benchmark_id, indicator_id) DO UPDATE SET
+        value = EXCLUDED.value,
+        percentage = EXCLUDED.percentage,
+        sample_size = EXCLUDED.sample_size,
+        updated_at = NOW();
+    
+END $$;
+
+-- ===========================================
+-- Verificación
+-- ===========================================
+SELECT 
+    b.name as benchmark_name,
+    b.organization,
+    b.year,
+    b.status,
+    COUNT(i.id) as total_indicators
+FROM benchmarks b
+LEFT JOIN benchmark_indicators i ON i.benchmark_id = b.id
+WHERE b.source_id = 'casen_2022'
+GROUP BY b.id, b.name, b.organization, b.year, b.status;
+
+=== migrations/20250325_add_centroid_to_territories.sql ===
+-- =============================================================================
+-- Migration: Add centroid column to territories table
+-- Fecha: 2025-03-25
+-- =============================================================================
+
+-- Add centroid column (JSONB to store [lat, lng])
+ALTER TABLE territories ADD COLUMN IF NOT EXISTS centroid JSONB;
+
+-- Add comment
+COMMENT ON COLUMN territories.centroid IS 'Centroide del territorio como [lat, lng]';
+
+-- Verify
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_name = 'territories'
+ORDER BY ordinal_position;
+
+=== migrations/20250325_add_published_at_to_survey_definitions.sql ===
+-- =============================================================================
+-- Migration: Agregar columna published_at a survey_definitions
+-- Fecha: 2025-03-25
+-- =============================================================================
+
+-- Agregar columna published_at si no existe
+ALTER TABLE survey_definitions
+ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
+
+-- Comentario para documentación
+COMMENT ON COLUMN survey_definitions.published_at IS 'Fecha de publicación de la encuesta (null si está en draft)';
+
+-- Verificar que la columna se agregó correctamente
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_name = 'survey_definitions'
+AND column_name = 'published_at';
+
+=== migrations/20250325_add_sample_size_to_survey_definitions.sql ===
+-- =============================================================================
+-- Migración: Agregar columna sample_size a survey_definitions
+-- Fecha: 2025-03-25
+-- =============================================================================
+
+-- Agregar columna sample_size si no existe
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'survey_definitions' 
+        AND column_name = 'sample_size'
+    ) THEN
+        ALTER TABLE survey_definitions 
+        ADD COLUMN sample_size INTEGER;
+        
+        RAISE NOTICE 'Columna sample_size agregada a survey_definitions';
+    ELSE
+        RAISE NOTICE 'La columna sample_size ya existe en survey_definitions';
+    END IF;
+END $$;
+
+-- Verificar que la columna fue creada
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_name = 'survey_definitions'
+AND column_name = 'sample_size';
+
+=== migrations/20250325_add_updated_by_to_survey_definitions.sql ===
+-- =============================================================================
+-- Migration: Add updated_by column to survey_definitions
+-- Fecha: 2025-03-25
+-- =============================================================================
+
+-- Agregar columna updated_by si no existe
+ALTER TABLE survey_definitions 
+ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES users(id);
+
+-- Agregar comentario descriptivo
+COMMENT ON COLUMN survey_definitions.updated_by IS 'Usuario que realizó la última actualización';
+
+-- Actualizar registros existentes para que tengan updated_by = created_by
+UPDATE survey_definitions 
+SET updated_by = created_by 
+WHERE updated_by IS NULL AND created_by IS NOT NULL;
+
+-- Verificar que la columna se agregó correctamente
+SELECT 
+    column_name, 
+    data_type, 
+    is_nullable,
+    column_default
+FROM information_schema.columns
+WHERE table_name = 'survey_definitions'
+ORDER BY ordinal_position;
+
+=== migrations/20250325_assign_agent_coordinates.sql ===
+-- =============================================================================
+-- MIGRACIÓN: ASIGNAR COORDENADAS GPS A AGENTES SINTÉTICOS
+-- Asigna coordenadas basadas en el centroide de la comuna + ruido aleatorio
+-- =============================================================================
+
+-- Primero, verificar que tenemos el diccionario de coordenadas
+-- Si no existe, crear tabla temporal con coordenadas de comunas
+CREATE TABLE IF NOT EXISTS temp_comuna_coordinates (
+    comuna_code VARCHAR(10) PRIMARY KEY,
+    lat NUMERIC(10, 8) NOT NULL,
+    lng NUMERIC(11, 8) NOT NULL,
+    region_code VARCHAR(5)
+);
+
+-- Insertar coordenadas de comunas principales (ampliar según necesidad)
+INSERT INTO temp_comuna_coordinates (comuna_code, lat, lng, region_code) VALUES
+    -- Región Metropolitana (13)
+    ('13101', -33.4372, -70.6506, '13'), -- Santiago
+    ('13102', -33.5000, -70.7500, '13'), -- Cerrillos
+    ('13103', -33.5667, -70.7167, '13'), -- Cerro Navia
+    ('13104', -33.5333, -70.6833, '13'), -- Conchalí
+    ('13105', -33.4333, -70.5500, '13'), -- El Bosque
+    ('13106', -33.4833, -70.6667, '13'), -- Estación Central
+    ('13107', -33.5333, -70.5833, '13'), -- Huechuraba
+    ('13108', -33.4667, -70.6333, '13'), -- Independencia
+    ('13109', -33.5167, -70.6667, '13'), -- La Cisterna
+    ('13110', -33.4500, -70.5667, '13'), -- La Florida
+    ('13111', -33.5333, -70.7333, '13'), -- La Pintana
+    ('13112', -33.4500, -70.6167, '13'), -- La Reina
+    ('13113', -33.4333, -70.6167, '13'), -- Las Condes
+    ('13114', -33.4167, -70.5333, '13'), -- Lo Espejo
+    ('13115', -33.4333, -70.7167, '13'), -- Lo Prado
+    ('13116', -33.4667, -70.6000, '13'), -- Macul
+    ('13117', -33.5000, -70.6333, '13'), -- Maipú
+    ('13118', -33.4833, -70.5333, '13'), -- Ñuñoa
+    ('13119', -33.4167, -70.7333, '13'), -- Pedro Aguirre Cerda
+    ('13120', -33.4833, -70.6167, '13'), -- Peñalolén
+
+=== TYPESCRIPT TYPES ===
+=== src/types/database.ts ===
+/**
+ * Database Types - Sprint 12C
+ * 
+ * Tipos para entidades de base de datos en Supabase.
+ * Estos tipos representan las tablas que se crearán en PostgreSQL.
+ * 
+ * NOTA: Estos son tipos TypeScript. Las tablas reales se crean
+ * mediante migrations SQL en Supabase.
+ */
+
+// ===========================================
+// Enums (como tipos TypeScript)
+// ===========================================
+
+export type DbSex = 'male' | 'female';
+export type DbAgeGroup = 'child' | 'youth' | 'adult' | 'middle_age' | 'senior';
+export type DbHouseholdType = 'single' | 'couple' | 'family' | 'extended';
+export type DbUrbanicity = 'urban' | 'rural';
+export type DbPovertyStatus = 'extreme_poverty' | 'poverty' | 'vulnerable' | 'middle_class' | 'upper_middle' | 'upper_class';
+export type DbEducationLevel = 'none' | 'primary' | 'secondary' | 'technical' | 'university' | 'postgraduate';
+export type DbOccupationStatus = 'employed' | 'unemployed' | 'self_employed' | 'retired' | 'student' | 'homemaker';
+export type DbSocioeconomicLevel = 'low' | 'medium' | 'high';
+
+// CADEM-compatible types
+export type DbCademSocioeconomicLevel = 'ABC1' | 'C2' | 'C3' | 'D' | 'E';
+export type DbCademAgeGroup = '18-29' | '30-49' | '50-69' | '70+';
+export type DbCademRegionGroup = 'Metropolitana' | 'Norte' | 'Centro' | 'Sur';
+
+export type DbConnectivityLevel = 'none' | 'low' | 'medium' | 'high' | 'very_high';
+export type DbDigitalExposureLevel = 'none' | 'low' | 'medium' | 'high' | 'very_high';
+export type DbSurveyChannel = 'phone' | 'online' | 'in_person' | 'mixed';
+export type DbAgentType = 'resident' | 'retiree' | 'student' | 'entrepreneur' | 'worker';
+
+export type DbQuestionType = 'single_choice' | 'likert_scale' | 'multiple_choice' | 'text';
+export type DbSurveyStatus = 'draft' | 'active' | 'paused' | 'completed' | 'archived';
+export type DbRunStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export type DbBenchmarkSource = 'casen' | 'subtel' | 'cep' | 'ine' | 'other';
+export type DbBenchmarkCategory = 'demographics' | 'connectivity' | 'socioeconomic' | 'digital' | 'other';
+export type DbBenchmarkStatus = 'active' | 'processing' | 'error' | 'archived';
+export type DbExtractionStatus = 'pending' | 'processing' | 'completed' | 'error';
+
+// ===========================================
+// Users Table
+// ===========================================
+
+export type DbUserRole = 'user' | 'admin' | 'moderator';
+
+/**
+ * Table: users
+ * Descripción: Usuarios de la aplicación (autenticación personalizada)
+ * NOTA: No usa Supabase Auth, es una tabla propia
+ */
+export interface DbUser {
+  id: string;                    // UUID primary key
+  email: string;                 // Email único
+  password_hash: string;         // Hash de contraseña (bcrypt)
+  name: string | null;           // Nombre del usuario
+  avatar: string | null;         // URL del avatar
+  role: DbUserRole;              // Rol del usuario
+  is_active: boolean;            // Usuario activo/inactivo
+  email_verified: boolean;       // Email verificado
+  last_login_at: string | null;  // Último login
+  created_at: string;            // ISO timestamp
+  updated_at: string;            // ISO timestamp
+}
+
+// ===========================================
+// Core Tables
+// ===========================================
+
+/**
+ * Table: territories
+ * Descripción: Territorios administrativos de Chile
+ * Pipeline: Generado por scripts/integrate/build_territories_master.ts
+ * Supabase: Sí - tabla maestra de referencia
+ * 
+ * ACTUALIZADO: 2026-03-16 - Modelo Alineado v2.0
+ * - Soporta códigos cortos (RM, VA, etc.)
+ * - Estructura flexible para regiones y comunas
+ */
+export interface DbTerritory {
+  id: string;                    // UUID primary key
+  
+  // Identificación jerárquica
+  level: 'region' | 'comuna' | 'provincia';  // Nivel administrativo
+  code: string;                  // Código primario: RM, VA, 13101, etc.
+  region_code: string | null;    // Código de región padre (para comunas)
+  
+  // Nombres
+  name: string;                  // Nombre del territorio
+  region_name: string | null;    // Nombre de la región (para comunas)
+  
+  // Geometría (GeoJSON)
+  centroid: [number, number] | null;  // [lng, lat] centroide
+  geometry: GeoJSON.Geometry | null;
+  bbox: [number, number, number, number] | null; // [minLng, minLat, maxLng, maxLat]
+  
+  // Estadísticas (del pipeline)
+  population_total: number | null;
+  population_urban: number | null;
+  population_rural: number | null;
+  
+  // Metadata
+  source: string | null;         // 'ine', 'casen', etc.
+  source_year: number | null;    // 2017, 2022, etc.
+  created_at: string;            // ISO timestamp
+  updated_at: string;            // ISO timestamp
+}
+
+/**
+ * Table: synthetic_agents
+ * Descripción: Agentes sintéticos generados por el pipeline
+ * Pipeline: Generado por scripts/synthesize/generate_synthetic_agents_v1.ts
+ * Supabase: Sí - tabla principal de agentes
+ * 
+ * NOTA: Esta tabla puede ser grande (millones de registros).
+ * Considerar particionamiento por región o batch.
+ */
+export interface DbSyntheticAgent {
+  id: string;                    // UUID primary key
+  agent_id: string;              // ID único del agente (ej: 'AGENT-CL13-000001')
+  
+  // Batch/Version
+  batch_id: string;              // Referencia a synthetic_agent_batches
+  version: string;               // 'v1.0.0'
+  
+  // Territorio
+  territory_id: string;          // FK -> territories.id
+  country_code: string;          // 'CL'
+  region_code: string;           // 'CL-13'
+  comuna_code: string;           // '13101'
+  urbanicity: DbUrbanicity;
+  
+  // Demografía
+  sex: DbSex;
+  age: number;
+  age_group: DbAgeGroup;
+  
+  // Hogar
+  household_size: number;
+  household_type: DbHouseholdType;
+  
+  // Socioeconómico
+  income_decile: number | null;  // 1-10
+  poverty_status: DbPovertyStatus | null;
+  education_level: DbEducationLevel | null;
+  occupation_status: DbOccupationStatus | null;
+  occupation_group: string | null;
+  socioeconomic_level: DbSocioeconomicLevel | null;
+  
+  // CADEM Demographics
+  cadem_socioeconomic_level: DbCademSocioeconomicLevel | null;
+  cadem_age_group: DbCademAgeGroup | null;
+  cadem_region_group: DbCademRegionGroup | null;
+  
+  // Digital
+  connectivity_level: DbConnectivityLevel | null;
+  digital_exposure_level: DbDigitalExposureLevel | null;
+  preferred_survey_channel: DbSurveyChannel | null;
+  
+  // Funcional
+  agent_type: DbAgentType;
+  
+  // Traceabilidad
+  backbone_key: string;          // Referencia a población backbone
+  subtel_profile_key: string | null;
+  casen_profile_key: string | null;
+  generation_notes: string;
+  
+  // Geolocalización
+  location_lat: number | null;   // Latitud GPS
+  location_lng: number | null;   // Longitud GPS
+  
+  // Metadata
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Table: synthetic_agent_batches
+ * Descripción: Metadata de batches de generación de agentes
+ * Pipeline: Un registro por ejecución del generador
+ * Supabase: Sí
+ */
+export interface DbSyntheticAgentBatch {
+  id: string;                    // UUID primary key
+  batch_id: string;              // ID único (ej: 'BATCH-20240315-001')
+  
+  // Configuración
+  version: string;               // 'v1.0.0'
+  schema_version: string;        // 'v1'
+  
+  // Cobertura
+  country_code: string;
+  region_codes: string[];        // ['CL-13', 'CL-05']
+  comuna_codes: string[] | null; // null = todas
+  
+  // Estadísticas
+  total_agents_requested: number;
+  total_agents_generated: number;
+  fields_with_null: string[];
+  
+  // Fuentes de datos
+  data_sources: {
+    population_backbone: string;
+    territories_master: string;
+    subtel_profile: string | null;
+    casen_normalized: string | null;
+  };
+  
+  // Estado
+  status: 'generating' | 'completed' | 'failed' | 'validated';
+  validation_report: Record<string, unknown> | null;
+  
+  // Timestamps
+  started_at: string;
+  completed_at: string | null;
+  created_at: string;
+}
+
+// ===========================================
+// Survey Tables
+// ===========================================
+
+/**
+ * Table: survey_definitions
+ * Descripción: Definiciones de encuestas
+ * Pipeline: Creado por usuarios/UI
+ * Supabase: Sí
+ * 
+ * CADEM v1.1 - Añadido engine_mode y persist_state
+ */
+export interface DbSurveyDefinition {
+  id: string;                    // UUID primary key
+  
+  // Identificación
+  name: string;
+  description: string | null;
+  slug: string;                  // URL-friendly (ej: 'encuesta-movilidad-2024')
+  
+  // Segmento objetivo
+  segment: {
+    region_codes?: string[];
+    comuna_codes?: string[];
+    sex?: DbSex[];
+    age_groups?: DbAgeGroup[];
+    income_deciles?: number[];
+    education_levels?: DbEducationLevel[];
+    connectivity_levels?: DbConnectivityLevel[];
+    agent_types?: DbAgentType[];
+  };
+  
+  // Preguntas (JSONB)
+  questions: DbSurveyQuestion[];
+  
+  // Configuración
+  sample_size: number;
+  status: DbSurveyStatus;
+  
+  // CADEM v1.1 - Engine configuration
+  engine_mode: 'legacy' | 'cadem' | null;  // Motor de ejecución
+  persist_state: boolean | null;            // Persistir estado de agentes
+  
+  // Autoría
+  created_by: string | null;     // user_id si hay auth
+  updated_by: string | null;
+  
+  // Timestamps
+  created_at: string;
+  updated_at: string;
+  published_at: string | null;
+}
+
+/**
+ * Question sub-type para surveys
+ */
+export interface DbSurveyQuestion {
+  id: string;
+  type: DbQuestionType;
+  text: string;
+  required: boolean;
+  order: number;
+  
+  // Opciones para choice questions
+  options?: {
+    id: string;
+    label: string;
+    value: string | number;
+  }[];
+  
+  // Configuración Likert
+  likertConfig?: {
+    min: number;
+    max: number;
+    minLabel: string;
+    maxLabel: string;
+  };
+  
+  // Configuración texto
+  textConfig?: {
+    maxLength?: number;
+    placeholder?: string;
+  };
+}
+
+/**
+ * Table: survey_runs
+ * Descripción: Ejecuciones de encuestas
+ * Pipeline: Creado al ejecutar una encuesta
+ * Supabase: Sí
+ */
+export interface DbSurveyRun {
+  id: string;                    // UUID primary key
+  survey_id: string;             // FK -> survey_definitions.id
+  
+  // Identificación
+  run_number: number;            // Secuencial por survey
+  name: string | null;           // Ej: "Ejecución #3 - Marzo 2024"
+  
+  // Estado
+  status: DbRunStatus;
+  
+  // Configuración aplicada
+  segment_applied: Record<string, unknown>; // Segmento final usado
+  sample_size_requested: number;
+  sample_size_actual: number;
+  agents_matched: number;
+  
+  // Progreso
+  progress_percent: number;
+  current_agent_index: number;
+  
+  // Resultados resumidos
+  results_summary: {
+    total_responses: number;
+    completion_rate: number;
+    average_confidence: number;
+  } | null;
+  
+  // Error si falló
+  error_message: string | null;
+  error_details: Record<string, unknown> | null;
+  
+  // Timestamps
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Table: survey_responses
+ * Descripción: Respuestas individuales de agentes
+ * Pipeline: Generado durante survey run
+ * Supabase: Sí - puede ser grande
+ * 
+ * NOTA: Considerar particionamiento por survey_id
+ * NOTA: Sprint 11C - NO persistido aún, solo local
+ */
+export interface DbSurveyResponse {
+  id: string;                    // UUID primary key
+  
+  // Referencias
+  survey_id: string;             // FK -> survey_definitions.id
+  run_id: string;                // FK -> survey_runs.id
+  agent_id: string;              // FK -> synthetic_agents.id
+  
+  // Respuesta
+  question_id: string;
+  question_type: DbQuestionType;
+  value: string | number | string[] | null;
+  
+  // Metadata de generación
+  confidence: number;            // 0-1
+  reasoning: string;             // Explicación de por qué esta respuesta
+  heuristics_applied: string[];  // ['income_based', 'age_correlated']
+  
+  // Traceabilidad
+  agent_snapshot: Record<string, unknown>; // Datos del agente en momento de respuesta
+  
+  // Timestamp
+  created_at: string;
+}
+
+/**
+ * Table: survey_results
+ * Descripción: Resultados agregados de encuestas
+ * Pipeline: Generado al completar un survey run
+ * Supabase: Sí - Sprint 11C
+ * 
+ * Almacena los resultados calculados por pregunta, no las respuestas individuales.
+ * Esto permite consultar resultados sin cargar miles de respuestas.
+ */
+export interface DbSurveyResult {
+  id: string;                    // UUID primary key
+  
+  // Referencias
+  survey_id: string;             // FK -> survey_definitions.id
+  run_id: string;                // FK -> survey_runs.id
+  
+  // Resumen
+  summary: {
+    totalQuestions: number;
+    totalResponses: number;
+    uniqueAgents: number;
+  };
+  
+  // Resultados por pregunta (JSONB)
+  // Cada resultado tiene: questionId, questionType, questionText, totalResponses, distribution, etc.
+  results: DbQuestionResult[];
+  
+  // Metadata
+  generated_at: string;          // Cuándo se generaron los resultados
+  
+  // Timestamps
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Resultado de una pregunta individual (para survey_results)
+ */
+export type DbQuestionResult =
+  | DbSingleChoiceResult
+  | DbLikertResult
+  | DbMultipleChoiceResult
+  | DbTextResult;
+
+export interface DbSingleChoiceResult {
+  questionId: string;
+  questionType: 'single_choice';
+  questionText: string;
+  totalResponses: number;
+  distribution: Record<string, { count: number; percentage: number; label: string }>;
+}
+
+export interface DbLikertResult {
+  questionId: string;
+  questionType: 'likert_scale';
+  questionText: string;
+  totalResponses: number;
+  average: number;
+  median: number;
+  distribution: Record<number, { count: number; percentage: number }>;
+  minLabel: string;
+  maxLabel: string;
+}
+
+export interface DbMultipleChoiceResult {
+  questionId: string;
+  questionType: 'multiple_choice';
+  questionText: string;
+  totalResponses: number;
+  distribution: Record<string, { count: number; percentage: number; label: string }>;
+}
+
+export interface DbTextResult {
+  questionId: string;
+  questionType: 'text';
+  questionText: string;
+  totalResponses: number;
+  sampleResponses: string[];
+}
+
+// ===========================================
+// Benchmark Tables (Sprint 12C - Actualizado)
+// ===========================================
+
+/**
+ * Table: benchmarks
+ * Descripción: Benchmarks de referencia cargados desde PDFs
+ * Sprint 12C: Ahora soporta carga dinámica desde UI
+ */
+export interface DbBenchmark {
+  id: string;                    // UUID primary key
+  source_id: string;             // ID único (ej: 'casen_2022')
+  name: string;                  // 'CASEN 2022'
+  organization: string;          // 'Ministerio de Desarrollo Social'
+  year: number;                  // 2022
+  description: string | null;
+  url: string | null;
+  
+  // Cobertura
+  coverage_geographic: string[]; // ['CL-13', 'national']
+  coverage_temporal_start: string | null;
+  coverage_temporal_end: string | null;
+  
+  // PDF y extracción
+  pdf_url: string | null;
+  pdf_extracted_data: Record<string, unknown> | null;
+  status: DbBenchmarkStatus;
+  
+  // Autoría
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Table: benchmark_indicators
+ * Descripción: Indicadores individuales de cada benchmark
+ */
+export interface DbBenchmarkIndicator {
+  id: string;                    // UUID primary key
+  benchmark_id: string;          // FK -> benchmarks.id
+  indicator_id: string;          // ID único dentro del benchmark
+  name: string;
+  description: string | null;
+  category: string;              // 'Conectividad Digital', 'Economía', etc.
+  unit: 'percentage' | 'average' | 'count';
+  
+  // Valor
+  value: number;
+  percentage: number | null;
+  sample_size: number | null;
+  margin_of_error: number | null;
+  confidence_interval: { lower: number; upper: number } | null;
+  
+  // Compatibilidad
+  compatible_question_types: DbQuestionType[];
+  compatible_segments: string[];
+  
+  // Metadata de extracción
+  page_number: number | null;
+  extracted_confidence: number | null;
+  
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Table: benchmark_comparisons
+ * Descripción: Comparaciones entre encuestas sintéticas y benchmarks
+ */
+export interface DbBenchmarkComparison {
+  id: string;                    // UUID primary key
+  survey_id: string;             // FK -> surveys.id
+  benchmark_id: string;          // FK -> benchmarks.id
+  compared_by: string | null;    // FK -> users.id
+  compared_at: string;
+  
+  // Resultados
+  summary: {
+    totalIndicators: number;
+    matchedIndicators: number;
+    aboveBenchmark: number;
+    belowBenchmark: number;
+    matchBenchmark: number;
+    averageGap: number;
+  };
+  comparisons: DbIndicatorComparison[];
+  notes: string | null;
+  
+  created_at: string;
+}
+
+export interface DbIndicatorComparison {
+  benchmarkId: string;
+  indicatorId: string;
+  indicatorName: string;
+  category: string;
+  unit: string;
+  
+  // Valores
+  syntheticValue: number;
+  benchmarkValue: number;
+  
+  // Gap
+  gap: {
+    absolute: number;
+    relative: number;
+    direction: 'above' | 'below' | 'match';
+    significance: 'high' | 'medium' | 'low';
+  };
+  
+  // Metadata
+  syntheticSampleSize: number;
+  benchmarkSampleSize: number | null;
+  benchmarkConfidenceInterval: { lower: number; upper: number } | null;
+}
+
+/**
+ * Table: benchmark_pdf_extractions
+ * Descripción: Tracking de extracción de datos desde PDFs
+ */
+export interface DbBenchmarkPdfExtraction {
+  id: string;                    // UUID primary key
+  benchmark_id: string;          // FK -> benchmarks.id
+  pdf_url: string;
+  extraction_status: DbExtractionStatus;
+  extracted_data: Record<string, unknown> | null;
+  error_message: string | null;
+  processing_started_at: string | null;
+  processing_completed_at: string | null;
+  created_at: string;
+}
+
+// ===========================================
+// Utility Types
+// ===========================================
+
+/**
+ * Type para queries con paginación
+ */
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+/**
+ * Type para filtros comunes
+ */
+export interface TerritoryFilters {
+  regionCode?: string;
+  comunaCode?: string;
+  urbanicity?: DbUrbanicity;
+}
+
+export interface AgentFilters {
+  territoryId?: string;
+  regionCode?: string;
+  comunaCode?: string;
+  sex?: DbSex;
+  ageGroup?: DbAgeGroup;
+  ageMin?: number;
+  ageMax?: number;
+  incomeDecile?: number;
+  educationLevel?: DbEducationLevel;
+  connectivityLevel?: DbConnectivityLevel;
+  agentType?: DbAgentType;
+  batchId?: string;
+}
+
+export interface SurveyFilters {
+  status?: DbSurveyStatus;
+  createdBy?: string;
+  regionCode?: string;
+}
+
+// ===========================================
+// Database Schema (para referencia)
+// ===========================================
+
+/**
+ * Schema completo de la base de datos.
+ * Usar como referencia para crear las tablas en Supabase.
+ * 
+ * ORDEN DE CREACIÓN:
+ * 1. territories
+ * 2. synthetic_agent_batches
+ * 3. synthetic_agents
+ * 4. survey_definitions
+ * 5. survey_runs
+ * 6. survey_responses
+ * 7. benchmarks
+ * 8. benchmark_comparisons
+ * 
+ * ÍNDICES RECOMENDADOS:
+ * - synthetic_agents: territory_id, batch_id, region_code, comuna_code
+ * - synthetic_agents: sex, age_group, income_decile (para filtros)
+ * - survey_responses: survey_id, run_id, agent_id
+ * - survey_responses: question_id (para agregaciones)
+ * - benchmark_comparisons: survey_id, benchmark_id
+ */
+export interface DatabaseSchema {
+  users: DbUser;
+  territories: DbTerritory;
+  synthetic_agents: DbSyntheticAgent;
+  synthetic_agent_batches: DbSyntheticAgentBatch;
+  survey_definitions: DbSurveyDefinition;
+  survey_runs: DbSurveyRun;
+  survey_responses: DbSurveyResponse;
+  benchmarks: DbBenchmark;
+  benchmark_comparisons: DbBenchmarkComparison;
+}
+
+// ===========================================
+// Supabase Database Type
+// ===========================================
+
+/**
+ * Tipo Database para el cliente de Supabase.
+ * Este tipo sigue el formato esperado por @supabase/supabase-js
+ */
+export interface Database {
+  public: {
+    Tables: {
+      users: {
+        Row: DbUser;
+        Insert: Omit<DbUser, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string };
+        Update: Partial<Omit<DbUser, 'id' | 'created_at'>>;
+      };
+      territories: {
+        Row: DbTerritory;
+        Insert: Omit<DbTerritory, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string };
+        Update: Partial<Omit<DbTerritory, 'id' | 'created_at'>>;
+      };
+      synthetic_agents: {
+        Row: DbSyntheticAgent;
+        Insert: Omit<DbSyntheticAgent, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string };
+        Update: Partial<Omit<DbSyntheticAgent, 'id' | 'created_at'>>;
+      };
+      synthetic_agent_batches: {
+        Row: DbSyntheticAgentBatch;
+        Insert: Omit<DbSyntheticAgentBatch, 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Update: Partial<Omit<DbSyntheticAgentBatch, 'id' | 'created_at'>>;
+      };
+      survey_definitions: {
+        Row: DbSurveyDefinition;
+        Insert: Omit<DbSurveyDefinition, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string };
+        Update: Partial<Omit<DbSurveyDefinition, 'id' | 'created_at'>>;
+      };
+      survey_runs: {
+        Row: DbSurveyRun;
+        Insert: Omit<DbSurveyRun, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string };
+        Update: Partial<Omit<DbSurveyRun, 'id' | 'created_at'>>;
+      };
+      survey_responses: {
+        Row: DbSurveyResponse;
+        Insert: Omit<DbSurveyResponse, 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Update: Partial<Omit<DbSurveyResponse, 'id' | 'created_at'>>;
+      };
+      survey_results: {
+        Row: DbSurveyResult;
+        Insert: Omit<DbSurveyResult, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string };
+        Update: Partial<Omit<DbSurveyResult, 'id' | 'created_at'>>;
+      };
+      benchmarks: {
+        Row: DbBenchmark;
+        Insert: Omit<DbBenchmark, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string };
+        Update: Partial<Omit<DbBenchmark, 'id' | 'created_at'>>;
+      };
+      benchmark_indicators: {
+        Row: DbBenchmarkIndicator;
+        Insert: Omit<DbBenchmarkIndicator, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string };
+        Update: Partial<Omit<DbBenchmarkIndicator, 'id' | 'created_at'>>;
+      };
+      benchmark_comparisons: {
+        Row: DbBenchmarkComparison;
+        Insert: Omit<DbBenchmarkComparison, 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Update: Partial<Omit<DbBenchmarkComparison, 'id' | 'created_at'>>;
+      };
+      benchmark_pdf_extractions: {
+        Row: DbBenchmarkPdfExtraction;
+        Insert: Omit<DbBenchmarkPdfExtraction, 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Update: Partial<Omit<DbBenchmarkPdfExtraction, 'id' | 'created_at'>>;
+      };
+      agent_topic_state: {
+        Row: {
+          agent_id: string;
+          topic: string;
+          score: number;
+          confidence: number;
+          salience: number;
+          volatility: number;
+          updated_at: string;
+        };
+        Insert: {
+          agent_id: string;
+          topic: string;
+          score: number;
+          confidence?: number;
+          salience?: number;
+          volatility?: number;
+          updated_at?: string;
+        };
+        Update: Partial<{
+          score: number;
+          confidence: number;
+          salience: number;
+          volatility: number;
+          updated_at: string;
+        }>;
+      };
+      agent_panel_state: {
+        Row: {
+          agent_id: string;
+          eligible_web: boolean;
+          participation_propensity: number;
+          panel_fatigue: number;
+          quality_score: number;
+          cooldown_until: string | null;
+          invites_30d: number;
+          completions_30d: number;
+          last_invited_at: string | null;
+          last_completed_at: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          agent_id: string;
+          eligible_web?: boolean;
+          participation_propensity?: number;
+          panel_fatigue?: number;
+          quality_score?: number;
+          cooldown_until?: string | null;
+          invites_30d?: number;
+          completions_30d?: number;
+          last_invited_at?: string | null;
+          last_completed_at?: string | null;
+          updated_at?: string;
+        };
+        Update: Partial<{
+          eligible_web: boolean;
+          participation_propensity: number;
+          panel_fatigue: number;
+          quality_score: number;
+          cooldown_until: string | null;
+          invites_30d: number;
+          completions_30d: number;
+          last_invited_at: string | null;
+          last_completed_at: string | null;
+          updated_at: string;
+        }>;
+      };
+    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+  };
+}
+
+=== src/types/agent.ts ===
+/**
+ * Agent types and interfaces
+ */
+
+// Simulation agent types (for map visualization)
+export type AgentState = 'moving' | 'paused';
+
+export type AgentType = 'pedestrian' | 'vehicle' | 'drone';
+
+export interface Agent {
+  id: string;
+  lng: number;
+  lat: number;
+  speed: number; // meters per second
+  heading: number; // radians, 0 = east, PI/2 = north
+  state: AgentState;
+  type: AgentType;
+  color: string;
+  targetLng?: number;
+  targetLat?: number;
+  age: number; // frames alive
+  lastUpdate: number; // timestamp
+}
+
+export interface SimulationConfig {
+  centerLng: number;
+  centerLat: number;
+  radiusMeters: number;
+  minAgents: number;
+  maxAgents: number;
+  defaultSpeed: number;
+  speedVariation: number;
+}
+
+export interface SimulationState {
+  isRunning: boolean;
+  globalSpeedMultiplier: number;
+  agentCount: number;
+  lastFrameTime: number;
+  frameCount: number;
+}
+
+export interface BBox {
+  minLng: number;
+  maxLng: number;
+  minLat: number;
+  maxLat: number;
+}
+
+// Agent colors by type
+export const AGENT_COLORS: Record<AgentType, string> = {
+  pedestrian: '#00ffff', // cyan
+  vehicle: '#ff00ff', // magenta
+  drone: '#ffff00', // yellow
+};
+
+// Default simulation config for El Golf / Tobalaba area
+export const DEFAULT_SIMULATION_CONFIG: SimulationConfig = {
+  centerLng: -70.5975,
+  centerLat: -33.4125,
+  radiusMeters: 2000, // 2km radius
+  minAgents: 20,
+  maxAgents: 200,
+  defaultSpeed: 15, // ~54 km/h for vehicles, will vary by type
+  speedVariation: 0.3,
+};
+
+// ===========================================
+// Synthetic Agents V1 (from data pipeline)
+// ===========================================
+
+export type Sex = 'male' | 'female';
+export type AgeGroup = 'child' | 'youth' | 'adult' | 'middle_age' | 'senior';
+export type HouseholdType = 'single' | 'couple' | 'family' | 'extended';
+export type Urbanicity = 'urban' | 'rural';
+export type PovertyStatus = 'extreme_poverty' | 'poverty' | 'vulnerable' | 'middle_class' | 'upper_middle' | 'upper_class';
+export type EducationLevel = 'none' | 'primary' | 'secondary' | 'technical' | 'university' | 'postgraduate';
+export type OccupationStatus = 'employed' | 'unemployed' | 'self_employed' | 'retired' | 'student' | 'homemaker';
+export type SocioeconomicLevel = 'low' | 'medium' | 'high';
+
+// CADEM-compatible socioeconomic classification
+export type CademSocioeconomicLevel = 'ABC1' | 'C2' | 'C3' | 'D' | 'E';
+
+// CADEM age groups for demographic analysis
+export type CademAgeGroup = '18-29' | '30-49' | '50-69' | '70+';
+
+// CADEM regional groupings
+export type CademRegionGroup = 'Metropolitana' | 'Norte' | 'Centro' | 'Sur';
+
+export type ConnectivityLevel = 'none' | 'low' | 'medium' | 'high' | 'very_high';
+export type DigitalExposureLevel = 'none' | 'low' | 'medium' | 'high' | 'very_high';
+export type SurveyChannel = 'phone' | 'online' | 'in_person' | 'mixed';
+export type SyntheticAgentType = 'resident' | 'retiree' | 'student' | 'entrepreneur' | 'worker';
+
+export interface SyntheticAgentMetadata {
+  version: string;
+  batch_id: string;
+  total_agents: number;
+  generated_at: string;
+  schema_version: string;
+  fields_with_null: string[];
+  data_sources: {
+    population_backbone: string;
+    territories_master: string;
+    subtel_profile: string;
+    casen_normalized: string;
+  };
+}
+
+export interface SyntheticAgent {
+  // Identity
+  agent_id: string;
+  synthetic_batch_id: string;
+  source_version: string;
+  created_at: string;
+  
+  // Territory
+  country_code: string;
+  region_code: string;
+  region_name: string;
+  comuna_code: string;
+  comuna_name: string;
+  urbanicity: Urbanicity;
+  
+  // Demographics
+  sex: Sex;
+  age: number;
+  age_group: AgeGroup;
+  
+  // Household
+  household_size: number;
+  household_type: HouseholdType;
+  
+  // Socioeconomic
+  income_decile: number | null;
+  poverty_status: PovertyStatus | null;
+  education_level: EducationLevel | null;
+  occupation_status: OccupationStatus | null;
+  occupation_group: string | null;
+  socioeconomic_level: SocioeconomicLevel | null;
+  
+  // CADEM fields (optional for backward compatibility with v1 data)
+  cadem_socioeconomic_level?: CademSocioeconomicLevel | null;
+  cadem_age_group?: CademAgeGroup | null;
+  cadem_region_group?: CademRegionGroup | null;
+  
+  // Digital
+  connectivity_level: ConnectivityLevel | null;
+  digital_exposure_level: DigitalExposureLevel | null;
+  preferred_survey_channel: SurveyChannel | null;
+  
+  // Functional
+  agent_type: SyntheticAgentType;
+  
+  // Traceability
+  backbone_key: string;
+  subtel_profile_key: string | null;
+  casen_profile_key: string | null;
+  generation_notes: string;
+  
+  // Geolocation (from enriched data)
+  location_lat?: number | null;
+  location_lng?: number | null;
+}
+
+export interface SyntheticAgentsData {
+  metadata: SyntheticAgentMetadata;
+  agents: SyntheticAgent[];
+}
+
+=== src/types/survey.ts ===
+/**
+ * Survey Types - Encuestas Sintéticas v1
+ * 
+ * Modelo de datos para definición, ejecución y resultados de encuestas
+ */
+
+import type { SyntheticAgent } from './agent';
+
+// ===========================================
+// Question Types
+// ===========================================
+
+export type QuestionType = 'single_choice' | 'likert_scale' | 'multiple_choice' | 'text';
+
+export interface QuestionOption {
+  id: string;
+  label: string;
+  value: string | number;
+}
+
+export interface BaseQuestion {
+  id: string;
+  type: QuestionType;
+  text: string;
+  required: boolean;
+}
+
+export interface SingleChoiceQuestion extends BaseQuestion {
+  type: 'single_choice';
+  options: QuestionOption[];
+}
+
+export interface LikertScaleQuestion extends BaseQuestion {
+  type: 'likert_scale';
+  min: number;
+  max: number;
+  minLabel: string;
+  maxLabel: string;
+}
+
+export interface MultipleChoiceQuestion extends BaseQuestion {
+  type: 'multiple_choice';
+  options: QuestionOption[];
+}
+
+export interface TextQuestion extends BaseQuestion {
+  type: 'text';
+  maxLength?: number;
+}
+
+export type SurveyQuestion = 
+  | SingleChoiceQuestion 
+  | LikertScaleQuestion 
+  | MultipleChoiceQuestion 
+  | TextQuestion;
+
+// ===========================================
+// Survey Definition
+// ===========================================
+
+export interface SurveySegment {
+  regionCode?: string;
+  comunaCode?: string;
+  sex?: string;
+  ageGroup?: string;
+  incomeDecile?: number;
+  educationLevel?: string;
+  connectivityLevel?: string;
+  agentType?: string;
+}
+
+export interface SurveyDefinition {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+  sampleSize: number;
+  segment: SurveySegment;
+  questions: SurveyQuestion[];
+  // CADEM v1.1 - Engine Configuration
+  engineMode?: 'legacy' | 'cadem';
+  persistState?: boolean;
+}
+
+// ===========================================
+// Survey Run & Responses
+// ===========================================
+
+export type ResponseValue = string | number | string[] | null;
+
+export interface AgentResponse {
+  agentId: string;
+  questionId: string;
+  value: ResponseValue;
+  confidence: number; // 0-1, how confident the synthetic response is
+  reasoning: string; // brief explanation of why this response was chosen
+}
+
+export interface SurveyRun {
+  id: string;
+  surveyId: string;
+  startedAt: string;
+  completedAt: string;
+  totalAgents: number;
+  responses: AgentResponse[];
+  metadata: {
+    segmentMatched: number;
+    sampleSizeRequested: number;
+    sampleSizeActual: number;
+    // Results summary from DB (when loaded from persistence)
+    resultsSummary?: {
+      total_responses: number;
+      completion_rate: number;
+      average_confidence: number;
+    } | null;
+    // R2 - Scenario metadata for traceability
+    scenarioEventId?: string;
+    scenarioName?: string;
+    scenarioCategory?: string;
+    scenarioSeverity?: 'minor' | 'moderate' | 'major' | 'critical';
+  };
+  // CADEM v1.1 - Engine metadata for traceability
+  engineMode?: 'legacy' | 'cadem';
+  engineVersion?: string;
+  persistState?: boolean;
+  // Fixed sample - IDs of selected agents for reproducible comparisons
+  selectedAgentIds?: string[];
+}
+
+// ===========================================
+// Survey Results
+// ===========================================
+
+export interface SingleChoiceResult {
+  questionId: string;
+  questionType: 'single_choice';
+  questionText: string;
+  totalResponses: number;
+  distribution: Record<string, { count: number; percentage: number; label: string }>;
+}
+
+export interface LikertResult {
+  questionId: string;
+  questionType: 'likert_scale';
+  questionText: string;
+  totalResponses: number;
+  average: number;
+  median: number;
+  distribution: Record<number, { count: number; percentage: number }>;
+  minLabel: string;
+  maxLabel: string;
+}
+
+export interface MultipleChoiceResult {
+  questionId: string;
+  questionType: 'multiple_choice';
+  questionText: string;
+  totalResponses: number;
+  distribution: Record<string, { count: number; percentage: number; label: string }>;
+}
+
+export interface TextResult {
+  questionId: string;
+  questionType: 'text';
+  questionText: string;
+  totalResponses: number;
+  sampleResponses: string[];
+}
+
+export type QuestionResult = 
+  | SingleChoiceResult 
+  | LikertResult 
+  | MultipleChoiceResult 
+  | TextResult;
+
+export interface SurveyResult {
+  surveyId: string;
+  runId: string;
+  generatedAt: string;
+  summary: {
+    totalQuestions: number;
+    totalResponses: number;
+    uniqueAgents: number;
+  };
+  results: QuestionResult[];
+}
+
+// ===========================================
+// Heuristic Rules for Synthetic Responses
+// ===========================================
+
+export interface ResponseHeuristic {
+  id: string;
+  name: string;
+  description: string;
+  applicableTo: QuestionType[];
+  weight: (agent: SyntheticAgent) => number;
+  apply: (agent: SyntheticAgent, question: SurveyQuestion) => ResponseValue;
+}
+
+// ===========================================
+// Survey State (for UI)
+// ===========================================
+
+export type SurveyViewMode = 'list' | 'create' | 'configure' | 'results' | 'comparison';
+
+
+export interface SurveyState {
+  surveys: SurveyDefinition[];
+  currentSurvey: SurveyDefinition | null;
+  currentRun: SurveyRun | null;
+  currentResults: SurveyResult | null;
+  viewMode: SurveyViewMode;
+  isLoading: boolean;
+  error: string | null;
+}
+
+=== src/types/opinion.ts ===
+/**
+ * CADEM Opinion Engine v1 - Tipos Globales
+ * Tipos compartidos entre módulos del motor.
+ */
+
+export type TopicKey =
+  | 'government_approval'
+  | 'country_direction'
+  | 'country_optimism'
+  | 'economy_personal'
+  | 'economy_national'
+  | 'employment'
+  | 'consumption'
+  | 'institutional_trust'
+  | 'political_identity'
+  | 'security_perception';
+
+export type QuestionFamily =
+  | 'approval'
+  | 'direction'
+  | 'optimism'
+  | 'economic_perception'
+  | 'security_perception'
+  | 'ideology'
+  | 'awareness'
+  | 'image'
+  | 'trust'
+  | 'priority'
+  | 'open_text';
+
+export type ResponseFormat =
+  | 'binary_nr'
+  | 'ordinal_4_nr'
+  | 'ordinal_5_nr'
+  | 'scale_1_7'
+  | 'categorical'
+  | 'ranked'
+  | 'text';
+
+export type ApprovalAnswer =
+  | 'approve'
+  | 'disapprove'
+  | 'no_response';
+
+export type CountryDirectionAnswer =
+  | 'good_path'
+  | 'bad_path'
+  | 'no_response';
+
+export type OptimismAnswer =
+  | 'very_optimistic'
+  | 'optimistic'
+  | 'pessimistic'
+  | 'very_pessimistic'
+  | 'no_response';
+
+export type EconomicPerceptionAnswer =
+  | 'very_good'
+  | 'good'
+  | 'progressing'
+  | 'bad'
+  | 'very_bad'
+  | 'no_response';
+
+export type SecurityPerceptionAnswer =
+  | 'very_safe'
+  | 'safe'
+  | 'unsafe'
+  | 'very_unsafe'
+  | 'no_response';
+
+export type PoliticalIdentityAnswer =
+  | 'right'
+  | 'center_right'
+  | 'center'
+  | 'center_left'
+  | 'left'
+  | 'independent'
+  | 'no_response';
+
+export type AwarenessAnswer =
+  | 'knows'
+  | 'does_not_know'
+  | 'no_response';
+
+export type ImageAnswer =
+  | 'very_positive'
+  | 'positive'
+  | 'negative'
+  | 'very_negative'
+  | 'no_response';
+
+export type Ordinal4Answer =
+  | 'very_positive'
+  | 'positive'
+  | 'negative'
+  | 'very_negative'
+  | 'no_response';
+
+export type TrustScaleAnswer = 1 | 2 | 3 | 4 | 5 | 6 | 7 | null;
+
+/** Ordered ranked answers, e.g. first and second priority */
+export type PriorityAnswer = string[];
+
+export type OpenTextAnswer = string;
+
+export type OpinionResponseValue =
+  | ApprovalAnswer
+  | CountryDirectionAnswer
+  | OptimismAnswer
+  | EconomicPerceptionAnswer
+  | SecurityPerceptionAnswer
+  | PoliticalIdentityAnswer
+  | AwarenessAnswer
+  | ImageAnswer
+  | TrustScaleAnswer
+  | PriorityAnswer
+  | OpenTextAnswer
+  | null;
+
+export const QUESTION_FAMILY_FORMATS: Record<QuestionFamily, ResponseFormat> = {
+  approval: 'binary_nr',
+  direction: 'binary_nr',
+  optimism: 'ordinal_4_nr',
+  economic_perception: 'ordinal_4_nr',
+  security_perception: 'ordinal_4_nr',
+  ideology: 'categorical',
+  awareness: 'categorical',
+  image: 'ordinal_4_nr',
+  trust: 'scale_1_7',
+  priority: 'ranked',
+  open_text: 'text',
+};
+
+export const TOPIC_FAMILY_MAP: Record<TopicKey, QuestionFamily> = {
+  government_approval: 'approval',
+  country_direction: 'direction',
+  country_optimism: 'optimism',
+  economy_personal: 'economic_perception',
+  economy_national: 'economic_perception',
+  employment: 'economic_perception',
+  consumption: 'economic_perception',
+  institutional_trust: 'trust',
+  political_identity: 'ideology',
+  security_perception: 'security_perception',
+};
+

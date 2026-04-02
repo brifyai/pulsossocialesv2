@@ -1,0 +1,2250 @@
+==========================================
+AUDITORÍA TÉCNICA INTEGRAL - PARTE 4/6
+MIGRACIONES SQL - SEGURIDAD Y RLS
+Fecha: 2026-04-01 18:24:33 UTC
+Repositorio: Pulso
+==========================================
+
+INSTRUCCIONES:
+1. Usar con: docs/PROMPT_AUDITORIA_DEFINITIVO_V2.md
+2. Esta es la Parte 4 de 6
+3. Procesar en orden: Parte 1 → Parte 2 → ... → Parte 6
+4. Cada parte debe analizarse secuencialmente
+
+=== SECURITY MIGRATIONS ===
+=== migrations/20250329_security_rls_policies.sql ===
+-- =============================================================================
+-- MIGRACIÓN: Políticas RLS de Seguridad - Phase 1
+-- Fecha: 2025-03-29
+-- Objetivo: Restringir acceso anónimo y permitir solo lectura pública
+-- =============================================================================
+
+-- =============================================================================
+-- NOTA IMPORTANTE SOBRE SERVICE KEY vs ANON KEY
+-- =============================================================================
+-- SERVICE_KEY: Bypassa todas las políticas RLS. Usar SOLO en scripts backend.
+-- ANON_KEY: Sujeto a políticas RLS. Usar en frontend.
+--
+-- Esta migración asume que:
+-- - Frontend usa ANON_KEY (VITE_SUPABASE_ANON_KEY)
+-- - Scripts usan SERVICE_KEY (SUPABASE_SERVICE_KEY)
+-- =============================================================================
+
+-- =============================================================================
+-- 1. TERRITORIES - Solo lectura pública
+-- =============================================================================
+
+-- Eliminar políticas existentes
+DROP POLICY IF EXISTS "Allow anonymous read" ON territories;
+DROP POLICY IF EXISTS "Allow public read" ON territories;
+
+-- Política: Lectura pública para todos
+CREATE POLICY "Allow public read" ON territories
+    FOR SELECT USING (true);
+
+-- Nota: No hay políticas de INSERT/UPDATE/DELETE para anon
+-- Estas operaciones requieren SERVICE_KEY
+
+-- =============================================================================
+-- 2. SYNTHETIC_AGENTS - Solo lectura pública, sin acceso a datos sensibles
+-- =============================================================================
+
+DROP POLICY IF EXISTS "Allow anonymous read" ON synthetic_agents;
+DROP POLICY IF EXISTS "Allow public read" ON synthetic_agents;
+
+-- Política: Lectura pública (datos agregados, no individuales sensibles)
+CREATE POLICY "Allow public read" ON synthetic_agents
+    FOR SELECT USING (true);
+
+-- Nota: El frontend no debería exponer datos personales sensibles
+-- Considerar crear una vista pública sin campos sensibles en el futuro
+
+-- =============================================================================
+-- 3. SURVEY_DEFINITIONS - Lectura pública para encuestas publicadas
+-- =============================================================================
+
+DROP POLICY IF EXISTS "Allow anonymous read" ON survey_definitions;
+DROP POLICY IF EXISTS "Allow public read" ON survey_definitions;
+DROP POLICY IF EXISTS "Allow public read published" ON survey_definitions;
+
+-- Política: Lectura solo de encuestas publicadas (no drafts)
+CREATE POLICY "Allow public read published" ON survey_definitions
+    FOR SELECT USING (status IN ('active', 'completed', 'archived'));
+
+-- Nota: Las encuestas en 'draft' solo son accesibles con SERVICE_KEY
+
+-- =============================================================================
+-- 4. SURVEY_RUNS - Lectura pública para runs completados
+-- =============================================================================
+
+DROP POLICY IF EXISTS "Allow anonymous read" ON survey_runs;
+DROP POLICY IF EXISTS "Allow public read" ON survey_runs;
+DROP POLICY IF EXISTS "Allow public read completed" ON survey_runs;
+
+-- Política: Lectura solo de runs completados
+CREATE POLICY "Allow public read completed" ON survey_runs
+    FOR SELECT USING (status = 'completed');
+
+-- Nota: Runs en ejecución o fallidos solo accesibles con SERVICE_KEY
+
+-- =============================================================================
+-- 5. SURVEY_RESPONSES - Lectura pública (datos agregados)
+-- =============================================================================
+
+DROP POLICY IF EXISTS "Allow anonymous read" ON survey_responses;
+DROP POLICY IF EXISTS "Allow public read" ON survey_responses;
+
+-- Política: Lectura pública de respuestas
+CREATE POLICY "Allow public read" ON survey_responses
+    FOR SELECT USING (true);
+
+-- Nota: Considerar anonimizar agent_id en el futuro para privacidad
+
+-- =============================================================================
+-- 6. BENCHMARKS - Lectura pública
+-- =============================================================================
+
+DROP POLICY IF EXISTS "Allow anonymous read" ON benchmarks;
+DROP POLICY IF EXISTS "Allow public read" ON benchmarks;
+
+CREATE POLICY "Allow public read" ON benchmarks
+    FOR SELECT USING (true);
+
+-- =============================================================================
+-- 7. BENCHMARK_COMPARISONS - Lectura pública
+-- =============================================================================
+
+DROP POLICY IF EXISTS "Allow anonymous read" ON benchmark_comparisons;
+DROP POLICY IF EXISTS "Allow public read" ON benchmark_comparisons;
+
+CREATE POLICY "Allow public read" ON benchmark_comparisons
+    FOR SELECT USING (true);
+
+-- =============================================================================
+-- 8. USERS - Solo lectura de usuarios activos (para login)
+-- =============================================================================
+
+DROP POLICY IF EXISTS "Allow read active users" ON users;
+
+-- Mantener política existente - solo usuarios activos visibles
+CREATE POLICY "Allow read active users" ON users
+    FOR SELECT USING (is_active = true);
+
+-- =============================================================================
+-- 9. TABLAS DE EVENTOS (si existen) - Lectura pública
+-- =============================================================================
+
+-- Weekly events
+DROP POLICY IF EXISTS "Allow anonymous read" ON weekly_events;
+DROP POLICY IF EXISTS "Allow public read" ON weekly_events;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_tables WHERE tablename = 'weekly_events') THEN
+        CREATE POLICY "Allow public read" ON weekly_events
+            FOR SELECT USING (true);
+    END IF;
+END $$;
+
+-- Event impact logs
+DROP POLICY IF EXISTS "Allow anonymous read" ON event_impact_logs;
+DROP POLICY IF EXISTS "Allow public read" ON event_impact_logs;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_tables WHERE tablename = 'event_impact_logs') THEN
+        CREATE POLICY "Allow public read" ON event_impact_logs
+            FOR SELECT USING (true);
+    END IF;
+END $$;
+
+-- Scenario events
+DROP POLICY IF EXISTS "Allow anonymous read" ON scenario_events;
+DROP POLICY IF EXISTS "Allow public read" ON scenario_events;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_tables WHERE tablename = 'scenario_events') THEN
+        CREATE POLICY "Allow public read" ON scenario_events
+            FOR SELECT USING (true);
+    END IF;
+END $$;
+
+-- =============================================================================
+-- 10. TABLAS DE ESTADO DE AGENTES - Solo lectura pública
+-- =============================================================================
+
+-- Agent topic state
+DROP POLICY IF EXISTS "Allow anonymous read" ON agent_topic_state;
+DROP POLICY IF EXISTS "Allow public read" ON agent_topic_state;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_tables WHERE tablename = 'agent_topic_state') THEN
+        CREATE POLICY "Allow public read" ON agent_topic_state
+            FOR SELECT USING (true);
+    END IF;
+END $$;
+
+-- Agent panel state
+DROP POLICY IF EXISTS "Allow anonymous read" ON agent_panel_state;
+DROP POLICY IF EXISTS "Allow public read" ON agent_panel_state;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_tables WHERE tablename = 'agent_panel_state') THEN
+        CREATE POLICY "Allow public read" ON agent_panel_state
+            FOR SELECT USING (true);
+    END IF;
+END $$;
+
+-- =============================================================================
+-- VERIFICACIÓN: Confirmar que RLS está habilitado en todas las tablas
+-- =============================================================================
+
+-- Verificar estado de RLS
+SELECT 
+    schemaname,
+    tablename,
+    rowsecurity as rls_enabled
+FROM pg_tables
+WHERE schemaname = 'public'
+    AND tablename IN (
+        'users',
+        'territories',
+        'synthetic_agents',
+        'survey_definitions',
+        'survey_runs',
+        'survey_responses',
+        'benchmarks',
+        'benchmark_comparisons',
+        'weekly_events',
+        'event_impact_logs',
+        'scenario_events',
+        'agent_topic_state',
+        'agent_panel_state'
+    )
+ORDER BY tablename;
+
+-- =============================================================================
+-- FIN DE MIGRACIÓN
+-- =============================================================================
+
+=== migrations/20250330_fix_agent_state_rls_secure.sql ===
+-- ============================================================================
+-- MIGRACIÓN: Fortalecer RLS en tablas de persistencia de estados de agentes
+-- Fecha: 2025-03-30
+-- Objetivo: Reemplazar policies permisivas con policies seguras
+-- ============================================================================
+
+-- ============================================================================
+-- PASO 1: Limpiar policies existentes en agent_topic_state
+-- ============================================================================
+
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON agent_topic_state;
+DROP POLICY IF EXISTS "Allow read for anonymous users" ON agent_topic_state;
+
+-- ============================================================================
+-- PASO 2: Crear policies SEGURAS para agent_topic_state
+-- ============================================================================
+
+-- Habilitar RLS (si no está habilitado)
+ALTER TABLE agent_topic_state ENABLE ROW LEVEL SECURITY;
+
+-- POLICY 1: SELECT - Solo usuarios autenticados pueden leer
+-- Nota: Los estados de agentes son datos sensibles, requieren autenticación
+CREATE POLICY "Authenticated users can read agent topic states"
+    ON agent_topic_state
+    FOR SELECT
+    USING (auth.role() = 'authenticated');
+
+-- POLICY 2: INSERT/UPDATE/DELETE - Solo service_role (scripts/backend)
+-- Los estados solo deben ser modificados por el sistema, no por usuarios directamente
+CREATE POLICY "Service role can manage agent topic states"
+    ON agent_topic_state
+    FOR ALL
+    USING (auth.role() = 'service_role')
+    WITH CHECK (auth.role() = 'service_role');
+
+-- ============================================================================
+-- PASO 3: Limpiar policies existentes en agent_panel_state
+-- ============================================================================
+
+DROP POLICY IF EXISTS "Allow all operations for authenticated users" ON agent_panel_state;
+DROP POLICY IF EXISTS "Allow read for anonymous users" ON agent_panel_state;
+
+-- ============================================================================
+-- PASO 4: Crear policies SEGURAS para agent_panel_state
+-- ============================================================================
+
+-- Habilitar RLS (si no está habilitado)
+ALTER TABLE agent_panel_state ENABLE ROW LEVEL SECURITY;
+
+-- POLICY 1: SELECT - Solo usuarios autenticados pueden leer
+CREATE POLICY "Authenticated users can read agent panel states"
+    ON agent_panel_state
+    FOR SELECT
+    USING (auth.role() = 'authenticated');
+
+-- POLICY 2: INSERT/UPDATE/DELETE - Solo service_role
+CREATE POLICY "Service role can manage agent panel states"
+    ON agent_panel_state
+    FOR ALL
+    USING (auth.role() = 'service_role')
+    WITH CHECK (auth.role() = 'service_role');
+
+-- ============================================================================
+-- PASO 5: Verificación
+-- ============================================================================
+
+DO $$
+DECLARE
+    topic_policy_count INTEGER;
+    panel_policy_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO topic_policy_count
+    FROM pg_policies
+    WHERE tablename = 'agent_topic_state';
+    
+    SELECT COUNT(*) INTO panel_policy_count
+    FROM pg_policies
+    WHERE tablename = 'agent_panel_state';
+    
+    RAISE NOTICE 'Policies en agent_topic_state: %', topic_policy_count;
+    RAISE NOTICE 'Policies en agent_panel_state: %', panel_policy_count;
+END $$;
+
+-- ============================================================================
+-- RESUMEN DE CAMBIOS
+-- ============================================================================
+--
+-- ANTES (INSEGURO):
+--   - Cualquier usuario autenticado podía: SELECT, INSERT, UPDATE, DELETE
+--   - Usuarios anónimos podían: SELECT
+--   - No había separación entre lectura y escritura
+--
+-- DESPUÉS (SEGURO):
+--   ✅ Solo usuarios autenticados pueden leer (SELECT)
+--   ✅ Solo service_role puede modificar (INSERT, UPDATE, DELETE)
+--   ✅ Usuarios anónimos completamente bloqueados
+--   ✅ Separación clara entre operaciones de lectura y escritura
+--
+-- ============================================================================
+
+=== migrations/20250330_fix_scenario_events_rls_v4_SECURE.sql ===
+-- ============================================================================
+-- MIGRACIÓN RLS V4 - SEGURA Y COMPLETA
+-- Fecha: 2025-03-30
+-- Objetivo: Corregir todas las vulnerabilidades de las versiones anteriores
+-- ============================================================================
+
+-- ============================================================================
+-- PASO 0: Limpiar policies existentes (rollback seguro)
+-- ============================================================================
+
+-- Eliminar TODAS las policies existentes de scenario_events
+DROP POLICY IF EXISTS "Allow public read" ON scenario_events;
+DROP POLICY IF EXISTS "Allow authenticated insert" ON scenario_events;
+DROP POLICY IF EXISTS "Allow authenticated update" ON scenario_events;
+DROP POLICY IF EXISTS "Allow authenticated delete" ON scenario_events;
+DROP POLICY IF EXISTS "Allow anon insert" ON scenario_events;
+DROP POLICY IF EXISTS "Allow anon update" ON scenario_events;
+DROP POLICY IF EXISTS "Allow anon delete" ON scenario_events;
+DROP POLICY IF EXISTS "Enable read access for all users" ON scenario_events;
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON scenario_events;
+DROP POLICY IF EXISTS "Enable update for authenticated users only" ON scenario_events;
+DROP POLICY IF EXISTS "Enable delete for authenticated users only" ON scenario_events;
+
+-- ============================================================================
+-- PASO 1: Asegurar que RLS está habilitado
+-- ============================================================================
+
+ALTER TABLE scenario_events ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================================
+-- PASO 2: Crear policies SEGURAS para scenario_events
+-- ============================================================================
+
+-- POLICY 1: SELECT - Usuarios autenticados solo ven sus propios escenarios
+-- O escenarios públicos (si aplica)
+CREATE POLICY "Users can view own scenarios"
+    ON scenario_events
+    FOR SELECT
+    USING (
+        auth.role() = 'authenticated' 
+        AND (
+            user_id = auth.uid() 
+            OR user_id IS NULL  -- Escenarios del sistema
+        )
+    );
+
+-- POLICY 2: INSERT - Solo usuarios autenticados, solo sus propios registros
+CREATE POLICY "Users can insert own scenarios"
+    ON scenario_events
+    FOR INSERT
+    WITH CHECK (
+        auth.role() = 'authenticated'
+        AND user_id = auth.uid()
+    );
+
+-- POLICY 3: UPDATE - Solo usuarios autenticados, solo sus propios registros
+CREATE POLICY "Users can update own scenarios"
+    ON scenario_events
+    FOR UPDATE
+    USING (
+        auth.role() = 'authenticated'
+        AND user_id = auth.uid()
+    )
+    WITH CHECK (
+        auth.role() = 'authenticated'
+        AND user_id = auth.uid()
+    );
+
+-- POLICY 4: DELETE - Solo usuarios autenticados, solo sus propios registros
+CREATE POLICY "Users can delete own scenarios"
+    ON scenario_events
+    FOR DELETE
+    USING (
+        auth.role() = 'authenticated'
+        AND user_id = auth.uid()
+    );
+
+-- ============================================================================
+-- PASO 3: Excepción para service_role (scripts y operaciones batch)
+-- ============================================================================
+
+-- NOTA: service_role bypass RLS por defecto en Supabase
+-- Pero agregamos policies explícitas por claridad y documentación
+
+CREATE POLICY "Service role full access"
+    ON scenario_events
+    FOR ALL
+    USING (auth.role() = 'service_role')
+    WITH CHECK (auth.role() = 'service_role');
+
+-- ============================================================================
+-- PASO 4: Asegurar que user_id existe y tiene índice
+-- ============================================================================
+
+-- Nota: La tabla scenario_events usa user_id (no created_by)
+-- Verificar que la columna user_id existe
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'scenario_events' 
+        AND column_name = 'user_id'
+    ) THEN
+        ALTER TABLE scenario_events ADD COLUMN user_id UUID REFERENCES auth.users(id);
+    END IF;
+END $$;
+
+-- Crear índice para performance de RLS (user_id ya existe según schema)
+CREATE INDEX IF NOT EXISTS idx_scenario_events_user_id 
+    ON scenario_events(user_id);
+
+-- ============================================================================
+-- PASO 5: RLS para weekly_events (si no existe)
+-- ============================================================================
+
+-- Habilitar RLS
+ALTER TABLE IF EXISTS weekly_events ENABLE ROW LEVEL SECURITY;
+
+-- Limpiar policies existentes
+DROP POLICY IF EXISTS "Allow public read" ON weekly_events;
+DROP POLICY IF EXISTS "Allow authenticated all" ON weekly_events;
+
+-- Policies seguras para weekly_events
+DROP POLICY IF EXISTS "Users can view weekly events" ON weekly_events;
+CREATE POLICY "Users can view weekly events"
+    ON weekly_events
+    FOR SELECT
+    USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Service role can manage weekly events" ON weekly_events;
+CREATE POLICY "Service role can manage weekly events"
+    ON weekly_events
+    FOR ALL
+    USING (auth.role() = 'service_role')
+    WITH CHECK (auth.role() = 'service_role');
+
+-- ============================================================================
+-- PASO 6: RLS para event_impact_logs (si no existe)
+-- ============================================================================
+
+-- Habilitar RLS
+ALTER TABLE IF EXISTS event_impact_logs ENABLE ROW LEVEL SECURITY;
+
+-- Limpiar policies existentes
+DROP POLICY IF EXISTS "Allow public read" ON event_impact_logs;
+DROP POLICY IF EXISTS "Allow authenticated all" ON event_impact_logs;
+
+-- Policies seguras para event_impact_logs
+DROP POLICY IF EXISTS "Users can view event impact logs" ON event_impact_logs;
+CREATE POLICY "Users can view event impact logs"
+    ON event_impact_logs
+    FOR SELECT
+    USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Service role can manage event impact logs" ON event_impact_logs;
+CREATE POLICY "Service role can manage event impact logs"
+    ON event_impact_logs
+    FOR ALL
+    USING (auth.role() = 'service_role')
+    WITH CHECK (auth.role() = 'service_role');
+
+-- ============================================================================
+-- PASO 7: Verificación y logging
+-- ============================================================================
+
+-- Verificar policies creadas
+DO $$
+DECLARE
+    policy_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO policy_count
+    FROM pg_policies
+    WHERE tablename IN ('scenario_events', 'weekly_events', 'event_impact_logs');
+    
+    RAISE NOTICE 'Total policies creadas: %', policy_count;
+END $$;
+
+-- ============================================================================
+-- RESUMEN DE CAMBIOS
+-- ============================================================================
+--
+-- ANTES (v3 - INSEGURO):
+--   - Anon podía: SELECT, INSERT, UPDATE, DELETE
+--   - No había aislamiento entre usuarios
+--   - No había excepción para service_role
+--
+-- DESPUÉS (v4 - SEGURO):
+--   ✅ Solo usuarios autenticados pueden acceder
+--   ✅ Cada usuario solo ve/modifica sus propios escenarios
+--   ✅ Service_role tiene acceso completo (para scripts)
+--   ✅ Anon está completamente bloqueado
+--   ✅ weekly_events y event_impact_logs también protegidos
+--
+-- ============================================================================
+
+=== migrations/20250330_fix_scenario_events_fk.sql ===
+-- Migration: Fix scenario_events foreign key to reference public.users instead of auth.users
+-- Date: 2026-03-30
+-- Description: The scenario_events table was created with FK to auth.users, but the application
+--              uses the public.users table. This migration fixes that.
+
+-- ============================================================================
+-- FIX FOREIGN KEY CONSTRAINT
+-- ============================================================================
+
+-- Drop the existing foreign key constraint
+ALTER TABLE scenario_events
+    DROP CONSTRAINT IF EXISTS scenario_events_user_id_fkey;
+
+-- Add new foreign key constraint referencing public.users
+ALTER TABLE scenario_events
+    ADD CONSTRAINT scenario_events_user_id_fkey
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+
+-- ============================================================================
+-- IDEMPOTENCY CHECK
+-- ============================================================================
+
+DO $$
+BEGIN
+    RAISE NOTICE 'scenario_events FK fixed to reference public.users';
+END $$;
+
+=== DEPLOY INIT SCHEMA ===
+=== deploy/init/01-schema.sql ===
+-- =============================================================================
+-- Pulsos Sociales - Schema de Base de Datos
+-- Supabase Self-Hosted / PostgreSQL 15
+-- =============================================================================
+--
+-- Este archivo crea el schema inicial para Pulsos Sociales.
+-- Ejecutar en Supabase Studio SQL Editor o via psql.
+--
+-- =============================================================================
+
+-- =============================================================================
+-- EXTENSIONES
+-- =============================================================================
+
+-- UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- PostGIS para datos geoespaciales (si está disponible)
+-- CREATE EXTENSION IF NOT EXISTS "postgis";
+
+-- =============================================================================
+-- TABLAS PRINCIPALES
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- 1. USERS - Usuarios de la aplicación (Auth propio, NO Supabase Auth)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    
+    -- Identificación
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    
+    -- Perfil
+    name VARCHAR(255),
+    avatar TEXT,
+    
+    -- Roles y permisos
+    role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin', 'moderator')),
+    is_active BOOLEAN DEFAULT TRUE,
+    email_verified BOOLEAN DEFAULT FALSE,
+    
+    -- Tracking
+    last_login_at TIMESTAMPTZ,
+    
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Índices para users
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active);
+
+-- Comentarios
+COMMENT ON TABLE users IS 'Usuarios de la aplicación - Auth propio sin dependencia de GoTrue';
+COMMENT ON COLUMN users.password_hash IS 'Hash SHA-256 del password con salt';
+
+-- Trigger para updated_at
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
+CREATE TRIGGER update_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Política RLS para users
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+-- Permitir lectura de usuarios activos (para login)
+DROP POLICY IF EXISTS "Allow read active users" ON users;
+CREATE POLICY "Allow read active users" ON users
+    FOR SELECT USING (is_active = true);
+
+-- -----------------------------------------------------------------------------
+-- 2. TERRITORIES - Territorios administrativos de Chile
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS territories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    
+    -- Identificación administrativa
+    country_code VARCHAR(2) NOT NULL DEFAULT 'CL',
+    region_code VARCHAR(10) NOT NULL,           -- Ej: 'CL-13'
+    region_name VARCHAR(100) NOT NULL,          -- Ej: 'Metropolitana de Santiago'
+    comuna_code VARCHAR(10) NOT NULL UNIQUE,    -- Ej: '13101'
+    comuna_name VARCHAR(100) NOT NULL,          -- Ej: 'Santiago'
+    
+    -- Campos adicionales para compatibilidad con el modelo
+    code VARCHAR(20) NOT NULL,                  -- Código corto (ej: 'RM' para región, '13101' para comuna)
+    name VARCHAR(200) NOT NULL,                 -- Nombre del territorio
+    level VARCHAR(20) NOT NULL DEFAULT 'comuna', -- Nivel: 'region' o 'comuna'
+    
+    -- Geometría (GeoJSON como JSONB)
+    geometry JSONB,
+    bbox NUMERIC[4],                            -- [minX, minY, maxX, maxY]
+    
+    -- Población
+    population_total INTEGER,
+    population_urban INTEGER,
+    population_rural INTEGER,
+    
+    -- Metadatos
+    source VARCHAR(50) DEFAULT 'ine',
+    source_year INTEGER DEFAULT 2017,
+    
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- Constraints
+    CONSTRAINT valid_country CHECK (country_code = 'CL'),
+    CONSTRAINT valid_region_code CHECK (region_code ~ '^CL-[0-9]+$'),
+    CONSTRAINT valid_level CHECK (level IN ('region', 'comuna'))
+);
+
+-- Índices para territories
+CREATE INDEX IF NOT EXISTS idx_territories_region_code ON territories(region_code);
+CREATE INDEX IF NOT EXISTS idx_territories_comuna_code ON territories(comuna_code);
+CREATE INDEX IF NOT EXISTS idx_territories_comuna_name ON territories(comuna_name);
+CREATE INDEX IF NOT EXISTS idx_territories_geometry ON territories USING GIN(geometry);
+CREATE INDEX IF NOT EXISTS idx_territories_code ON territories(code);
+CREATE INDEX IF NOT EXISTS idx_territories_level ON territories(level);
+CREATE INDEX IF NOT EXISTS idx_territories_level_code ON territories(level, code);
+
+-- Constraint UNIQUE para code + level
+ALTER TABLE territories DROP CONSTRAINT IF EXISTS territories_code_level_key;
+ALTER TABLE territories ADD CONSTRAINT territories_code_level_key UNIQUE (code, level);
+
+-- Comentarios
+COMMENT ON TABLE territories IS 'Territorios administrativos de Chile (regiones y comunas)';
+COMMENT ON COLUMN territories.comuna_code IS 'Código único de comuna según INE';
+COMMENT ON COLUMN territories.code IS 'Código corto del territorio (región o comuna)';
+COMMENT ON COLUMN territories.name IS 'Nombre del territorio';
+COMMENT ON COLUMN territories.level IS 'Nivel administrativo: region o comuna';
+COMMENT ON COLUMN territories.geometry IS 'GeoJSON Polygon/MultiPolygon de la comuna';
+
+-- -----------------------------------------------------------------------------
+-- 2. SYNTHETIC_AGENTS - Agentes sintéticos generados
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS synthetic_agents (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    
+    -- Identificación
+    agent_id VARCHAR(50) NOT NULL UNIQUE,       -- Ej: 'AGENT-CL13-000001'
+    batch_id VARCHAR(50) NOT NULL,              -- Lote de generación
+    territory_id UUID REFERENCES territories(id),
+    
+    -- Demografía
+    sex VARCHAR(10) CHECK (sex IN ('male', 'female')),
+    age INTEGER CHECK (age >= 0 AND age <= 120),
+    age_group VARCHAR(20) CHECK (age_group IN ('child', 'youth', 'young_adult', 'adult', 'senior', 'elderly')),
+    
+    -- Socioeconómico
+    income_decile INTEGER CHECK (income_decile >= 1 AND income_decile <= 10),
+    education_level VARCHAR(50) CHECK (education_level IN ('none', 'primary', 'secondary', 'technical', 'university', 'postgraduate')),
+    employment_status VARCHAR(50),
+    
+    -- Digital
+    connectivity_level VARCHAR(20) CHECK (connectivity_level IN ('none', 'low', 'medium', 'high')),
+    has_smartphone BOOLEAN DEFAULT FALSE,
+    has_computer BOOLEAN DEFAULT FALSE,
+    internet_quality VARCHAR(20),
+    
+    -- Ubicación (dentro del territorio)
+    location_lat NUMERIC(10, 8),
+    location_lng NUMERIC(11, 8),
+    
+    -- Traceabilidad
+    backbone_key VARCHAR(100),                  -- Referencia al backbone
+    synthesis_version VARCHAR(20) DEFAULT '1.0',
+    
+    -- Metadatos
+    metadata JSONB DEFAULT '{}',
+    
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Índices para synthetic_agents
+CREATE INDEX IF NOT EXISTS idx_agents_batch_id ON synthetic_agents(batch_id);
+CREATE INDEX IF NOT EXISTS idx_agents_territory ON synthetic_agents(territory_id);
+CREATE INDEX IF NOT EXISTS idx_agents_region ON synthetic_agents(agent_id);
+CREATE INDEX IF NOT EXISTS idx_agents_age_group ON synthetic_agents(age_group);
+CREATE INDEX IF NOT EXISTS idx_agents_income ON synthetic_agents(income_decile);
+CREATE INDEX IF NOT EXISTS idx_agents_connectivity ON synthetic_agents(connectivity_level);
+
+-- Comentarios
+COMMENT ON TABLE synthetic_agents IS 'Agentes sintéticos generados por el pipeline de población';
+COMMENT ON COLUMN synthetic_agents.backbone_key IS 'Referencia a la fila del backbone usada para generar este agente';
+
+-- -----------------------------------------------------------------------------
+-- 3. SURVEY_DEFINITIONS - Definiciones de encuestas
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS survey_definitions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    
+    -- Identificación
+    name VARCHAR(200) NOT NULL,
+    slug VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    
+    -- Segmentación objetivo
+    segment JSONB DEFAULT '{}',
+    -- Ejemplo: {"region_codes": ["CL-13"], "age_groups": ["adult"], "income_deciles": [1,2,3]}
+    
+    -- Preguntas
+    questions JSONB NOT NULL DEFAULT '[]',
+    -- Ejemplo: [{"id": "q1", "type": "single_choice", "text": "...", "options": [...]}]
+    
+    -- Configuración
+    config JSONB DEFAULT '{}',
+    -- Ejemplo: {"sample_size": 1000, "confidence_level": 0.95}
+    
+    -- Muestra (tamaño de muestra objetivo)
+    sample_size INTEGER,
+    
+    -- Estado
+    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'completed', 'archived')),
+    
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    published_at TIMESTAMPTZ,  -- Fecha de publicación (null si está en draft)
+    created_by UUID,  -- Referencia a auth.users si se usa auth
+    updated_by UUID,  -- Referencia a auth.users si se usa auth
+    
+    -- Metadatos
+    metadata JSONB DEFAULT '{}'
+);
+
+-- Índices
+CREATE INDEX IF NOT EXISTS idx_surveys_slug ON survey_definitions(slug);
+CREATE INDEX IF NOT EXISTS idx_surveys_status ON survey_definitions(status);
+CREATE INDEX IF NOT EXISTS idx_surveys_segment ON survey_definitions USING GIN(segment);
+
+-- Comentarios
+COMMENT ON TABLE survey_definitions IS 'Definiciones de encuestas sintéticas';
+COMMENT ON COLUMN survey_definitions.questions IS 'Array de preguntas en formato JSON';
+COMMENT ON COLUMN survey_definitions.segment IS 'Criterios de segmentación para selección de agentes';
+
+-- -----------------------------------------------------------------------------
+-- 4. SURVEY_RUNS - Ejecuciones de encuestas
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS survey_runs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    
+    -- Referencias
+    survey_id UUID NOT NULL REFERENCES survey_definitions(id) ON DELETE CASCADE,
+    
+    -- Estado
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'paused', 'completed', 'failed')),
+    
+    -- Progreso
+    progress_percent INTEGER DEFAULT 0 CHECK (progress_percent >= 0 AND progress_percent <= 100),
+    current_batch INTEGER DEFAULT 0,
+    total_batches INTEGER DEFAULT 0,
+    
+    -- Muestra
+    sample_size_requested INTEGER NOT NULL,
+    sample_size_actual INTEGER DEFAULT 0,
+    agents_selected UUID[],  -- Array de IDs de agentes seleccionados
+    
+    -- Resultados agregados
+    results_summary JSONB DEFAULT '{}',
+    -- Ejemplo: {"total_responses": 950, "completion_rate": 0.95}
+    
+    -- Benchmarks comparados
+    benchmark_comparison_id UUID,
+    
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    
+    -- Error (si falla)
+    error_message TEXT,
+    
+    -- Metadatos
+    metadata JSONB DEFAULT '{}'
+);
+
+-- Índices
+CREATE INDEX IF NOT EXISTS idx_survey_runs_survey ON survey_runs(survey_id);
+CREATE INDEX IF NOT EXISTS idx_survey_runs_status ON survey_runs(status);
+
+-- Comentarios
+COMMENT ON TABLE survey_runs IS 'Ejecuciones individuales de encuestas';
+
+-- -----------------------------------------------------------------------------
+-- 5. SURVEY_RESPONSES - Respuestas individuales
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS survey_responses (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    
+    -- Referencias
+    survey_id UUID NOT NULL REFERENCES survey_definitions(id) ON DELETE CASCADE,
+    run_id UUID NOT NULL REFERENCES survey_runs(id) ON DELETE CASCADE,
+    agent_id UUID REFERENCES synthetic_agents(id),
+    
+    -- Respuesta
+    question_id VARCHAR(100) NOT NULL,
+    value JSONB NOT NULL,  -- Puede ser string, number, array, etc.
+    
+    -- Metadatos de la respuesta
+    confidence NUMERIC(3, 2) CHECK (confidence >= 0 AND confidence <= 1),
+    reasoning TEXT,  -- Razonamiento del agente (si aplica)
+    response_time_ms INTEGER,  -- Tiempo de respuesta
+    
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- Metadatos
+    metadata JSONB DEFAULT '{}'
+);
+
+-- Índices
+CREATE INDEX IF NOT EXISTS idx_responses_survey ON survey_responses(survey_id);
+CREATE INDEX IF NOT EXISTS idx_responses_run ON survey_responses(run_id);
+CREATE INDEX IF NOT EXISTS idx_responses_agent ON survey_responses(agent_id);
+CREATE INDEX IF NOT EXISTS idx_responses_question ON survey_responses(question_id);
+
+-- Comentarios
+COMMENT ON TABLE survey_responses IS 'Respuestas individuales de agentes a encuestas';
+
+-- -----------------------------------------------------------------------------
+-- 6. BENCHMARKS - Datos de referencia (CASEN, SUBTEL, etc.)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS benchmarks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    
+    -- Identificación
+    source VARCHAR(50) NOT NULL CHECK (source IN ('casen', 'subtel', 'cep', 'ine', 'custom')),
+    source_year INTEGER NOT NULL,
+    source_name VARCHAR(200),
+    description TEXT,
+    
+    -- Cobertura
+    coverage JSONB DEFAULT '{}',
+    -- Ejemplo: {"geographic": ["CL-13", "CL-05"], "temporal": {"start": "2022-01", "end": "2022-12"}}
+    
+    -- Indicadores
+    indicators JSONB NOT NULL DEFAULT '[]',
+    -- Ejemplo: [{"id": "income_median", "name": "Ingreso Mediano", "value": 650000, "unit": "CLP"}]
+    
+    -- Datos crudos (opcional)
+    raw_data JSONB,
+    
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- Metadatos
+    metadata JSONB DEFAULT '{}'
+);
+
+-- Índices
+CREATE INDEX IF NOT EXISTS idx_benchmarks_source ON benchmarks(source, source_year);
+CREATE INDEX IF NOT EXISTS idx_benchmarks_coverage ON benchmarks USING GIN(coverage);
+
+-- Comentarios
+COMMENT ON TABLE benchmarks IS 'Datos de referencia de fuentes oficiales (CASEN, SUBTEL, etc.)';
+
+-- -----------------------------------------------------------------------------
+-- 7. BENCHMARK_COMPARISONS - Comparaciones sintético vs benchmark
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS benchmark_comparisons (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    
+    -- Referencias
+    survey_id UUID REFERENCES survey_definitions(id),
+    run_id UUID REFERENCES survey_runs(id),
+    benchmark_id UUID NOT NULL REFERENCES benchmarks(id),
+    
+    -- Comparaciones
+    comparisons JSONB NOT NULL DEFAULT '[]',
+    -- Ejemplo: [{"indicator": "income_median", "benchmark_value": 650000, "synthetic_value": 645000, "gap": -0.007}]
+    
+    -- Resumen
+    summary JSONB DEFAULT '{}',
+    -- Ejemplo: {"total_indicators": 10, "matched_indicators": 8, "average_gap": 0.05}
+    
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- Metadatos
+    metadata JSONB DEFAULT '{}'
+);
+
+-- Índices
+CREATE INDEX IF NOT EXISTS idx_comparisons_survey ON benchmark_comparisons(survey_id);
+CREATE INDEX IF NOT EXISTS idx_comparisons_benchmark ON benchmark_comparisons(benchmark_id);
+
+-- Comentarios
+COMMENT ON TABLE benchmark_comparisons IS 'Comparaciones entre resultados sintéticos y benchmarks oficiales';
+
+-- -----------------------------------------------------------------------------
+-- 8. PIPELINE_RUNS - Registro de ejecuciones del pipeline
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    
+    -- Identificación
+    run_type VARCHAR(50) NOT NULL CHECK (run_type IN ('ingest', 'normalize', 'integrate', 'synthesize', 'validate', 'full')),
+    run_name VARCHAR(200),
+    
+    -- Estado
+    status VARCHAR(20) DEFAULT 'running' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+    
+    -- Progreso
+    steps_total INTEGER DEFAULT 0,
+    steps_completed INTEGER DEFAULT 0,
+    
+    -- Configuración
+    config JSONB DEFAULT '{}',
+    
+    -- Resultados
+    results JSONB DEFAULT '{}',
+    
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    started_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    
+    -- Error
+    error_message TEXT,
+    
+    -- Metadatos
+    metadata JSONB DEFAULT '{}'
+);
+
+-- Índices
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_type ON pipeline_runs(run_type);
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_status ON pipeline_runs(status);
+
+-- Comentarios
+COMMENT ON TABLE pipeline_runs IS 'Registro de ejecuciones del pipeline de datos';
+
+-- =============================================================================
+-- FUNCIONES AUXILIARES
+-- =============================================================================
+
+-- Función para actualizar updated_at automáticamente
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Triggers para updated_at
+DROP TRIGGER IF EXISTS update_territories_updated_at ON territories;
+CREATE TRIGGER update_territories_updated_at
+    BEFORE UPDATE ON territories
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_synthetic_agents_updated_at ON synthetic_agents;
+CREATE TRIGGER update_synthetic_agents_updated_at
+    BEFORE UPDATE ON synthetic_agents
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_survey_definitions_updated_at ON survey_definitions;
+CREATE TRIGGER update_survey_definitions_updated_at
+    BEFORE UPDATE ON survey_definitions
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_benchmarks_updated_at ON benchmarks;
+CREATE TRIGGER update_benchmarks_updated_at
+    BEFORE UPDATE ON benchmarks
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- =============================================================================
+-- VISTAS ÚTILES
+-- =============================================================================
+
+-- Vista de resumen por región
+CREATE OR REPLACE VIEW region_summary AS
+SELECT 
+    t.region_code,
+    t.region_name,
+    COUNT(DISTINCT t.comuna_code) AS comuna_count,
+    SUM(t.population_total) AS total_population,
+    COUNT(DISTINCT sa.id) AS agent_count
+FROM territories t
+LEFT JOIN synthetic_agents sa ON sa.territory_id = t.id
+GROUP BY t.region_code, t.region_name
+ORDER BY t.region_code;
+
+-- Vista de encuestas activas con progreso
+CREATE OR REPLACE VIEW active_surveys AS
+SELECT 
+    sd.id,
+    sd.name,
+    sd.slug,
+    sd.status,
+    COUNT(sr.id) AS run_count,
+    MAX(sr.created_at) AS last_run_at
+FROM survey_definitions sd
+LEFT JOIN survey_runs sr ON sr.survey_id = sd.id
+WHERE sd.status IN ('active', 'draft')
+GROUP BY sd.id, sd.name, sd.slug, sd.status;
+
+-- =============================================================================
+-- POLÍTICAS DE SEGURIDAD (RLS) - Opcional, para cuando se habilite auth
+-- =============================================================================
+
+-- Habilitar RLS en tablas
+ALTER TABLE territories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE synthetic_agents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE survey_definitions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE survey_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE survey_responses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE benchmarks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE benchmark_comparisons ENABLE ROW LEVEL SECURITY;
+
+-- Política por defecto: permitir lectura anónima
+DROP POLICY IF EXISTS "Allow anonymous read" ON territories;
+CREATE POLICY "Allow anonymous read" ON territories
+    FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow anonymous read" ON synthetic_agents;
+CREATE POLICY "Allow anonymous read" ON synthetic_agents
+    FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow anonymous read" ON survey_definitions;
+CREATE POLICY "Allow anonymous read" ON survey_definitions
+    FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow anonymous read" ON survey_runs;
+CREATE POLICY "Allow anonymous read" ON survey_runs
+    FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow anonymous read" ON survey_responses;
+CREATE POLICY "Allow anonymous read" ON survey_responses
+    FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow anonymous read" ON benchmarks;
+CREATE POLICY "Allow anonymous read" ON benchmarks
+    FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow anonymous read" ON benchmark_comparisons;
+CREATE POLICY "Allow anonymous read" ON benchmark_comparisons
+    FOR SELECT USING (true);
+
+-- =============================================================================
+-- DATOS INICIALES (Opcional)
+-- =============================================================================
+
+-- Insertar región Metropolitana como ejemplo
+INSERT INTO territories (region_code, region_name, comuna_code, comuna_name, code, name, level, population_total)
+VALUES 
+    ('CL-13', 'Metropolitana de Santiago', '13101', 'Santiago', '13101', 'Santiago', 'comuna', 404495)
+ON CONFLICT (comuna_code) DO NOTHING;
+
+-- =============================================================================
+-- FIN DEL SCHEMA
+-- =============================================================================
+
+=== SAMPLE RECENT MIGRATIONS ===
+=== migrations/20250401_add_cadem_socioeconomic_classification.sql ===
+-- Migration: Add CADEM Socioeconomic Classification (ABC1/C2/C3/D/E)
+-- Date: 2026-04-01
+-- Purpose: Add socioeconomic classification compatible with CADEM standards
+
+-- ============================================
+-- 1. Add new column for CADEM socioeconomic classification
+-- ============================================
+
+ALTER TABLE synthetic_agents
+ADD COLUMN IF NOT EXISTS cadem_socioeconomic_level VARCHAR(10)
+CHECK (cadem_socioeconomic_level IN ('ABC1', 'C2', 'C3', 'D', 'E', NULL));
+
+-- Add comment for documentation
+COMMENT ON COLUMN synthetic_agents.cadem_socioeconomic_level IS 
+'CADEM-compatible socioeconomic classification: ABC1 (high), C2 (upper-middle), C3 (middle), D (lower-middle), E (low). Mapped from income_decile.';
+
+-- ============================================
+-- 2. Create function to map income_decile to CADEM classification
+-- ============================================
+
+CREATE OR REPLACE FUNCTION map_income_decile_to_cadem(income_decile INTEGER)
+RETURNS VARCHAR(10) AS $$
+BEGIN
+    -- CADEM standard mapping based on Chilean socioeconomic classification
+    -- Source: CADEM methodology and Chilean market research standards
+    CASE
+        WHEN income_decile >= 9 THEN RETURN 'ABC1';  -- Deciles 9-10: High income
+        WHEN income_decile >= 7 THEN RETURN 'C2';    -- Deciles 7-8: Upper-middle
+        WHEN income_decile >= 5 THEN RETURN 'C3';    -- Deciles 5-6: Middle
+        WHEN income_decile >= 3 THEN RETURN 'D';     -- Deciles 3-4: Lower-middle
+        WHEN income_decile >= 1 THEN RETURN 'E';     -- Deciles 1-2: Low
+        ELSE RETURN NULL;
+    END CASE;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+COMMENT ON FUNCTION map_income_decile_to_cadem IS 
+'Maps income decile (1-10) to CADEM socioeconomic classification (ABC1, C2, C3, D, E)';
+
+-- ============================================
+-- 3. Update existing records with CADEM classification
+-- ============================================
+
+UPDATE synthetic_agents
+SET cadem_socioeconomic_level = map_income_decile_to_cadem(income_decile)
+WHERE income_decile IS NOT NULL
+  AND (cadem_socioeconomic_level IS NULL OR cadem_socioeconomic_level = '');
+
+-- ============================================
+-- 4. Create trigger to auto-populate cadem_socioeconomic_level on insert/update
+-- ============================================
+
+CREATE OR REPLACE FUNCTION update_cadem_socioeconomic_level()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Auto-populate cadem_socioeconomic_level based on income_decile
+    IF NEW.income_decile IS NOT NULL THEN
+        NEW.cadem_socioeconomic_level := map_income_decile_to_cadem(NEW.income_decile);
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Drop existing trigger if exists
+DROP TRIGGER IF EXISTS trg_update_cadem_socioeconomic ON synthetic_agents;
+
+-- Create trigger
+CREATE TRIGGER trg_update_cadem_socioeconomic
+    BEFORE INSERT OR UPDATE OF income_decile ON synthetic_agents
+    FOR EACH ROW
+    EXECUTE FUNCTION update_cadem_socioeconomic_level();
+
+-- ============================================
+-- 5. Create index for efficient filtering
+-- ============================================
+
+CREATE INDEX IF NOT EXISTS idx_agents_cadem_socioeconomic 
+ON synthetic_agents(cadem_socioeconomic_level);
+
+-- ============================================
+-- 6. Create view for demographic analysis with CADEM classification
+-- ============================================
+
+CREATE OR REPLACE VIEW v_agent_demographics_cadem AS
+SELECT 
+    sa.id,
+    sa.agent_id,
+    sa.sex,
+    sa.age,
+    sa.age_group,
+    sa.region_code,
+    sa.comuna_code,
+    sa.income_decile,
+    sa.cadem_socioeconomic_level,
+    sa.education_level,
+    sa.employment_status,
+    sa.urbanicity,
+    -- Additional calculated fields for analysis
+    CASE 
+        WHEN sa.age BETWEEN 18 AND 29 THEN '18-29'
+        WHEN sa.age BETWEEN 30 AND 49 THEN '30-49'
+        WHEN sa.age BETWEEN 50 AND 69 THEN '50-69'
+        WHEN sa.age >= 70 THEN '70+'
+        ELSE 'Under 18'
+    END AS cadem_age_group,
+    -- Regional grouping for CADEM analysis
+    CASE 
+        WHEN sa.region_code = 'RM' THEN 'Metropolitana'
+        WHEN sa.region_code IN ('AP', 'TA', 'AN', 'AT') THEN 'Norte'
+        WHEN sa.region_code IN ('CO', 'VA', 'LI', 'ML', 'NB') THEN 'Centro'
+        WHEN sa.region_code IN ('BI', 'AR', 'LR', 'LL', 'AI', 'MA') THEN 'Sur'
+        ELSE 'Other'
+    END AS cadem_region_group
+FROM synthetic_agents sa;
+
+COMMENT ON VIEW v_agent_demographics_cadem IS 
+'View of agent demographics with CADEM-compatible classifications for socioeconomic level, age groups, and regional groupings';
+
+-- ============================================
+-- 7. Create statistics view for CADEM distribution
+-- ============================================
+
+CREATE OR REPLACE VIEW v_cadem_distribution_stats AS
+SELECT 
+    cadem_socioeconomic_level,
+    COUNT(*) AS agent_count,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) AS percentage,
+    AVG(income_decile) AS avg_income_decile,
+    MIN(income_decile) AS min_income_decile,
+    MAX(income_decile) AS max_income_decile
+FROM synthetic_agents
+WHERE cadem_socioeconomic_level IS NOT NULL
+GROUP BY cadem_socioeconomic_level
+ORDER BY 
+    CASE cadem_socioeconomic_level
+        WHEN 'ABC1' THEN 1
+        WHEN 'C2' THEN 2
+        WHEN 'C3' THEN 3
+        WHEN 'D' THEN 4
+        WHEN 'E' THEN 5
+    END;
+
+COMMENT ON VIEW v_cadem_distribution_stats IS 
+'Statistics of CADEM socioeconomic distribution across all agents';
+
+-- ============================================
+-- 8. Verification query
+-- ============================================
+
+-- Show distribution after migration
+SELECT 
+    'CADEM Socioeconomic Distribution' AS metric,
+    cadem_socioeconomic_level AS level,
+    COUNT(*) AS count,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) AS percentage
+FROM synthetic_agents
+WHERE cadem_socioeconomic_level IS NOT NULL
+GROUP BY cadem_socioeconomic_level
+ORDER BY 
+    CASE cadem_socioeconomic_level
+        WHEN 'ABC1' THEN 1
+        WHEN 'C2' THEN 2
+        WHEN 'C3' THEN 3
+        WHEN 'D' THEN 4
+        WHEN 'E' THEN 5
+    END;
+
+=== migrations/20250401_create_user_settings_table.sql ===
+-- Migration: Create user_settings table for storing user preferences
+-- Date: 2025-04-01
+
+-- Create user_settings table
+CREATE TABLE IF NOT EXISTS user_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+
+    -- Apariencia
+    dark_mode BOOLEAN DEFAULT true,
+    high_contrast BOOLEAN DEFAULT false,
+    animations BOOLEAN DEFAULT true,
+
+    -- Mapa y visualización
+    quality_mode BOOLEAN DEFAULT true,
+    agent_density VARCHAR(10) DEFAULT 'medium' CHECK (agent_density IN ('low', 'medium', 'high')),
+    show_labels BOOLEAN DEFAULT true,
+
+    -- Notificaciones
+    email_notifications BOOLEAN DEFAULT true,
+    survey_alerts BOOLEAN DEFAULT false,
+
+    -- Datos y privacidad
+    data_cache BOOLEAN DEFAULT true,
+    share_analytics BOOLEAN DEFAULT true,
+
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+    -- Constraint: one settings row per user
+    CONSTRAINT unique_user_settings UNIQUE (user_id)
+);
+
+-- Create index for faster lookups
+CREATE INDEX IF NOT EXISTS idx_user_settings_user_id ON user_settings(user_id);
+
+-- Enable RLS
+ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policy: Users can only read their own settings
+CREATE POLICY "Users can read own settings"
+    ON user_settings
+    FOR SELECT
+    USING (auth.uid() = user_id);
+
+-- RLS Policy: Users can only update their own settings
+CREATE POLICY "Users can update own settings"
+    ON user_settings
+    FOR UPDATE
+    USING (auth.uid() = user_id);
+
+-- RLS Policy: Users can only insert their own settings
+CREATE POLICY "Users can insert own settings"
+    ON user_settings
+    FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+-- RLS Policy: Users can only delete their own settings
+CREATE POLICY "Users can delete own settings"
+    ON user_settings
+    FOR DELETE
+    USING (auth.uid() = user_id);
+
+-- Function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_user_settings_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to automatically update updated_at
+DROP TRIGGER IF EXISTS update_user_settings_timestamp ON user_settings;
+CREATE TRIGGER update_user_settings_timestamp
+    BEFORE UPDATE ON user_settings
+    FOR EACH ROW
+    EXECUTE FUNCTION update_user_settings_updated_at();
+
+-- Grant permissions to authenticated users
+GRANT SELECT, INSERT, UPDATE, DELETE ON user_settings TO authenticated;
+
+=== migrations/20250401_update_cadem_socioeconomic_v2.sql ===
+-- Migración para actualizar cadem_socioeconomic_level con algoritmo ajustado
+-- ABC1 ahora solo para decil 10 + educación universitaria/postgrado
+-- Esto reduce ABC1 de ~15% a ~8-10%, más cercano a la realidad chilena
+
+-- Primero, resetear todos los valores
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = NULL;
+
+-- Actualizar ABC1: Decil 10 + educación universitaria/postgrado
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'ABC1'
+WHERE income_decile = 10 
+  AND education_level IN ('university', 'postgraduate');
+
+-- Actualizar C2: Decil 10 sin educación universitaria + Decil 9
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'C2'
+WHERE cadem_socioeconomic_level IS NULL
+  AND (
+    (income_decile = 10 AND education_level NOT IN ('university', 'postgraduate'))
+    OR income_decile = 9
+    OR (income_decile IN (7, 8) AND education_level IN ('university', 'postgraduate'))
+  );
+
+-- Actualizar C3: Deciles 7-8 sin educación universitaria + Deciles 5-6
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'C3'
+WHERE cadem_socioeconomic_level IS NULL
+  AND (
+    (income_decile IN (7, 8) AND education_level NOT IN ('university', 'postgraduate'))
+    OR income_decile IN (5, 6)
+  );
+
+-- Actualizar D: Deciles 3-4
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'D'
+WHERE cadem_socioeconomic_level IS NULL
+  AND income_decile IN (3, 4);
+
+-- Actualizar E: Deciles 1-2
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'E'
+WHERE cadem_socioeconomic_level IS NULL
+  AND income_decile IN (1, 2);
+
+-- Para agentes sin income_decile, usar educación como proxy
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'C2'
+WHERE cadem_socioeconomic_level IS NULL
+  AND income_decile IS NULL
+  AND education_level IN ('university', 'postgraduate');
+
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'C3'
+WHERE cadem_socioeconomic_level IS NULL
+  AND income_decile IS NULL
+  AND education_level = 'technical';
+
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'D'
+WHERE cadem_socioeconomic_level IS NULL
+  AND income_decile IS NULL
+  AND education_level = 'secondary';
+
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'E'
+WHERE cadem_socioeconomic_level IS NULL
+  AND income_decile IS NULL
+  AND education_level IN ('primary', 'none');
+
+-- Default para cualquier caso restante
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'D'
+WHERE cadem_socioeconomic_level IS NULL;
+
+-- Verificar distribución
+SELECT 
+  'CADEM Socioeconomic Distribution (V2 - Ajustado)' as metric,
+  cadem_socioeconomic_level as level,
+  COUNT(*) as count,
+  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as percentage
+FROM synthetic_agents
+GROUP BY cadem_socioeconomic_level
+ORDER BY 
+  CASE cadem_socioeconomic_level
+    WHEN 'ABC1' THEN 1
+    WHEN 'C2' THEN 2
+    WHEN 'C3' THEN 3
+    WHEN 'D' THEN 4
+    WHEN 'E' THEN 5
+  END;
+
+=== migrations/20250401_update_cadem_socioeconomic_v3.sql ===
+-- Migración V3: Ajustar ABC1 a rango 8-12%
+-- El V2 fue demasiado restrictivo (0.88%), esta versión expande ABC1
+
+-- Primero, resetear todos los valores
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = NULL;
+
+-- ABC1: Decil 10 (todos) + Decil 9 con educación universitaria/postgrado
+-- Esto debería dar ~8-12% de ABC1
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'ABC1'
+WHERE income_decile = 10 
+   OR (income_decile = 9 AND education_level IN ('university', 'postgraduate'));
+
+-- C2: Decil 9 (sin educación univ) + Deciles 7-8 con educación universitaria
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'C2'
+WHERE cadem_socioeconomic_level IS NULL
+  AND (
+    income_decile = 9
+    OR (income_decile IN (7, 8) AND education_level IN ('university', 'postgraduate'))
+  );
+
+-- C3: Deciles 7-8 (sin educación univ) + Deciles 5-6
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'C3'
+WHERE cadem_socioeconomic_level IS NULL
+  AND (
+    income_decile IN (7, 8)
+    OR income_decile IN (5, 6)
+  );
+
+-- D: Deciles 3-4
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'D'
+WHERE cadem_socioeconomic_level IS NULL
+  AND income_decile IN (3, 4);
+
+-- E: Deciles 1-2
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'E'
+WHERE cadem_socioeconomic_level IS NULL
+  AND income_decile IN (1, 2);
+
+-- Para agentes sin income_decile, usar educación como proxy
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'ABC1'
+WHERE cadem_socioeconomic_level IS NULL
+  AND income_decile IS NULL
+  AND education_level = 'postgraduate';
+
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'C2'
+WHERE cadem_socioeconomic_level IS NULL
+  AND income_decile IS NULL
+  AND education_level = 'university';
+
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'C3'
+WHERE cadem_socioeconomic_level IS NULL
+  AND income_decile IS NULL
+  AND education_level = 'technical';
+
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'D'
+WHERE cadem_socioeconomic_level IS NULL
+  AND income_decile IS NULL
+  AND education_level = 'secondary';
+
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'E'
+WHERE cadem_socioeconomic_level IS NULL
+  AND income_decile IS NULL
+  AND education_level IN ('primary', 'none');
+
+-- Default para cualquier caso restante
+UPDATE synthetic_agents 
+SET cadem_socioeconomic_level = 'D'
+WHERE cadem_socioeconomic_level IS NULL;
+
+-- Verificar distribución
+SELECT 
+  'CADEM Socioeconomic Distribution (V3 - Ajustado)' as metric,
+  cadem_socioeconomic_level as level,
+  COUNT(*) as count,
+  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as percentage
+FROM synthetic_agents
+GROUP BY cadem_socioeconomic_level
+ORDER BY 
+  CASE cadem_socioeconomic_level
+    WHEN 'ABC1' THEN 1
+    WHEN 'C2' THEN 2
+    WHEN 'C3' THEN 3
+    WHEN 'D' THEN 4
+    WHEN 'E' THEN 5
+  END;
+
+=== migrations/20260326_add_engine_mode_to_surveys.sql ===
+-- Migration: Add engine mode and persistence configuration to surveys
+-- CADEM v1.1 Integration
+-- Date: 2026-03-26
+
+-- ===========================================
+-- 1. Extend survey_definitions table
+-- ===========================================
+
+-- Add engine_mode column (legacy | cadem)
+ALTER TABLE survey_definitions
+ADD COLUMN IF NOT EXISTS engine_mode TEXT DEFAULT 'legacy';
+
+-- Add persist_state column (boolean)
+ALTER TABLE survey_definitions
+ADD COLUMN IF NOT EXISTS persist_state BOOLEAN DEFAULT false;
+
+-- Add comment for documentation
+COMMENT ON COLUMN survey_definitions.engine_mode IS 'Survey engine mode: legacy (heuristic) or cadem (opinion engine v1.1)';
+COMMENT ON COLUMN survey_definitions.persist_state IS 'Whether to persist agent state to database (only applicable for cadem mode)';
+
+-- ===========================================
+-- 2. Extend survey_runs table
+-- ===========================================
+
+-- Add engine metadata columns for traceability
+ALTER TABLE survey_runs
+ADD COLUMN IF NOT EXISTS engine_mode TEXT,
+ADD COLUMN IF NOT EXISTS engine_version TEXT,
+ADD COLUMN IF NOT EXISTS persist_state BOOLEAN DEFAULT false;
+
+-- Add comments
+COMMENT ON COLUMN survey_runs.engine_mode IS 'Engine mode used for this run: legacy or cadem';
+COMMENT ON COLUMN survey_runs.engine_version IS 'Version of the engine used (e.g., legacy-v1, cadem-v1.1)';
+COMMENT ON COLUMN survey_runs.persist_state IS 'Whether agent state was persisted during this run';
+
+-- ===========================================
+-- 3. Create index for filtering by engine mode
+-- ===========================================
+
+CREATE INDEX IF NOT EXISTS idx_survey_definitions_engine_mode
+ON survey_definitions(engine_mode);
+
+CREATE INDEX IF NOT EXISTS idx_survey_runs_engine_mode
+ON survey_runs(engine_mode);
+
+-- ===========================================
+-- 4. Validation
+-- ===========================================
+
+DO $$
+BEGIN
+    -- Verify columns were added
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'survey_definitions'
+        AND column_name = 'engine_mode'
+    ) THEN
+        RAISE NOTICE '✅ survey_definitions.engine_mode column added successfully';
+    ELSE
+        RAISE EXCEPTION '❌ Failed to add survey_definitions.engine_mode column';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'survey_definitions'
+        AND column_name = 'persist_state'
+    ) THEN
+        RAISE NOTICE '✅ survey_definitions.persist_state column added successfully';
+    ELSE
+        RAISE EXCEPTION '❌ Failed to add survey_definitions.persist_state column';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'survey_runs'
+        AND column_name = 'engine_mode'
+    ) THEN
+        RAISE NOTICE '✅ survey_runs.engine_mode column added successfully';
+    ELSE
+        RAISE EXCEPTION '❌ Failed to add survey_runs.engine_mode column';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'survey_runs'
+        AND column_name = 'engine_version'
+    ) THEN
+        RAISE NOTICE '✅ survey_runs.engine_version column added successfully';
+    ELSE
+        RAISE EXCEPTION '❌ Failed to add survey_runs.engine_version column';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'survey_runs'
+        AND column_name = 'persist_state'
+    ) THEN
+        RAISE NOTICE '✅ survey_runs.persist_state column added successfully';
+    ELSE
+        RAISE EXCEPTION '❌ Failed to add survey_runs.persist_state column';
+    END IF;
+
+    RAISE NOTICE '✅ Migration completed successfully - CADEM v1.1 engine configuration ready';
+END $$;
+
+=== migrations/20260326_create_agent_panel_state.sql ===
+-- Migration: Create agent_panel_state table
+-- CADEM Opinion Engine v1.1 - Persistencia de estado del panel
+-- CORREGIDO: Agregada FK a synthetic_agents(agent_id)
+
+CREATE TABLE IF NOT EXISTS agent_panel_state (
+  agent_id TEXT PRIMARY KEY REFERENCES synthetic_agents(agent_id) ON DELETE CASCADE,
+  eligible_web BOOLEAN DEFAULT true,
+  participation_propensity FLOAT DEFAULT 0.5,
+  panel_fatigue FLOAT DEFAULT 0.0,
+  quality_score FLOAT DEFAULT 0.8,
+  cooldown_until TIMESTAMP WITH TIME ZONE,
+  invites_30d INTEGER DEFAULT 0,
+  completions_30d INTEGER DEFAULT 0,
+  last_invited_at TIMESTAMP WITH TIME ZONE,
+  last_completed_at TIMESTAMP WITH TIME ZONE,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+  -- Constraints
+  CONSTRAINT chk_propensity CHECK (participation_propensity >= 0 AND participation_propensity <= 1),
+  CONSTRAINT chk_fatigue CHECK (panel_fatigue >= 0 AND panel_fatigue <= 1),
+  CONSTRAINT chk_quality CHECK (quality_score >= 0 AND quality_score <= 1)
+);
+
+-- Indexes for common queries
+CREATE INDEX IF NOT EXISTS idx_panel_eligible ON agent_panel_state(eligible_web);
+CREATE INDEX IF NOT EXISTS idx_panel_fatigue ON agent_panel_state(panel_fatigue);
+CREATE INDEX IF NOT EXISTS idx_panel_updated ON agent_panel_state(updated_at);
+
+-- Enable RLS
+ALTER TABLE agent_panel_state ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Allow all operations for authenticated users
+CREATE POLICY "Allow all operations for authenticated users"
+  ON agent_panel_state
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+
+-- Policy: Allow read for anonymous users
+CREATE POLICY "Allow read for anonymous users"
+  ON agent_panel_state
+  FOR SELECT
+  TO anon
+  USING (true);
+
+=== migrations/20260326_create_agent_topic_state.sql ===
+-- Migration: Create agent_topic_state table
+-- CADEM Opinion Engine v1.1 - Persistencia de estados de topic
+-- CORREGIDO: Agregada FK a synthetic_agents(agent_id)
+
+CREATE TABLE IF NOT EXISTS agent_topic_state (
+  agent_id TEXT NOT NULL REFERENCES synthetic_agents(agent_id) ON DELETE CASCADE,
+  topic TEXT NOT NULL,
+  score FLOAT NOT NULL,
+  confidence FLOAT NOT NULL DEFAULT 0.5,
+  salience FLOAT NOT NULL DEFAULT 0.5,
+  volatility FLOAT NOT NULL DEFAULT 0.3,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+  PRIMARY KEY (agent_id, topic),
+
+  -- Constraints
+  CONSTRAINT chk_score CHECK (score >= -1 AND score <= 1),
+  CONSTRAINT chk_confidence CHECK (confidence >= 0 AND confidence <= 1),
+  CONSTRAINT chk_salience CHECK (salience >= 0 AND salience <= 1),
+  CONSTRAINT chk_volatility CHECK (volatility >= 0 AND volatility <= 1)
+);
+
+-- Indexes for common queries
+CREATE INDEX IF NOT EXISTS idx_agent_topic_agent ON agent_topic_state(agent_id);
+CREATE INDEX IF NOT EXISTS idx_agent_topic_topic ON agent_topic_state(topic);
+CREATE INDEX IF NOT EXISTS idx_agent_topic_updated ON agent_topic_state(updated_at);
+
+-- Enable RLS
+ALTER TABLE agent_topic_state ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Allow all operations for authenticated users
+CREATE POLICY "Allow all operations for authenticated users"
+  ON agent_topic_state
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+
+-- Policy: Allow read for anonymous users
+CREATE POLICY "Allow read for anonymous users"
+  ON agent_topic_state
+  FOR SELECT
+  TO anon
+  USING (true);
+
+=== migrations/20260328_create_event_impact_logs.sql ===
+-- Migration: Create event_impact_logs table for CADEM v1.2 Event System
+-- Date: 2026-03-28
+-- Description: Stores logs of event impacts on agent opinion states
+
+-- ============================================================================
+-- TABLE: event_impact_logs
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS event_impact_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id UUID NOT NULL,
+    agent_id TEXT NOT NULL,
+    affected_topics JSONB NOT NULL DEFAULT '[]'::jsonb,
+    previous_scores JSONB NOT NULL DEFAULT '{}'::jsonb,
+    new_scores JSONB NOT NULL DEFAULT '{}'::jsonb,
+    summary TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ============================================================================
+-- FOREIGN KEY CONSTRAINTS
+-- ============================================================================
+
+-- Drop existing constraints if any (for idempotency)
+ALTER TABLE event_impact_logs
+    DROP CONSTRAINT IF EXISTS fk_event_impact_logs_event,
+    DROP CONSTRAINT IF EXISTS fk_event_impact_logs_agent;
+
+-- Add foreign key to weekly_events
+ALTER TABLE event_impact_logs
+    ADD CONSTRAINT fk_event_impact_logs_event
+        FOREIGN KEY (event_id) 
+        REFERENCES weekly_events(id) 
+        ON DELETE CASCADE;
+
+-- Add foreign key to synthetic_agents
+ALTER TABLE event_impact_logs
+    ADD CONSTRAINT fk_event_impact_logs_agent
+        FOREIGN KEY (agent_id) 
+        REFERENCES synthetic_agents(agent_id) 
+        ON DELETE CASCADE;
+
+-- ============================================================================
+-- INDEXES
+-- ============================================================================
+
+-- Index for event_id lookups (most common query)
+CREATE INDEX IF NOT EXISTS idx_event_impact_logs_event_id 
+    ON event_impact_logs(event_id);
+
+-- Index for agent_id lookups
+CREATE INDEX IF NOT EXISTS idx_event_impact_logs_agent_id 
+    ON event_impact_logs(agent_id);
+
+-- Index for created_at (time-based queries)
+CREATE INDEX IF NOT EXISTS idx_event_impact_logs_created_at 
+    ON event_impact_logs(created_at DESC);
+
+-- Composite index for event + agent lookups
+CREATE INDEX IF NOT EXISTS idx_event_impact_logs_event_agent 
+    ON event_impact_logs(event_id, agent_id);
+
+-- Index for querying by affected topics (using GIN for JSONB)
+CREATE INDEX IF NOT EXISTS idx_event_impact_logs_affected_topics 
+    ON event_impact_logs USING GIN(affected_topics);
+
+-- ============================================================================
+-- COMMENTS
+-- ============================================================================
+
+COMMENT ON TABLE event_impact_logs IS 'Logs of event impacts on agent opinion states in CADEM v1.2';
+COMMENT ON COLUMN event_impact_logs.event_id IS 'Reference to the weekly_event that caused the impact';
+COMMENT ON COLUMN event_impact_logs.agent_id IS 'Reference to the synthetic_agent affected';
+COMMENT ON COLUMN event_impact_logs.affected_topics IS 'JSON array of topic keys that were affected';
+COMMENT ON COLUMN event_impact_logs.previous_scores IS 'JSON object with topic scores before the event';
+COMMENT ON COLUMN event_impact_logs.new_scores IS 'JSON object with topic scores after the event';
+COMMENT ON COLUMN event_impact_logs.summary IS 'Human-readable summary of the impact';
+
+-- ============================================================================
+-- ROW LEVEL SECURITY (RLS)
+-- ============================================================================
+
+-- Enable RLS
+ALTER TABLE event_impact_logs ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if any
+DROP POLICY IF EXISTS "Allow read access to all users" ON event_impact_logs;
+DROP POLICY IF EXISTS "Allow insert to authenticated users" ON event_impact_logs;
+DROP POLICY IF EXISTS "Allow update to authenticated users" ON event_impact_logs;
+DROP POLICY IF EXISTS "Allow delete to authenticated users" ON event_impact_logs;
+
+-- Policy: Allow read access to all users (impact logs are audit data)
+CREATE POLICY "Allow read access to all users"
+    ON event_impact_logs
+    FOR SELECT
+    USING (true);
+
+-- Policy: Allow insert to authenticated users
+CREATE POLICY "Allow insert to authenticated users"
+    ON event_impact_logs
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (true);
+
+-- Policy: Allow update to authenticated users (rarely needed, but allowed)
+CREATE POLICY "Allow update to authenticated users"
+    ON event_impact_logs
+    FOR UPDATE
+    TO authenticated
+    USING (true)
+    WITH CHECK (true);
+
+-- Policy: Allow delete to authenticated users
+CREATE POLICY "Allow delete to authenticated users"
+    ON event_impact_logs
+    FOR DELETE
+    TO authenticated
+    USING (true);
+
+-- ============================================================================
+-- VIEWS (Optional but useful)
+-- ============================================================================
+
+-- View: Event impact summary by event
+DROP VIEW IF EXISTS v_event_impact_summary;
+CREATE VIEW v_event_impact_summary AS
+SELECT 
+    e.id AS event_id,
+    e.week_key,
+    e.title,
+    e.topic AS category,
+    e.sentiment,
+    COUNT(l.id) AS total_agents_affected,
+    COUNT(DISTINCT l.agent_id) AS unique_agents_affected,
+    MIN(l.created_at) AS first_impact_at,
+    MAX(l.created_at) AS last_impact_at
+FROM weekly_events e
+LEFT JOIN event_impact_logs l ON e.id = l.event_id
+GROUP BY e.id, e.week_key, e.title, e.topic, e.sentiment;
+
+COMMENT ON VIEW v_event_impact_summary IS 'Summary of event impacts aggregated by event';
+
+-- View: Agent impact history
+DROP VIEW IF EXISTS v_agent_impact_history;
+CREATE VIEW v_agent_impact_history AS
+SELECT 
+    l.agent_id,
+    l.event_id,
+    e.week_key,
+    e.title AS event_title,
+    e.topic AS event_category,
+    l.affected_topics,
+    l.previous_scores,
+    l.new_scores,
+    l.summary,
+    l.created_at
+FROM event_impact_logs l
+JOIN weekly_events e ON l.event_id = e.id
+ORDER BY l.created_at DESC;
+
+COMMENT ON VIEW v_agent_impact_history IS 'History of event impacts per agent';
+
+-- ============================================================================
+-- IDEMPOTENCY CHECK
+-- ============================================================================
+
+DO $$
+BEGIN
+    RAISE NOTICE 'event_impact_logs table created successfully';
+END $$;
+
+=== migrations/20260328_create_weekly_events.sql ===
+-- Migration: Create weekly_events table for CADEM v1.2 Event System
+-- Date: 2026-03-28
+-- Description: Stores weekly events that affect agent opinion states
+
+-- ============================================================================
+-- TABLE: weekly_events
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS weekly_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    week_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT,
+    topic TEXT NOT NULL,
+    sentiment FLOAT NOT NULL,
+    intensity FLOAT NOT NULL,
+    salience FLOAT NOT NULL,
+    severity TEXT,
+    target_entities JSONB DEFAULT '[]'::jsonb,
+    affected_segments JSONB DEFAULT '[]'::jsonb,
+    source_count INTEGER DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_by TEXT
+);
+
+-- ============================================================================
+-- CONSTRAINTS
+-- ============================================================================
+
+-- Check constraints for valid ranges
+ALTER TABLE weekly_events
+    DROP CONSTRAINT IF EXISTS check_sentiment_range,
+    DROP CONSTRAINT IF EXISTS check_intensity_range,
+    DROP CONSTRAINT IF EXISTS check_salience_range,
+    DROP CONSTRAINT IF EXISTS check_severity_values;
+
+ALTER TABLE weekly_events
+    ADD CONSTRAINT check_sentiment_range 
+        CHECK (sentiment >= -1 AND sentiment <= 1),
+    ADD CONSTRAINT check_intensity_range 
+        CHECK (intensity >= 0 AND intensity <= 1),
+    ADD CONSTRAINT check_salience_range 
+        CHECK (salience >= 0 AND salience <= 1),
+    ADD CONSTRAINT check_severity_values 
+        CHECK (severity IN ('minor', 'moderate', 'major', 'critical'));
+
+-- ============================================================================
+-- INDEXES
+-- ============================================================================
+
+-- Index for week_key lookups (most common query)
+CREATE INDEX IF NOT EXISTS idx_weekly_events_week_key 
+    ON weekly_events(week_key);
+
+-- Index for topic filtering
+CREATE INDEX IF NOT EXISTS idx_weekly_events_topic 
+    ON weekly_events(topic);
+
+-- Index for created_at (time-based queries)
+CREATE INDEX IF NOT EXISTS idx_weekly_events_created_at 
+    ON weekly_events(created_at DESC);
+
+-- Index for severity filtering
+CREATE INDEX IF NOT EXISTS idx_weekly_events_severity 
+    ON weekly_events(severity);
+
+-- Composite index for common query patterns
+CREATE INDEX IF NOT EXISTS idx_weekly_events_week_topic 
+    ON weekly_events(week_key, topic);
+
+-- ============================================================================
+-- COMMENTS
+-- ============================================================================
+
+COMMENT ON TABLE weekly_events IS 'Weekly events that affect agent opinion states in CADEM v1.2';
+COMMENT ON COLUMN weekly_events.week_key IS 'Week identifier in format YYYY-WNN (e.g., 2026-W13)';
+COMMENT ON COLUMN weekly_events.sentiment IS 'Event sentiment from -1 (very negative) to 1 (very positive)';
+COMMENT ON COLUMN weekly_events.intensity IS 'Event intensity from 0 to 1';
+COMMENT ON COLUMN weekly_events.salience IS 'Event salience/relevance from 0 to 1';
+COMMENT ON COLUMN weekly_events.severity IS 'Impact severity: minor, moderate, major, critical';
+COMMENT ON COLUMN weekly_events.target_entities IS 'JSON array of entities affected by the event';
+COMMENT ON COLUMN weekly_events.affected_segments IS 'JSON array of demographic segments affected';
+
+-- ============================================================================
+-- ROW LEVEL SECURITY (RLS)
+-- ============================================================================
+
+-- Enable RLS
+ALTER TABLE weekly_events ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if any
+DROP POLICY IF EXISTS "Allow read access to all users" ON weekly_events;
+DROP POLICY IF EXISTS "Allow insert to authenticated users" ON weekly_events;
+DROP POLICY IF EXISTS "Allow update to authenticated users" ON weekly_events;
+DROP POLICY IF EXISTS "Allow delete to authenticated users" ON weekly_events;
+
+-- Policy: Allow read access to all users (events are public data)
+CREATE POLICY "Allow read access to all users"
+    ON weekly_events
+    FOR SELECT
+    USING (true);
+
+-- Policy: Allow insert to authenticated users
+CREATE POLICY "Allow insert to authenticated users"
+    ON weekly_events
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (true);
+
+-- Policy: Allow update to authenticated users
+CREATE POLICY "Allow update to authenticated users"
+    ON weekly_events
+    FOR UPDATE
+    TO authenticated
+    USING (true)
+    WITH CHECK (true);
+
+-- Policy: Allow delete to authenticated users
+CREATE POLICY "Allow delete to authenticated users"
+    ON weekly_events
+    FOR DELETE
+    TO authenticated
+    USING (true);
+
+-- ============================================================================
+-- IDEMPOTENCY CHECK
+-- ============================================================================
+
+DO $$
+BEGIN
+    RAISE NOTICE 'weekly_events table created successfully';
+END $$;
+
+=== migrations/20260329_create_scenario_events.sql ===
+-- Migration: Create scenario_events table for CADEM v1.2 Scenario Builder
+-- Date: 2026-03-29
+-- Description: Stores user-created hypothetical scenarios/events for simulation
+
+-- ============================================================================
+-- TABLE: scenario_events
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS scenario_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    
+    -- Usuario que creó el escenario
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    
+    -- Identificación del escenario
+    name TEXT NOT NULL,
+    description TEXT,
+    
+    -- Categoría temática (mismas que weekly_events)
+    category TEXT NOT NULL,
+    
+    -- Métricas del evento (mismos rangos que weekly_events)
+    sentiment FLOAT NOT NULL,
+    intensity FLOAT NOT NULL,
+    salience FLOAT NOT NULL,
+    severity TEXT,
+    
+    -- Entidades y segmentos afectados (formato JSONB compatible)
+    target_entities JSONB DEFAULT '[]'::jsonb,
+    affected_segments JSONB DEFAULT '[]'::jsonb,
+    
+    -- Estado del escenario
+    status TEXT DEFAULT 'draft',
+    
+    -- Metadatos adicionales (flexible para extensión)
+    metadata JSONB DEFAULT '{}'::jsonb,
+    
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ============================================================================
+-- CONSTRAINTS
+-- ============================================================================
+
+-- Check constraints for valid ranges (mismos que weekly_events)
+ALTER TABLE scenario_events
+    DROP CONSTRAINT IF EXISTS check_scenario_sentiment_range,
+    DROP CONSTRAINT IF EXISTS check_scenario_intensity_range,
+    DROP CONSTRAINT IF EXISTS check_scenario_salience_range,
+    DROP CONSTRAINT IF EXISTS check_scenario_severity_values,
+    DROP CONSTRAINT IF EXISTS check_scenario_category_values,
+    DROP CONSTRAINT IF EXISTS check_scenario_status_values;
+
+ALTER TABLE scenario_events
+    ADD CONSTRAINT check_scenario_sentiment_range 
+        CHECK (sentiment >= -1 AND sentiment <= 1),
+    ADD CONSTRAINT check_scenario_intensity_range 
+        CHECK (intensity >= 0 AND intensity <= 1),
+    ADD CONSTRAINT check_scenario_salience_range 
+        CHECK (salience >= 0 AND salience <= 1),
+    ADD CONSTRAINT check_scenario_severity_values 
+        CHECK (severity IN ('minor', 'moderate', 'major', 'critical')),
+    ADD CONSTRAINT check_scenario_category_values 
+        CHECK (category IN ('government', 'economy', 'security', 'institutions', 'migration', 'international', 'social')),
+    ADD CONSTRAINT check_scenario_status_values 
+        CHECK (status IN ('draft', 'active', 'archived'));
+
+-- ============================================================================
+-- INDEXES
+-- ============================================================================
+
+-- Index for user lookups (most common query)
+CREATE INDEX IF NOT EXISTS idx_scenario_events_user_id 
+    ON scenario_events(user_id);
+
+-- Index for status filtering
+CREATE INDEX IF NOT EXISTS idx_scenario_events_status 
+    ON scenario_events(status);
+
+-- Index for category filtering
+CREATE INDEX IF NOT EXISTS idx_scenario_events_category 
+    ON scenario_events(category);
+
+-- Index for created_at (time-based queries)
+CREATE INDEX IF NOT EXISTS idx_scenario_events_created_at 
+    ON scenario_events(created_at DESC);
+
+-- Composite index for common query patterns
+CREATE INDEX IF NOT EXISTS idx_scenario_events_user_status 
+    ON scenario_events(user_id, status);
+
+-- ============================================================================
+-- TRIGGER: Auto-update updated_at
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION update_scenario_events_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_update_scenario_events_updated_at ON scenario_events;
+
+CREATE TRIGGER trigger_update_scenario_events_updated_at
+    BEFORE UPDATE ON scenario_events
+    FOR EACH ROW
+    EXECUTE FUNCTION update_scenario_events_updated_at();
+
+-- ============================================================================
+-- COMMENTS
+-- ============================================================================
+
+COMMENT ON TABLE scenario_events IS 'User-created hypothetical scenarios/events for CADEM v1.2 simulation';
+COMMENT ON COLUMN scenario_events.user_id IS 'User who created the scenario (references auth.users)';
+COMMENT ON COLUMN scenario_events.name IS 'Human-readable name for the scenario';
+COMMENT ON COLUMN scenario_events.description IS 'Detailed description of the hypothetical event';
+COMMENT ON COLUMN scenario_events.category IS 'Event category: government, economy, security, institutions, migration, international, social';
+COMMENT ON COLUMN scenario_events.sentiment IS 'Event sentiment from -1 (very negative) to 1 (very positive)';
+COMMENT ON COLUMN scenario_events.intensity IS 'Event intensity from 0 to 1';
+COMMENT ON COLUMN scenario_events.salience IS 'Event salience/relevance from 0 to 1';
+COMMENT ON COLUMN scenario_events.severity IS 'Impact severity: minor, moderate, major, critical';
+COMMENT ON COLUMN scenario_events.target_entities IS 'JSON array of entities affected by the event (same format as weekly_events)';
+COMMENT ON COLUMN scenario_events.affected_segments IS 'JSON array of demographic segments affected (same format as weekly_events)';
+COMMENT ON COLUMN scenario_events.status IS 'Scenario status: draft, active, archived';
+COMMENT ON COLUMN scenario_events.metadata IS 'Additional metadata for extensibility';
+
+-- ============================================================================
+-- ROW LEVEL SECURITY (RLS)
+-- ============================================================================
+
+-- Enable RLS
+ALTER TABLE scenario_events ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if any
+DROP POLICY IF EXISTS "Allow users to read own scenarios" ON scenario_events;
+DROP POLICY IF EXISTS "Allow users to insert own scenarios" ON scenario_events;
+DROP POLICY IF EXISTS "Allow users to update own scenarios" ON scenario_events;
+DROP POLICY IF EXISTS "Allow users to delete own scenarios" ON scenario_events;
+
+-- Policy: Users can only read their own scenarios
+CREATE POLICY "Allow users to read own scenarios"
+    ON scenario_events
+    FOR SELECT
+    USING (auth.uid() = user_id);
+
+-- Policy: Users can only insert their own scenarios
+CREATE POLICY "Allow users to insert own scenarios"
+    ON scenario_events
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (auth.uid() = user_id);
+
+-- Policy: Users can only update their own scenarios
+CREATE POLICY "Allow users to update own scenarios"
+    ON scenario_events
+    FOR UPDATE
+    TO authenticated
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+-- Policy: Users can only delete their own scenarios
+CREATE POLICY "Allow users to delete own scenarios"
+    ON scenario_events
+    FOR DELETE
+    TO authenticated
+    USING (auth.uid() = user_id);
+
+-- ============================================================================
+-- IDEMPOTENCY CHECK
+-- ============================================================================
+
+DO $$
+BEGIN
+    RAISE NOTICE 'scenario_events table created successfully';
+END $$;
+

@@ -93,7 +93,7 @@ npm run build
 - [GETTING_STARTED.md](GETTING_STARTED.md) - Guía de inicio detallada
 - [GUARDRAILS.md](GUARDRAILS.md) - Reglas de protección del código
 - [CHECKPOINTS.md](CHECKPOINTS.md) - Versiones y cambios
-- [docs/ARCHITECTURE_SUPABASE.md](docs/ARCHITECTURE_SUPABASE.md) - Arquitectura de Supabase
+- [docs/README.md](docs/README.md) - Índice de documentación técnica
 - [deploy/README.md](deploy/README.md) - Guía de deploy
 
 ## 🛡️ Archivos Protegidos

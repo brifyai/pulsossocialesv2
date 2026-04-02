@@ -24,6 +24,13 @@ export interface ValidationResult {
   keyType: 'service' | 'anon';
 }
 
+function isAllowedLocalSupabaseUrl(url: string): boolean {
+  return (
+    url.startsWith('http://localhost:') ||
+    url.startsWith('http://127.0.0.1:')
+  );
+}
+
 /**
  * Valida variables para scripts que requieren SERVICE_KEY
  * Falla explícitamente si no existe SERVICE_KEY
@@ -62,9 +69,10 @@ export function validateServiceClientEnv(): ValidationResult {
   }
 
   // Validar formato básico de URL
-  if (url && !url.startsWith('https://')) {
+  if (url && !url.startsWith('https://') && !isAllowedLocalSupabaseUrl(url)) {
     throw new Error(
       `❌ SUPABASE_URL debe comenzar con https://\n` +
+      `   Excepción permitida: entorno local controlado en http://localhost:<puerto> o http://127.0.0.1:<puerto>\n` +
       `   Valor actual: ${url}`
     );
   }

@@ -12,8 +12,9 @@
 -- EXTENSIONES
 -- =============================================================================
 
--- UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- UUIDs: usar gen_random_uuid() disponible en Supabase/Postgres moderno.
+-- Evitamos depender de uuid-ossp porque en este entorno self-hosted local
+-- puede requerir privilegios adicionales no disponibles durante bootstrap.
 
 -- PostGIS para datos geoespaciales (si está disponible)
 -- CREATE EXTENSION IF NOT EXISTS "postgis";
@@ -26,7 +27,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- 1. USERS - Usuarios de la aplicación (Auth propio, NO Supabase Auth)
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Identificación
     email VARCHAR(255) NOT NULL UNIQUE,
@@ -76,7 +77,7 @@ CREATE POLICY "Allow read active users" ON users
 -- 2. TERRITORIES - Territorios administrativos de Chile
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS territories (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Identificación administrativa
     country_code VARCHAR(2) NOT NULL DEFAULT 'CL',
@@ -138,7 +139,7 @@ COMMENT ON COLUMN territories.geometry IS 'GeoJSON Polygon/MultiPolygon de la co
 -- 2. SYNTHETIC_AGENTS - Agentes sintéticos generados
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS synthetic_agents (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Identificación
     agent_id VARCHAR(50) NOT NULL UNIQUE,       -- Ej: 'AGENT-CL13-000001'
@@ -193,7 +194,7 @@ COMMENT ON COLUMN synthetic_agents.backbone_key IS 'Referencia a la fila del bac
 -- 3. SURVEY_DEFINITIONS - Definiciones de encuestas
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS survey_definitions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Identificación
     name VARCHAR(200) NOT NULL,
@@ -243,7 +244,7 @@ COMMENT ON COLUMN survey_definitions.segment IS 'Criterios de segmentación para
 -- 4. SURVEY_RUNS - Ejecuciones de encuestas
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS survey_runs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Referencias
     survey_id UUID NOT NULL REFERENCES survey_definitions(id) ON DELETE CASCADE,
@@ -291,7 +292,7 @@ COMMENT ON TABLE survey_runs IS 'Ejecuciones individuales de encuestas';
 -- 5. SURVEY_RESPONSES - Respuestas individuales
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS survey_responses (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Referencias
     survey_id UUID NOT NULL REFERENCES survey_definitions(id) ON DELETE CASCADE,
@@ -327,7 +328,7 @@ COMMENT ON TABLE survey_responses IS 'Respuestas individuales de agentes a encue
 -- 6. BENCHMARKS - Datos de referencia (CASEN, SUBTEL, etc.)
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS benchmarks (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Identificación
     source VARCHAR(50) NOT NULL CHECK (source IN ('casen', 'subtel', 'cep', 'ine', 'custom')),
@@ -365,7 +366,7 @@ COMMENT ON TABLE benchmarks IS 'Datos de referencia de fuentes oficiales (CASEN,
 -- 7. BENCHMARK_COMPARISONS - Comparaciones sintético vs benchmark
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS benchmark_comparisons (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Referencias
     survey_id UUID REFERENCES survey_definitions(id),
@@ -398,7 +399,7 @@ COMMENT ON TABLE benchmark_comparisons IS 'Comparaciones entre resultados sinté
 -- 8. PIPELINE_RUNS - Registro de ejecuciones del pipeline
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS pipeline_runs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Identificación
     run_type VARCHAR(50) NOT NULL CHECK (run_type IN ('ingest', 'normalize', 'integrate', 'synthesize', 'validate', 'full')),

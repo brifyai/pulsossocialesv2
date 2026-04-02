@@ -22,6 +22,10 @@ import { sampleFromArray } from '../../utils/random';
 // CADEM v1.1 - Import unified survey runner
 import { runSurvey as runUnifiedSurvey } from './surveyRunner';
 import type { CademAdapterAgent, CademSurveyDefinition } from './cademAdapter';
+
+// Survey Analysis Integration - MVP
+import type { SurveyAnalysis } from './analysis/types';
+import { analyzeSurveyResult } from './analysis/surveyAnalysisService';
 import {
   createSurveyDefinition,
   getSurveyDefinitions,
@@ -1621,6 +1625,112 @@ export async function runBaselineAndScenario(
     scenarioRun,
     comparison
   };
+}
+
+// ===========================================
+// Survey Analysis Integration - MVP
+// ===========================================
+
+/**
+ * Obtiene el análisis enriquecido de la ejecución más reciente de una encuesta.
+ * Busca explícitamente el run más reciente y sus resultados asociados.
+ *
+ * NOTA: Si una encuesta tiene múltiples runs, esta función analiza el más reciente.
+ * Para analizar un run específico, usar `getSurveyAnalysisByRun(runId)`.
+ *
+ * @param surveyId - ID de la encuesta
+ * @returns Análisis enriquecido o undefined si no hay datos suficientes
+ */
+export async function getSurveyAnalysis(surveyId: string): Promise<SurveyAnalysis | undefined> {
+  // 1. Obtener todos los runs de la encuesta (ordenados por fecha, más reciente primero)
+  const runs = await getSurveyRuns(surveyId);
+  if (runs.length === 0) {
+    console.warn(`[SurveyService] No runs found for survey ${surveyId}`);
+    return undefined;
+  }
+
+  // 2. Tomar el run más reciente
+  const latestRun = runs[0];
+
+  // 3. Obtener resultados específicos de ese run
+  const results = await getSurveyResultsByRun(latestRun.id);
+  if (!results) {
+    console.warn(`[SurveyService] No results found for run ${latestRun.id}`);
+    return undefined;
+  }
+
+  // 4. Generar análisis enriquecido
+  try {
+    const analysis = analyzeSurveyResult(results, latestRun);
+    console.debug(`[SurveyService] Analysis generated for survey ${surveyId} (run ${latestRun.id}): ${analysis.summary.supportedQuestions}/${analysis.summary.totalQuestions} questions analyzed`);
+    return analysis;
+  } catch (error) {
+    console.error(`[SurveyService] Error generating analysis for survey ${surveyId}:`, error);
+    return undefined;
+  }
+}
+
+/**
+ * Obtiene el análisis enriquecido de una ejecución específica por su ID.
+ * Útil para analizar runs individuales de forma precisa.
+ *
+ * @param runId - ID de la ejecución
+ * @returns Análisis enriquecido o undefined si no hay datos suficientes
+ */
+export async function getSurveyAnalysisByRun(runId: string): Promise<SurveyAnalysis | undefined> {
+  // 1. Obtener el run
+  const run = await getSurveyRun(runId);
+  if (!run) {
+    console.warn(`[SurveyService] Run not found: ${runId}`);
+    return undefined;
+  }
+
+  // 2. Obtener resultados del run
+  const results = await getSurveyResultsByRun(runId);
+  if (!results) {
+    console.warn(`[SurveyService] No results found for run ${runId}`);
+    return undefined;
+  }
+
+  // 3. Generar análisis enriquecido
+  try {
+    const analysis = analyzeSurveyResult(results, run);
+    console.debug(`[SurveyService] Analysis generated for run ${runId}: ${analysis.summary.supportedQuestions}/${analysis.summary.totalQuestions} questions analyzed`);
+    return analysis;
+  } catch (error) {
+    console.error(`[SurveyService] Error generating analysis for run ${runId}:`, error);
+    return undefined;
+  }
+}
+
+/**
+ * Obtiene el análisis enriquecido de forma síncrona (solo si hay datos en caché local).
+ * No realiza llamadas a la base de datos.
+ *
+ * NOTA IMPORTANTE: Esta función usa el último resultado cacheado bajo el surveyId,
+ * que puede no ser el run más reciente si hay múltiples ejecuciones.
+ * Para análisis preciso de un run específico, usar `getSurveyAnalysisByRun()`.
+ *
+ * @param surveyId - ID de la encuesta
+ * @returns Análisis enriquecido o undefined si no hay datos en caché
+ */
+export function getSurveyAnalysisSync(surveyId: string): SurveyAnalysis | undefined {
+  // 1. Buscar resultados en caché local (puede ser cualquier run asociado a la encuesta)
+  const results = surveyResults.get(surveyId);
+  if (!results) {
+    return undefined;
+  }
+
+  // 2. Buscar run en caché local (opcional)
+  const run = results.runId ? surveyRuns.get(results.runId) : undefined;
+
+  // 3. Generar análisis enriquecido
+  try {
+    return analyzeSurveyResult(results, run);
+  } catch (error) {
+    console.error(`[SurveyService] Error generating sync analysis for survey ${surveyId}:`, error);
+    return undefined;
+  }
 }
 
 // ===========================================

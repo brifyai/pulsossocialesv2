@@ -253,10 +253,10 @@ function renderSetting(setting: SettingItem): string {
             <span class="setting-label">${setting.label}</span>
             <span class="setting-description">${setting.description}</span>
           </div>
-          <label class="setting-toggle">
+          <div class="setting-toggle-wrapper" data-key="${setting.key}" data-value="${value ? 'true' : 'false'}">
             <input type="checkbox" id="${setting.id}" ${value ? 'checked' : ''} data-key="${setting.key}">
-            <span class="toggle-slider"></span>
-          </label>
+            <label class="toggle-slider" for="${setting.id}"></label>
+          </div>
         </div>
       `;
     case 'select':
@@ -299,7 +299,8 @@ function renderSetting(setting: SettingItem): string {
  * Helper para actualizar settings de forma type-safe
  */
 function updateSetting<K extends keyof UserSettings>(key: K, value: UserSettings[K]): void {
-  currentSettings[key] = value;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (currentSettings as any)[key] = value;
 }
 
 /**
@@ -308,8 +309,8 @@ function updateSetting<K extends keyof UserSettings>(key: K, value: UserSettings
 function setupEventListeners(container: HTMLElement): void {
   const saveBtn = container.querySelector('#save-btn') as HTMLButtonElement;
 
-  // Toggle handlers
-  container.querySelectorAll('.setting-toggle input').forEach((toggle) => {
+  // Toggle handlers - usar el wrapper para capturar clicks
+  container.querySelectorAll('.setting-toggle-wrapper input').forEach((toggle) => {
     toggle.addEventListener('change', (e) => {
       const target = e.target as HTMLInputElement;
       const key = target.dataset.key as keyof UserSettings;
@@ -636,18 +637,23 @@ function addSettingsStyles(): void {
     }
 
     /* Toggle Switch */
-    .setting-toggle {
+    .setting-toggle-wrapper {
       position: relative;
       display: inline-block;
       width: 48px;
       height: 24px;
       cursor: pointer;
+      flex-shrink: 0;
     }
 
-    .setting-toggle input {
+    .setting-toggle-wrapper input {
+      position: absolute;
       opacity: 0;
-      width: 0;
-      height: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+      z-index: 2;
+      margin: 0;
     }
 
     .toggle-slider {
@@ -659,6 +665,7 @@ function addSettingsStyles(): void {
       background: rgba(255, 255, 255, 0.1);
       border-radius: 24px;
       transition: all 0.3s ease;
+      pointer-events: none;
     }
 
     .toggle-slider::before {
@@ -673,13 +680,21 @@ function addSettingsStyles(): void {
       transition: all 0.3s ease;
     }
 
-    .setting-toggle input:checked + .toggle-slider {
+    .setting-toggle-wrapper input:checked + .toggle-slider {
       background: rgba(0, 240, 255, 0.3);
     }
 
-    .setting-toggle input:checked + .toggle-slider::before {
+    .setting-toggle-wrapper input:checked + .toggle-slider::before {
       transform: translateX(24px);
       background: #00f0ff;
+    }
+
+    .setting-toggle-wrapper:hover .toggle-slider {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .setting-toggle-wrapper input:checked:hover + .toggle-slider {
+      background: rgba(0, 240, 255, 0.4);
     }
 
     /* Select */

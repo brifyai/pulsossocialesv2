@@ -48,7 +48,7 @@ services:
   # ===========================================================================
   studio:
     container_name: pulsos-supabase-studio
-    image: supabase/studio:20240326-5e7a8e2
+    image: supabase/studio:20231123-64a766a
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
@@ -80,7 +80,12 @@ services:
     container_name: pulsos-supabase-kong
     image: kong:2.8.1
     restart: unless-stopped
-    entrypoint: bash -c 'eval "echo \"$$$(cat /home/kong/template.yml)\"" > /home/kong/kong.yml && kong start -c /home/kong/kong.yml'
+    entrypoint:
+      - /bin/bash
+      - -ec
+      - |
+        cp /home/kong/template.yml /home/kong/kong.yml
+        exec /docker-entrypoint.sh kong docker-start -c /home/kong/kong.yml
     ports:
       - "${KONG_HTTP_PORT:-8000}:8000/tcp"
       - "${KONG_HTTPS_PORT:-8443}:8443/tcp"
@@ -88,9 +93,9 @@ services:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
       KONG_DNS_ORDER: LAST,A,CNAME
-      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth,rate-limiting
       KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
-      KONG_NGINX_PROXY_PROXY_BUFFERS: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: "8 160k"
     volumes:
       - ./volumes/api/kong.yml:/home/kong/template.yml:ro
     networks:
@@ -324,13 +329,19 @@ services:
     container_name: pulsos-supabase-functions
     image: supabase/edge-runtime:v1.54.10
     restart: unless-stopped
+    command:
+      - start
+      - --main-service
+      - /home/deno/functions/main
+      - --port
+      - "9000"
     environment:
       SUPABASE_URL: http://kong:8000
       SUPABASE_ANON_KEY: ${ANON_KEY:-}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY:-}
       SUPABASE_DB_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}@db:5432/${POSTGRES_DB:-postgres}
     volumes:
-      - functions_data:/home/deno/functions
+      - ./volumes/functions:/home/deno/functions:ro
     networks:
       - pulsos-network
 

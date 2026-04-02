@@ -1,12 +1,12 @@
 # Kong Configuration for Pulsos Sociales
 # Simplified configuration without environment variable substitution
 
-_format_version: "3.0"
+_format_version: "2.1"
 _transform: true
 
 services:
   - name: auth
-    url: http://auth:9999
+    url: http://pulsos-supabase-auth:9999
     routes:
       - name: auth-route
         strip_path: true
@@ -44,10 +44,9 @@ services:
           redis_database: 0
           limit_by: ip
           header_name: null
-          block_on_first_violation: false
 
   - name: rest
-    url: http://rest:3000
+    url: http://pulsos-supabase-rest:3000
     routes:
       - name: rest-route
         strip_path: true
@@ -85,10 +84,9 @@ services:
           redis_database: 0
           limit_by: ip
           header_name: null
-          block_on_first_violation: false
 
   - name: realtime
-    url: http://realtime:4000
+    url: http://pulsos-supabase-realtime:4000
     routes:
       - name: realtime-route
         strip_path: true
@@ -126,10 +124,9 @@ services:
           redis_database: 0
           limit_by: ip
           header_name: null
-          block_on_first_violation: false
 
   - name: storage
-    url: http://storage:5000
+    url: http://pulsos-supabase-storage:5000
     routes:
       - name: storage-route
         strip_path: true
@@ -167,10 +164,9 @@ services:
           redis_database: 0
           limit_by: ip
           header_name: null
-          block_on_first_violation: false
 
   - name: meta
-    url: http://meta:8080
+    url: http://pulsos-supabase-meta:8080
     routes:
       - name: meta-route
         strip_path: true
