@@ -27,6 +27,7 @@ import {
 import { getUniqueRegions, getUniqueCommunes } from '../data/syntheticAgents';
 // R1 - Import scenario event store
 import { listScenarios, type ScenarioEvent } from '../app/events/scenarioEventStore';
+import { navigateTo } from '../router';
 
 // Estado local
 let currentView: SurveyViewMode = 'list';
@@ -312,6 +313,10 @@ async function renderSurveyList(container: HTMLElement): Promise<void> {
               <span class="btn-icon material-symbols-outlined">bar_chart</span>
               <span class="btn-text">Resultados</span>
             </button>
+            <button class="btn btn-secondary btn-view-analysis" data-id="${survey.id}" data-run-id="${lastRun?.id}" title="Ver análisis">
+              <span class="btn-icon material-symbols-outlined">analytics</span>
+              <span class="btn-text">Análisis</span>
+            </button>
           ` : ''}
           
           <!-- Menú de acciones adicionales -->
@@ -377,6 +382,16 @@ function attachSurveyListListeners(list: HTMLElement): void {
     btn.addEventListener('click', async (e) => {
       const id = (e.currentTarget as HTMLElement).dataset.id;
       if (id) await viewSurveyResults(id);
+    });
+  });
+  
+  // View analysis (navigate to survey-analysis page)
+  list.querySelectorAll('.btn-view-analysis').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const runId = (e.currentTarget as HTMLElement).dataset.runId;
+      if (runId) {
+        navigateTo('survey-analysis', { runId });
+      }
     });
   });
   

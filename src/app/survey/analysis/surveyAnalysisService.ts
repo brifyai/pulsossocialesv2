@@ -197,32 +197,50 @@ function generateGlobalInsights(
     });
   }
 
-  // Insight: Preguntas con respuesta predominante clara
+  // Insight: Preguntas con respuesta predominante clara (>50% en lugar de >60%)
   const dominanceCount = supportedAnalyses.filter(
-    (q) => (q.metrics?.dominantPercentage ?? 0) > 60
+    (q) => (q.metrics?.dominantPercentage ?? 0) > 50
   ).length;
 
-  if (dominanceCount > supportedAnalyses.length * 0.5) {
+  if (dominanceCount > 0) {
     insights.push({
       type: 'dominance',
-      severity: 'info',
-      title: 'Respuestas predominantes claras',
-      description: `${dominanceCount} de ${supportedAnalyses.length} preguntas muestran una opción claramente más elegida.`,
+      severity: dominanceCount > supportedAnalyses.length * 0.5 ? 'important' : 'info',
+      title: dominanceCount === 1 
+        ? 'Una pregunta muestra respuesta predominante'
+        : `${dominanceCount} preguntas con respuesta predominante clara`,
+      description: `${dominanceCount} de ${supportedAnalyses.length} preguntas tienen una opción elegida por más del 50% de los agentes.`,
     });
   }
 
-  // Insight: Alta dispersión general
+  // Insight: Alta dispersión general (>20% en lugar de >30%)
   const polarizationCount = supportedAnalyses.filter(
     (q) => (q.metrics?.polarizationLevel ?? 'medium') === 'high'
   ).length;
 
-  if (polarizationCount > supportedAnalyses.length * 0.3) {
+  if (polarizationCount > supportedAnalyses.length * 0.2) {
     insights.push({
       type: 'polarization',
       severity: 'warning',
-      title: 'Alta dispersión en respuestas',
+      title: polarizationCount === 1
+        ? 'Una pregunta muestra alta dispersión'
+        : 'Alta dispersión en respuestas',
       description: `${polarizationCount} preguntas muestran distribución muy dispersa sin opción clara.`,
     });
+  }
+
+  // NUEVO: Agregar insights individuales de cada pregunta
+  for (const questionAnalysis of supportedAnalyses) {
+    if (questionAnalysis.insights && questionAnalysis.insights.length > 0) {
+      for (const insight of questionAnalysis.insights) {
+        // Adaptar el insight individual para mostrarlo en contexto global
+        insights.push({
+          ...insight,
+          title: `${insight.title}`,
+          description: `${insight.description} (Pregunta: "${questionAnalysis.questionText.substring(0, 40)}${questionAnalysis.questionText.length > 40 ? '...' : ''}")`,
+        });
+      }
+    }
   }
 
   // Insight: Cobertura del análisis
