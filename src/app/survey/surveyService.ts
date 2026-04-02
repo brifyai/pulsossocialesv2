@@ -45,6 +45,7 @@ import {
   // Sprint 11D - Survey Responses
   saveSurveyResponses,
   isSurveyResponsePersistenceAvailable,
+  getSurveyResponsesByRunId,
 } from '../../services/supabase/repositories/surveyRepository';
 
 // ===========================================
@@ -1674,6 +1675,9 @@ export async function getSurveyAnalysis(surveyId: string): Promise<SurveyAnalysi
  * Obtiene el análisis enriquecido de una ejecución específica por su ID.
  * Útil para analizar runs individuales de forma precisa.
  *
+ * NOTA: Carga las respuestas individuales desde la DB para calcular métricas
+ * como confidence que requieren datos a nivel de agente.
+ *
  * @param runId - ID de la ejecución
  * @returns Análisis enriquecido o undefined si no hay datos suficientes
  */
@@ -1692,7 +1696,27 @@ export async function getSurveyAnalysisByRun(runId: string): Promise<SurveyAnaly
     return undefined;
   }
 
-  // 3. Generar análisis enriquecido
+  // 3. Cargar respuestas individuales desde DB si no están en caché
+  // Esto es necesario para calcular métricas como confidence
+  if (!run.responses || run.responses.length === 0) {
+    try {
+      const isAvailable = await isSurveyResponsePersistenceAvailable();
+      if (isAvailable) {
+        const responses = await getSurveyResponsesByRunId(runId);
+        if (responses && responses.length > 0) {
+          run.responses = responses;
+          console.log(`[SurveyService] Loaded ${responses.length} responses from DB for run ${runId}`);
+        } else {
+          console.warn(`[SurveyService] No responses found in DB for run ${runId}`);
+        }
+      }
+    } catch (error) {
+      console.warn(`[SurveyService] Error loading responses for run ${runId}:`, error);
+      // Continuar sin respuestas - el análisis funcionará pero sin confidence
+    }
+  }
+
+  // 4. Generar análisis enriquecido
   try {
     const analysis = analyzeSurveyResult(results, run);
     console.debug(`[SurveyService] Analysis generated for run ${runId}: ${analysis.summary.supportedQuestions}/${analysis.summary.totalQuestions} questions analyzed`);
