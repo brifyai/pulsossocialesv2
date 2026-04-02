@@ -1,50 +1,526 @@
 /**
- * Survey Analysis Page Styles
- * 
- * Estilos para la página de análisis de encuestas
- * Fase 1 MVP - KPIs, Insights y Preguntas Destacadas
+ * Survey Analysis Page Styles - Dashboard Professional
+ *
+ * Sistema de diseño Dashboard Moderno con Cards & Grid
+ * Dark Mode con jerarquía visual, agrupación y espaciado profesional
  */
 
 /* ===========================================
-   Page Container
+   Design System Variables (Dashboard Theme)
    =========================================== */
 
 .survey-analysis-page {
-  padding: var(--spacing-lg);
+  /* Background - Gris carbón en lugar de negro puro */
+  --dashboard-bg: #121212;
+  --dashboard-surface: #1e1e1e;
+  --dashboard-surface-elevated: #252525;
+  --dashboard-surface-hover: #2a2a2a;
+
+  /* Borders - Sutiles */
+  --dashboard-border: #333333;
+  --dashboard-border-subtle: #2a2a2a;
+
+  /* Text Colors */
+  --dashboard-text-primary: #ffffff;
+  --dashboard-text-secondary: #a0a0a0;
+  --dashboard-text-muted: #6b7280;
+
+  /* Accent Colors - Solo para estados */
+  --dashboard-success: #10b981;
+  --dashboard-success-bg: rgba(16, 185, 129, 0.1);
+  --dashboard-warning: #f59e0b;
+  --dashboard-warning-bg: rgba(245, 158, 11, 0.1);
+  --dashboard-danger: #ef4444;
+  --dashboard-danger-bg: rgba(239, 68, 68, 0.1);
+  --dashboard-info: #3b82f6;
+  --dashboard-info-bg: rgba(59, 130, 246, 0.1);
+
+  /* Spacing System */
+  --dashboard-space-xs: 0.25rem;
+  --dashboard-space-sm: 0.5rem;
+  --dashboard-space-md: 1rem;
+  --dashboard-space-lg: 1.5rem;
+  --dashboard-space-xl: 2rem;
+  --dashboard-space-2xl: 3rem;
+
+  /* Border Radius */
+  --dashboard-radius-sm: 6px;
+  --dashboard-radius-md: 8px;
+  --dashboard-radius-lg: 12px;
+  --dashboard-radius-xl: 16px;
+
+  /* Shadows (Elevation) */
+  --dashboard-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --dashboard-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+  --dashboard-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+
+  /* Typography */
+  --dashboard-font-xs: 0.75rem;
+  --dashboard-font-sm: 0.875rem;
+  --dashboard-font-base: 1rem;
+  --dashboard-font-lg: 1.125rem;
+  --dashboard-font-xl: 1.25rem;
+  --dashboard-font-2xl: 1.5rem;
+  --dashboard-font-3xl: 2rem;
+
+  /* Layout */
+  padding: var(--dashboard-space-xl);
   max-width: 1400px;
   margin: 0 auto;
+  background: var(--dashboard-bg);
+  min-height: 100vh;
 }
 
 /* ===========================================
-   Header
+   Header - Clean & Professional
    =========================================== */
 
 .survey-analysis-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--spacing-xl);
-  padding-bottom: var(--spacing-md);
-  border-bottom: 1px solid var(--border-color);
+  margin-bottom: var(--dashboard-space-2xl);
+  padding-bottom: var(--dashboard-space-lg);
+  border-bottom: 1px solid var(--dashboard-border);
 }
 
 .survey-analysis-header .header-left {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
+  gap: var(--dashboard-space-md);
 }
 
 .survey-analysis-header h1 {
-  font-size: 1.75rem;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-size: var(--dashboard-font-2xl);
+  font-weight: 700;
+  color: var(--dashboard-text-primary);
   margin: 0;
+  letter-spacing: -0.02em;
 }
 
 .survey-analysis-header .header-meta {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--dashboard-space-sm);
+}
+
+/* ===========================================
+   Dashboard Grid Layout
+   =========================================== */
+
+.survey-analysis-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dashboard-space-2xl);
+}
+
+/* ===========================================
+   Section Cards (Main Containers)
+   =========================================== */
+
+.dashboard-section {
+  background: var(--dashboard-surface);
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius-xl);
+  overflow: hidden;
+}
+
+.dashboard-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--dashboard-space-lg) var(--dashboard-space-xl);
+  background: var(--dashboard-surface-elevated);
+  border-bottom: 1px solid var(--dashboard-border);
+}
+
+.dashboard-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--dashboard-space-sm);
+  font-size: var(--dashboard-font-lg);
+  font-weight: 600;
+  color: var(--dashboard-text-primary);
+  margin: 0;
+}
+
+.dashboard-section-title .material-symbols-outlined {
+  font-size: 20px;
+  color: var(--dashboard-text-secondary);
+}
+
+.dashboard-section-body {
+  padding: var(--dashboard-space-xl);
+}
+
+/* ===========================================
+   KPI Cards Grid
+   =========================================== */
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--dashboard-space-lg);
+}
+
+.kpi-card {
+  display: flex;
+  flex-direction: column;
+  padding: var(--dashboard-space-lg);
+  background: var(--dashboard-surface-elevated);
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius-lg);
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--dashboard-border);
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--dashboard-shadow-md);
+  border-color: var(--dashboard-border-subtle);
+}
+
+/* KPI Card Variants */
+.kpi-card--primary::before { background: var(--dashboard-info); }
+.kpi-card--success::before { background: var(--dashboard-success); }
+.kpi-card--warning::before { background: var(--dashboard-warning); }
+.kpi-card--danger::before { background: var(--dashboard-danger); }
+
+.kpi-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--dashboard-space-md);
+}
+
+.kpi-card-label {
+  font-size: var(--dashboard-font-sm);
+  font-weight: 500;
+  color: var(--dashboard-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.kpi-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--dashboard-radius-md);
+  background: var(--dashboard-surface);
+}
+
+.kpi-card-icon .material-symbols-outlined {
+  font-size: 20px;
+  color: var(--dashboard-text-secondary);
+}
+
+.kpi-card-value {
+  font-size: var(--dashboard-font-3xl);
+  font-weight: 700;
+  color: var(--dashboard-text-primary);
+  line-height: 1.1;
+  margin-bottom: var(--dashboard-space-xs);
+}
+
+.kpi-card-subtitle {
+  font-size: var(--dashboard-font-sm);
+  color: var(--dashboard-text-muted);
+}
+
+/* ===========================================
+   Insights List - Card Style
+   =========================================== */
+
+.insights-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dashboard-space-md);
+}
+
+.insight-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--dashboard-space-md);
+  padding: var(--dashboard-space-lg);
+  background: var(--dashboard-surface-elevated);
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius-lg);
+  transition: all 0.2s ease;
+}
+
+.insight-card:hover {
+  background: var(--dashboard-surface-hover);
+  border-color: var(--dashboard-border-subtle);
+}
+
+/* Insight Severity Variants */
+.insight-card--important {
+  border-left: 4px solid var(--dashboard-danger);
+  background: linear-gradient(90deg, var(--dashboard-danger-bg) 0%, var(--dashboard-surface-elevated) 100%);
+}
+
+.insight-card--warning {
+  border-left: 4px solid var(--dashboard-warning);
+  background: linear-gradient(90deg, var(--dashboard-warning-bg) 0%, var(--dashboard-surface-elevated) 100%);
+}
+
+.insight-card--info {
+  border-left: 4px solid var(--dashboard-info);
+  background: linear-gradient(90deg, var(--dashboard-info-bg) 0%, var(--dashboard-surface-elevated) 100%);
+}
+
+.insight-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--dashboard-radius-md);
+  background: var(--dashboard-surface);
+  flex-shrink: 0;
+}
+
+.insight-card-icon .material-symbols-outlined {
+  font-size: 22px;
+  color: var(--dashboard-text-secondary);
+}
+
+.insight-card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.insight-card-title {
+  font-size: var(--dashboard-font-base);
+  font-weight: 600;
+  color: var(--dashboard-text-primary);
+  margin-bottom: var(--dashboard-space-xs);
+  line-height: 1.4;
+}
+
+.insight-card-description {
+  font-size: var(--dashboard-font-sm);
+  color: var(--dashboard-text-secondary);
+  line-height: 1.5;
+  margin-bottom: var(--dashboard-space-sm);
+}
+
+.insight-card-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--dashboard-space-sm);
+}
+
+/* ===========================================
+   Badge Styles
+   =========================================== */
+
+.dashboard-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--dashboard-space-xs) var(--dashboard-space-sm);
+  font-size: var(--dashboard-font-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: var(--dashboard-radius-sm);
+}
+
+.dashboard-badge--success {
+  background: var(--dashboard-success-bg);
+  color: var(--dashboard-success);
+}
+
+.dashboard-badge--warning {
+  background: var(--dashboard-warning-bg);
+  color: var(--dashboard-warning);
+}
+
+.dashboard-badge--danger {
+  background: var(--dashboard-danger-bg);
+  color: var(--dashboard-danger);
+}
+
+.dashboard-badge--info {
+  background: var(--dashboard-info-bg);
+  color: var(--dashboard-info);
+}
+
+/* ===========================================
+   Questions Grid - 3 Column Layout
+   =========================================== */
+
+.questions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--dashboard-space-lg);
+}
+
+@media (max-width: 1200px) {
+  .questions-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .questions-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.question-category-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--dashboard-surface-elevated);
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius-lg);
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.question-category-card:hover {
+  border-color: var(--dashboard-border-subtle);
+  box-shadow: var(--dashboard-shadow-sm);
+}
+
+/* Category Variants */
+.question-category-card--consensus {
+  border-top: 3px solid var(--dashboard-success);
+}
+
+.question-category-card--polarized {
+  border-top: 3px solid var(--dashboard-warning);
+}
+
+.question-category-card--low-confidence {
+  border-top: 3px solid var(--dashboard-danger);
+}
+
+.question-category-header {
+  display: flex;
+  align-items: center;
+  gap: var(--dashboard-space-sm);
+  padding: var(--dashboard-space-md) var(--dashboard-space-lg);
+  background: var(--dashboard-surface);
+  border-bottom: 1px solid var(--dashboard-border);
+}
+
+.question-category-header .material-symbols-outlined {
+  font-size: 20px;
+  color: var(--dashboard-text-secondary);
+}
+
+.question-category-title {
+  font-size: var(--dashboard-font-base);
+  font-weight: 600;
+  color: var(--dashboard-text-primary);
+  margin: 0;
+}
+
+.question-category-count {
+  margin-left: auto;
+  font-size: var(--dashboard-font-sm);
+  color: var(--dashboard-text-muted);
+}
+
+.question-category-body {
+  padding: var(--dashboard-space-md);
+  flex: 1;
+}
+
+.question-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dashboard-space-sm);
+}
+
+.question-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--dashboard-space-sm);
+  padding: var(--dashboard-space-sm);
+  border-radius: var(--dashboard-radius-md);
+  transition: background-color 0.2s ease;
+}
+
+.question-item:hover {
+  background: var(--dashboard-surface-hover);
+}
+
+.question-rank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--dashboard-info);
+  color: white;
+  font-size: var(--dashboard-font-xs);
+  font-weight: 700;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.question-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.question-text {
+  font-size: var(--dashboard-font-sm);
+  color: var(--dashboard-text-primary);
+  line-height: 1.4;
+  margin-bottom: var(--dashboard-space-xs);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.question-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--dashboard-space-sm);
+  flex-wrap: wrap;
+}
+
+.question-metric {
+  font-size: var(--dashboard-font-xs);
+  color: var(--dashboard-text-muted);
+}
+
+.question-metric strong {
+  color: var(--dashboard-text-secondary);
+}
+
+/* Empty State */
+.question-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--dashboard-space-xl);
+  text-align: center;
+  color: var(--dashboard-text-muted);
+}
+
+.question-empty-state .material-symbols-outlined {
+  font-size: 32px;
+  margin-bottom: var(--dashboard-space-sm);
+  opacity: 0.5;
 }
 
 /* ===========================================
@@ -60,14 +536,18 @@
   justify-content: center;
   min-height: 400px;
   text-align: center;
-  gap: var(--spacing-md);
+  gap: var(--dashboard-space-lg);
+  background: var(--dashboard-surface);
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius-xl);
+  margin: var(--dashboard-space-xl);
 }
 
 .survey-analysis-loading .loading-spinner {
   width: 48px;
   height: 48px;
-  border: 3px solid var(--border-color);
-  border-top-color: var(--primary-color);
+  border: 3px solid var(--dashboard-border);
+  border-top-color: var(--dashboard-info);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -81,322 +561,24 @@
 .survey-analysis-empty .material-symbols-outlined,
 .survey-analysis-error .material-symbols-outlined {
   font-size: 64px;
-  color: var(--text-muted);
+  color: var(--dashboard-text-muted);
 }
 
 .survey-analysis-error .material-symbols-outlined {
-  color: var(--danger-color);
+  color: var(--dashboard-danger);
 }
 
 .survey-analysis-empty h2,
 .survey-analysis-error h2 {
-  font-size: 1.5rem;
-  color: var(--text-primary);
+  font-size: var(--dashboard-font-xl);
+  color: var(--dashboard-text-primary);
   margin: 0;
 }
 
 .survey-analysis-empty p,
 .survey-analysis-error p {
-  color: var(--text-secondary);
+  color: var(--dashboard-text-secondary);
   margin: 0;
-}
-
-/* ===========================================
-   Summary Grid (KPI Cards)
-   =========================================== */
-
-.survey-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-xl);
-}
-
-.stat-card {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
-  padding: var(--spacing-lg);
-  background: var(--surface-color);
-  border-radius: var(--border-radius-lg);
-  border: 1px solid var(--border-color);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-
-.stat-card-primary {
-  border-left: 4px solid var(--primary-color);
-}
-
-.stat-card-success {
-  border-left: 4px solid var(--success-color);
-}
-
-.stat-card-warning {
-  border-left: 4px solid var(--warning-color);
-}
-
-.stat-card-danger {
-  border-left: 4px solid var(--danger-color);
-}
-
-.stat-card-info {
-  border-left: 4px solid var(--info-color);
-}
-
-.stat-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: var(--border-radius);
-  background: var(--background-color);
-}
-
-.stat-icon .material-symbols-outlined {
-  font-size: 24px;
-  color: var(--text-secondary);
-}
-
-.stat-content {
-  flex: 1;
-}
-
-.stat-value {
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1.2;
-}
-
-.stat-label {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin-top: var(--spacing-xs);
-}
-
-/* ===========================================
-   Insights Section
-   =========================================== */
-
-.survey-insights-section {
-  margin-bottom: var(--spacing-xl);
-}
-
-.survey-insights-section h2 {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-md);
-}
-
-.survey-insights-section h2 .material-symbols-outlined {
-  color: var(--primary-color);
-}
-
-.insights-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
-
-.insight-item {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--spacing-md);
-  padding: var(--spacing-md);
-  background: var(--surface-color);
-  border-radius: var(--border-radius);
-  border: 1px solid var(--border-color);
-  transition: background-color 0.2s ease;
-}
-
-.insight-item:hover {
-  background: var(--background-color);
-}
-
-.insight-item.insight-high {
-  border-left: 3px solid var(--danger-color);
-}
-
-.insight-item.insight-medium {
-  border-left: 3px solid var(--warning-color);
-}
-
-.insight-item.insight-low {
-  border-left: 3px solid var(--info-color);
-}
-
-.insight-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--border-radius);
-  background: var(--background-color);
-  flex-shrink: 0;
-}
-
-.insight-icon .material-symbols-outlined {
-  font-size: 20px;
-  color: var(--text-secondary);
-}
-
-.insight-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.insight-text {
-  font-size: 0.9375rem;
-  color: var(--text-primary);
-  line-height: 1.5;
-}
-
-.insight-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  margin-top: var(--spacing-xs);
-}
-
-.insight-meta .badge {
-  font-size: 0.75rem;
-}
-
-.insight-meta .text-muted {
-  font-size: 0.875rem;
-}
-
-/* ===========================================
-   Top Questions Section
-   =========================================== */
-
-.survey-top-questions-section {
-  margin-bottom: var(--spacing-xl);
-}
-
-.survey-top-questions-section h2 {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-md);
-}
-
-.survey-top-questions-section h2 .material-symbols-outlined {
-  color: var(--warning-color);
-}
-
-.top-questions-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: var(--spacing-md);
-}
-
-.question-block {
-  background: var(--surface-color);
-  border-radius: var(--border-radius-lg);
-  border: 1px solid var(--border-color);
-  overflow: hidden;
-}
-
-.question-block-success {
-  border-top: 3px solid var(--success-color);
-}
-
-.question-block-warning {
-  border-top: 3px solid var(--warning-color);
-}
-
-.question-block-danger {
-  border-top: 3px solid var(--danger-color);
-}
-
-.question-block-header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-md);
-  background: var(--background-color);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.question-block-header .material-symbols-outlined {
-  font-size: 20px;
-  color: var(--text-secondary);
-}
-
-.question-block-header h3 {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.question-block-list {
-  padding: var(--spacing-sm);
-}
-
-.question-block-empty {
-  padding: var(--spacing-lg);
-  text-align: center;
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-.question-block-item {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
-  border-radius: var(--border-radius);
-  transition: background-color 0.2s ease;
-}
-
-.question-block-item:hover {
-  background: var(--background-color);
-}
-
-.question-rank {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  background: var(--primary-color);
-  color: white;
-  font-size: 0.75rem;
-  font-weight: 600;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.question-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.question-text {
-  font-size: 0.875rem;
-  color: var(--text-primary);
-  line-height: 1.4;
-  margin-bottom: var(--spacing-xs);
-}
-
-.question-info .badge {
-  font-size: 0.75rem;
 }
 
 /* ===========================================
@@ -405,44 +587,100 @@
 
 @media (max-width: 768px) {
   .survey-analysis-page {
-    padding: var(--spacing-md);
+    padding: var(--dashboard-space-md);
   }
 
   .survey-analysis-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: var(--spacing-sm);
+    gap: var(--dashboard-space-md);
   }
 
   .survey-analysis-header h1 {
-    font-size: 1.5rem;
+    font-size: var(--dashboard-font-xl);
   }
 
-  .survey-summary-grid {
+  .dashboard-section-header {
+    padding: var(--dashboard-space-md);
+  }
+
+  .dashboard-section-body {
+    padding: var(--dashboard-space-md);
+  }
+
+  .kpi-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: var(--dashboard-space-md);
   }
 
-  .stat-card {
-    padding: var(--spacing-md);
+  .kpi-card {
+    padding: var(--dashboard-space-md);
   }
 
-  .stat-value {
-    font-size: 1.5rem;
+  .kpi-card-value {
+    font-size: var(--dashboard-font-2xl);
   }
 
-  .top-questions-grid {
+  .insight-card {
+    padding: var(--dashboard-space-md);
+  }
+
+  .questions-grid {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 480px) {
-  .survey-summary-grid {
+  .kpi-grid {
     grid-template-columns: 1fr;
   }
 
-  .insight-meta {
+  .insight-card-meta {
     flex-direction: column;
     align-items: flex-start;
-    gap: var(--spacing-xs);
+    gap: var(--dashboard-space-xs);
   }
+
+  .question-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--dashboard-space-xs);
+  }
+}
+
+/* ===========================================
+   Legacy Class Support (Backward Compatibility)
+   =========================================== */
+
+/* Map old classes to new dashboard classes */
+.survey-summary-grid {
+  composes: kpi-grid;
+}
+
+.stat-card {
+  composes: kpi-card;
+}
+
+.survey-insights-section {
+  composes: dashboard-section;
+}
+
+.insights-list {
+  composes: insights-container;
+}
+
+.insight-item {
+  composes: insight-card;
+}
+
+.survey-top-questions-section {
+  composes: dashboard-section;
+}
+
+.top-questions-grid {
+  composes: questions-grid;
+}
+
+.question-block {
+  composes: question-category-card;
 }

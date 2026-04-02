@@ -368,11 +368,12 @@ function generateBasicInsights(
     const maxDeviation = (likertStats.max - likertStats.min) / 2;
 
     if (deviation > maxDeviation * 0.3) {
-      const direction = likertStats.average > midPoint ? 'altos' : 'bajos';
+      const direction = likertStats.average > midPoint ? 'alta' : 'baja';
+      const directionTitle = likertStats.average > midPoint ? 'altos' : 'bajos';
       insights.push({
         type: 'dominance',
         severity: 'info',
-        title: `Tendencia hacia valores ${direction}`,
+        title: `Tendencia hacia valores ${directionTitle}`,
         description: `El promedio (${likertStats.average.toFixed(2)}) se inclina hacia la parte ${direction} de la escala.`,
         questionId,
         supportingData: {

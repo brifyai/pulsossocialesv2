@@ -1,130 +1,238 @@
 /**
- * Survey Top Questions Component
+ * Survey Top Questions Component - Dashboard Grid
  *
  * Componente presentacional para mostrar las preguntas destacadas
- * del análisis de encuesta.
+ * del análisis de encuesta en formato Dashboard Grid de 3 columnas.
  */
 
 import type { SurveyAnalysis, QuestionAnalysis } from '../app/survey/analysis/types';
 
+interface TopQuestionsData {
+  consensus: Array<{
+    questionId: string;
+    text: string;
+    agreement: number;
+    confidence: number;
+  }>;
+  polarized: Array<{
+    questionId: string;
+    text: string;
+    agreement: number;
+    confidence: number;
+  }>;
+  lowConfidence: Array<{
+    questionId: string;
+    text: string;
+    agreement: number;
+    confidence: number;
+  }>;
+}
+
 /**
- * Renderiza las preguntas destacadas del análisis
+ * Renderiza las preguntas destacadas del análisis en formato Dashboard Grid
  */
 export function renderSurveyTopQuestions(analysis: SurveyAnalysis): HTMLElement {
-  const container = document.createElement('div');
-  container.className = 'survey-questions-section';
+  const container = document.createElement('section');
+  container.className = 'dashboard-section';
 
-  const header = document.createElement('h2');
-  header.innerHTML = '<span class="material-symbols-outlined">star</span> Preguntas Destacadas';
+  // Header de la sección
+  const header = document.createElement('div');
+  header.className = 'dashboard-section-header';
+  header.innerHTML = `
+    <h2 class="dashboard-section-title">
+      <span class="material-symbols-outlined">star</span>
+      Preguntas Destacadas
+    </h2>
+  `;
   container.appendChild(header);
 
-  const grid = document.createElement('div');
-  grid.className = 'top-questions-grid';
+  // Body con grid de preguntas
+  const body = document.createElement('div');
+  body.className = 'dashboard-section-body';
 
-  // Most polarized questions
-  const polarized = getMostPolarized(analysis.questionAnalyses, 3);
-  if (polarized.length > 0) {
-    grid.appendChild(renderQuestionGroup(
-      'Más Polarizadas',
-      'bolt',
-      'warning',
-      polarized,
-      (q) => `Polarización: ${capitalizeFirst(q.metrics?.polarizationLevel ?? 'N/A')}`
-    ));
-  }
+  const questionsGrid = document.createElement('div');
+  questionsGrid.className = 'questions-grid';
 
-  // Most consensus questions
-  const consensus = getMostConsensus(analysis.questionAnalyses, 3);
-  if (consensus.length > 0) {
-    grid.appendChild(renderQuestionGroup(
-      'Mayor Consenso',
-      'check_circle',
-      'success',
-      consensus,
-      (q) => `Concentración: ${Math.round((q.metrics?.concentration ?? 0) * 100)}%`
-    ));
-  }
+  // Calcular preguntas destacadas desde questionAnalyses
+  const topQuestions = calculateTopQuestions(analysis.questionAnalyses);
 
-  // Lowest confidence questions
-  const lowConfidence = getLowestConfidence(analysis.questionAnalyses, 3);
-  if (lowConfidence.length > 0) {
-    grid.appendChild(renderQuestionGroup(
-      'Menor Confianza',
-      'warning',
-      'danger',
-      lowConfidence,
-      (q) => `Confianza: ${Math.round((q.metrics?.averageConfidence ?? 0) * 100)}%`
-    ));
-  }
+  // Category 1: Consensus (High Agreement)
+  const consensusCard = createQuestionCategoryCard({
+    title: 'Consenso',
+    icon: 'check_circle',
+    variant: 'consensus',
+    questions: topQuestions.consensus,
+    emptyMessage: 'Sin preguntas de consenso',
+    getMetric: (q) => `${Math.round(q.agreement * 100)}% acuerdo`,
+  });
+  questionsGrid.appendChild(consensusCard);
 
-  container.appendChild(grid);
+  // Category 2: Polarized (Low Agreement)
+  const polarizedCard = createQuestionCategoryCard({
+    title: 'Polarizadas',
+    icon: 'bolt',
+    variant: 'polarized',
+    questions: topQuestions.polarized,
+    emptyMessage: 'Sin preguntas polarizadas',
+    getMetric: (q) => `${Math.round((1 - q.agreement) * 100)}% divergencia`,
+  });
+  questionsGrid.appendChild(polarizedCard);
+
+  // Category 3: Low Confidence
+  const lowConfidenceCard = createQuestionCategoryCard({
+    title: 'Baja Confianza',
+    icon: 'warning',
+    variant: 'low-confidence',
+    questions: topQuestions.lowConfidence,
+    emptyMessage: 'Sin preguntas de baja confianza',
+    getMetric: (q) => `${Math.round(q.confidence * 100)}% confianza`,
+  });
+  questionsGrid.appendChild(lowConfidenceCard);
+
+  body.appendChild(questionsGrid);
+  container.appendChild(body);
+
   return container;
 }
 
 /**
- * Renderiza un grupo de preguntas
+ * Calcula las preguntas destacadas desde el análisis de preguntas
  */
-function renderQuestionGroup(
-  title: string,
-  icon: string,
-  colorClass: string,
-  questions: QuestionAnalysis[],
-  getMetric: (q: QuestionAnalysis) => string
-): HTMLElement {
-  const group = document.createElement('div');
-  group.className = 'question-group';
+function calculateTopQuestions(questionAnalyses: QuestionAnalysis[]): TopQuestionsData {
+  const supportedQuestions = questionAnalyses.filter((q) => q.supported && q.metrics);
 
+  // Consensus: high dominance ratio (> 2.0) and high confidence
+  const consensus = supportedQuestions
+    .filter((q) => q.metrics!.dominanceRatio > 2.0 && q.metrics!.averageConfidence >= 0.7)
+    .sort((a, b) => b.metrics!.dominanceRatio - a.metrics!.dominanceRatio)
+    .slice(0, 3)
+    .map((q) => ({
+      questionId: q.questionId,
+      text: q.questionText,
+      agreement: q.metrics!.dominantPercentage / 100,
+      confidence: q.metrics!.averageConfidence,
+    }));
+
+  // Polarized: high entropy (> 0.7) indicating divided opinions
+  const polarized = supportedQuestions
+    .filter((q) => q.metrics!.entropy > 0.7)
+    .sort((a, b) => b.metrics!.entropy - a.metrics!.entropy)
+    .slice(0, 3)
+    .map((q) => ({
+      questionId: q.questionId,
+      text: q.questionText,
+      agreement: 1 - q.metrics!.entropy, // Lower agreement = higher polarization
+      confidence: q.metrics!.averageConfidence,
+    }));
+
+  // Low Confidence: confidence below threshold
+  const lowConfidence = supportedQuestions
+    .filter((q) => q.metrics!.averageConfidence < 0.6)
+    .sort((a, b) => a.metrics!.averageConfidence - b.metrics!.averageConfidence)
+    .slice(0, 3)
+    .map((q) => ({
+      questionId: q.questionId,
+      text: q.questionText,
+      agreement: q.metrics!.dominantPercentage / 100,
+      confidence: q.metrics!.averageConfidence,
+    }));
+
+  return { consensus, polarized, lowConfidence };
+}
+
+/**
+ * Crea una tarjeta de categoría de preguntas
+ */
+function createQuestionCategoryCard({
+  title,
+  icon,
+  variant,
+  questions,
+  emptyMessage,
+  getMetric,
+}: {
+  title: string;
+  icon: string;
+  variant: 'consensus' | 'polarized' | 'low-confidence';
+  questions: Array<{
+    questionId: string;
+    text: string;
+    agreement: number;
+    confidence: number;
+  }>;
+  emptyMessage: string;
+  getMetric: (q: { agreement: number; confidence: number }) => string;
+}): HTMLElement {
+  const card = document.createElement('div');
+  card.className = `question-category-card question-category-card--${variant}`;
+
+  // Header
   const header = document.createElement('div');
-  header.className = `question-group-header ${colorClass}`;
+  header.className = 'question-category-header';
   header.innerHTML = `
     <span class="material-symbols-outlined">${icon}</span>
-    <span>${title}</span>
+    <h3 class="question-category-title">${escapeHtml(title)}</h3>
+    <span class="question-category-count">${questions.length}</span>
   `;
-  group.appendChild(header);
+  card.appendChild(header);
 
-  const list = document.createElement('div');
-  list.className = 'question-group-list';
+  // Body
+  const body = document.createElement('div');
+  body.className = 'question-category-body';
 
-  questions.forEach((q) => {
-    const item = document.createElement('div');
-    item.className = 'question-item';
-    item.innerHTML = `
-      <div class="question-text">${escapeHtml(q.questionText)}</div>
-      <div class="question-metric">${getMetric(q)}</div>
+  if (questions.length === 0) {
+    const emptyState = document.createElement('div');
+    emptyState.className = 'question-empty-state';
+    emptyState.innerHTML = `
+      <span class="material-symbols-outlined">inbox</span>
+      <p>${escapeHtml(emptyMessage)}</p>
     `;
-    list.appendChild(item);
-  });
+    body.appendChild(emptyState);
+  } else {
+    const list = document.createElement('div');
+    list.className = 'question-list';
 
-  group.appendChild(list);
-  return group;
+    questions.forEach((question, index) => {
+      const item = createQuestionItem(question, index + 1, getMetric);
+      list.appendChild(item);
+    });
+
+    body.appendChild(list);
+  }
+
+  card.appendChild(body);
+  return card;
 }
 
 /**
- * Obtiene las preguntas más polarizadas
- * Usa el valor numérico de polarization para ordenamiento preciso
+ * Crea un item de pregunta individual
  */
-function getMostPolarized(questions: QuestionAnalysis[], limit: number): QuestionAnalysis[] {
-  return [...questions]
-    .sort((a, b) => (b.metrics?.polarization ?? 0) - (a.metrics?.polarization ?? 0))
-    .slice(0, limit);
-}
+function createQuestionItem(
+  question: {
+    questionId: string;
+    text: string;
+    agreement: number;
+    confidence: number;
+  },
+  rank: number,
+  getMetric: (q: { agreement: number; confidence: number }) => string
+): HTMLElement {
+  const item = document.createElement('div');
+  item.className = 'question-item';
 
-/**
- * Obtiene las preguntas con mayor consenso
- */
-function getMostConsensus(questions: QuestionAnalysis[], limit: number): QuestionAnalysis[] {
-  return [...questions]
-    .sort((a, b) => (b.metrics?.concentration ?? 0) - (a.metrics?.concentration ?? 0))
-    .slice(0, limit);
-}
+  item.innerHTML = `
+    <div class="question-rank">${rank}</div>
+    <div class="question-content">
+      <div class="question-text">${escapeHtml(question.text)}</div>
+      <div class="question-meta">
+        <span class="question-metric">
+          <strong>${getMetric(question)}</strong>
+        </span>
+      </div>
+    </div>
+  `;
 
-/**
- * Obtiene las preguntas con menor confianza
- */
-function getLowestConfidence(questions: QuestionAnalysis[], limit: number): QuestionAnalysis[] {
-  return [...questions]
-    .sort((a, b) => (a.metrics?.averageConfidence ?? 1) - (b.metrics?.averageConfidence ?? 1))
-    .slice(0, limit);
+  return item;
 }
 
 /**
@@ -134,12 +242,4 @@ function escapeHtml(text: string): string {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
-}
-
-/**
- * Capitaliza la primera letra de un texto
- */
-function capitalizeFirst(text: string): string {
-  if (!text) return '';
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }

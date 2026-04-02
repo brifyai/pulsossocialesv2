@@ -237,7 +237,7 @@ function generateGlobalInsights(
         insights.push({
           ...insight,
           title: `${insight.title}`,
-          description: `${insight.description} (Pregunta: "${questionAnalysis.questionText.substring(0, 40)}${questionAnalysis.questionText.length > 40 ? '...' : ''}")`,
+          description: `${insight.description} (Pregunta: "${questionAnalysis.questionText.substring(0, 80)}${questionAnalysis.questionText.length > 80 ? '...' : ''}")`,
         });
       }
     }
