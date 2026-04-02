@@ -19,6 +19,7 @@ import './styles/auth.css';
 import './styles/scenarios.css';
 import './styles/operations.css';
 import './styles/agents.css';
+import './styles/survey-analysis.css';
 
 // Router & Auth
 import { 
@@ -50,6 +51,7 @@ import { createProfilePage, cleanupProfilePage } from './pages/ProfilePage';
 import { createSettingsPage, cleanupSettingsPage } from './pages/SettingsPage';
 import { createScenarioBuilderPage, cleanupScenarioBuilderPage } from './pages/ScenarioBuilderPage';
 import { createOperationsPage, cleanupOperationsPage } from './pages/OperationsPage';
+import { createSurveyAnalysisPage, cleanupSurveyAnalysisPage } from './pages/SurveyAnalysisPage';
 
 // App state
 let navigation: HTMLElement | null = null;
@@ -238,6 +240,8 @@ async function renderProtectedPage(route: Route): Promise<HTMLElement | null> {
       return await createScenarioBuilderPage();
     case 'operations':
       return await createOperationsPage();
+    case 'survey-analysis':
+      return await createSurveyAnalysisPage();
     default:
       return createHomePage();
   }
@@ -337,6 +341,11 @@ function cleanupMapResources(currentRoute: Route): void {
   // Cleanup operations page if leaving operations route
   if (currentRoute !== 'operations') {
     cleanupOperationsPage();
+  }
+
+  // Cleanup survey analysis page if leaving survey-analysis route
+  if (currentRoute !== 'survey-analysis') {
+    cleanupSurveyAnalysisPage();
   }
 }
 
