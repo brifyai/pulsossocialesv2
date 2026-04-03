@@ -700,28 +700,49 @@ export async function saveSurveyResponses(
 }
 
 /**
- * Obtiene respuestas individuales de una corrida
- * Útil para análisis detallado o debugging
+ * Genera un UUID v4 válido
  */
-export async function getSurveyResponsesByRunId(
-  runId: string,
-  options?: { limit?: number; offset?: number }
-): Promise<AgentResponse[]> {
-  return safeQuery(async (client) => {
-    console.log(`[SurveyRepository] Fetching responses for runId: ${runId}`);
-    
-    let query = client
-      .from('survey_responses')
-      .select('*')
-      .eq('run_id', runId)
-      .order('created_at', { ascending: true });
-    
-    if (options?.limit) {
-      query = query.limit(options.limit);
-    }
-    if (options?.offset) {
-      query = query.range(options.offset, options.offset + (options.limit || 1000) - 1);
-    }
+function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+/**
+ * Convierte SurveyRun (app) a DbSurveyRun (DB)
+ * FIX: Ahora incluye el ID para evitar discrepancias entre survey_runs y survey_responses
+ */
+function toDbSurveyRun(run: SurveyRun): DbSurveyRun {
+  // Si el run ya tiene un ID que parece UUID, usarlo; si no, generar uno nuevo
+  const id = run.id && run.id.includes('-') && run.id.length === 36 
+    ? run.id 
+    : generateUUID();
+  
+  return {
+    id,
+    survey_id: run.surveyId,
+    name: null,
+    status: 'completed',
+    segment_applied: run.metadata?.segment || {},
+    sample_size_requested: run.metadata?.sampleSizeRequested || 0,
+    sample_size_actual: run.totalAgents,
+    agents_matched: run.metadata?.segmentMatched || 0,
+    progress_percent: 100,
+    current_agent_index: run.totalAgents,
+    results_summary: {
+      total_responses: run.responses?.length || 0,
+    },
+    error_message: null,
+    error_details: null,
+    started_at: run.startedAt,
+    completed_at: run.completedAt,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    run_number: 0, // Se calcula automáticamente en la DB
+  };
+}
     
     const { data, error } = await query;
     
