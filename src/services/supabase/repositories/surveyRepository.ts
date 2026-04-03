@@ -700,72 +700,35 @@ export async function saveSurveyResponses(
 }
 
 /**
- * Genera un UUID v4 válido
+ * Obtiene las respuestas de una corrida específica
  */
-function generateUUID(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-}
+export async function getSurveyResponsesByRunId(runId: string): Promise<AgentResponse[]> {
+  return safeQuery(async (client) => {
+    const { data, error } = await client
+      .from('survey_responses')
+      .select('*')
+      .eq('run_id', runId);
 
-/**
- * Convierte SurveyRun (app) a DbSurveyRun (DB)
- * FIX: Ahora incluye el ID para evitar discrepancias entre survey_runs y survey_responses
- */
-function toDbSurveyRun(run: SurveyRun): DbSurveyRun {
-  // Si el run ya tiene un ID que parece UUID, usarlo; si no, generar uno nuevo
-  const id = run.id && run.id.includes('-') && run.id.length === 36 
-    ? run.id 
-    : generateUUID();
-  
-  return {
-    id,
-    survey_id: run.surveyId,
-    name: null,
-    status: 'completed',
-    segment_applied: run.metadata?.segment || {},
-    sample_size_requested: run.metadata?.sampleSizeRequested || 0,
-    sample_size_actual: run.totalAgents,
-    agents_matched: run.metadata?.segmentMatched || 0,
-    progress_percent: 100,
-    current_agent_index: run.totalAgents,
-    results_summary: {
-      total_responses: run.responses?.length || 0,
-    },
-    error_message: null,
-    error_details: null,
-    started_at: run.startedAt,
-    completed_at: run.completedAt,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    run_number: 0, // Se calcula automáticamente en la DB
-  };
-}
-    
-    const { data, error } = await query;
-    
     if (error) {
       console.error('[SurveyRepository] Error fetching responses:', error);
       return [];
     }
-    
+
     console.log(`[SurveyRepository] Found ${data?.length || 0} responses for runId: ${runId}`);
-    
+
     if (!data || data.length === 0) {
       // Intentar verificar si hay respuestas con run_id similar
       const { data: allData, error: allError } = await client
         .from('survey_responses')
         .select('run_id')
         .limit(10);
-      
+
       if (!allError && allData && allData.length > 0) {
-        const uniqueRunIds = [...new Set(allData.map((r: DbSurveyResponse) => r.run_id))];
+        const uniqueRunIds = Array.from(new Set(allData.map((r: DbSurveyResponse) => r.run_id)));
         console.log(`[SurveyRepository] Available run_ids in DB:`, uniqueRunIds);
       }
     }
-    
+
     return (data || []).map((db: DbSurveyResponse) => ({
       agentId: db.agent_id,
       questionId: db.question_id,
