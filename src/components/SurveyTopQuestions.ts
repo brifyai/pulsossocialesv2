@@ -6,26 +6,35 @@
  */
 
 import type { SurveyAnalysis, QuestionAnalysis } from '../app/survey/analysis/types';
+import { getPolarizationLevelLabel } from '../app/survey/analysis/surveyAnalysisService';
+
+// Tipos específicos para cada categoría
+interface ConsensusQuestion {
+  questionId: string;
+  text: string;
+  dominantPercentage: number;
+  confidence: number;
+}
+
+interface PolarizedQuestion {
+  questionId: string;
+  text: string;
+  polarizationLevel: 'low' | 'medium' | 'high';
+  entropy: number;
+  confidence: number;
+}
+
+interface LowConfidenceQuestion {
+  questionId: string;
+  text: string;
+  confidence: number;
+  agreement: number;
+}
 
 interface TopQuestionsData {
-  consensus: Array<{
-    questionId: string;
-    text: string;
-    agreement: number;
-    confidence: number;
-  }>;
-  polarized: Array<{
-    questionId: string;
-    text: string;
-    agreement: number;
-    confidence: number;
-  }>;
-  lowConfidence: Array<{
-    questionId: string;
-    text: string;
-    agreement: number;
-    confidence: number;
-  }>;
+  consensus: ConsensusQuestion[];
+  polarized: PolarizedQuestion[];
+  lowConfidence: LowConfidenceQuestion[];
 }
 
 /**
@@ -57,35 +66,35 @@ export function renderSurveyTopQuestions(analysis: SurveyAnalysis): HTMLElement 
   const topQuestions = calculateTopQuestions(analysis.questionAnalyses);
 
   // Category 1: Consensus (High Agreement)
-  const consensusCard = createQuestionCategoryCard({
-    title: 'Consenso',
+  const consensusCard = createQuestionCategoryCard<ConsensusQuestion>({
+    title: 'Mayor Consenso',
     icon: 'check_circle',
     variant: 'consensus',
     questions: topQuestions.consensus,
     emptyMessage: 'Sin preguntas de consenso',
-    getMetric: (q) => `${Math.round(q.agreement * 100)}% acuerdo`,
+    getMetric: (q) => `Acuerdo: ${Math.round(q.dominantPercentage)}%`,
   });
   questionsGrid.appendChild(consensusCard);
 
   // Category 2: Polarized (Low Agreement)
-  const polarizedCard = createQuestionCategoryCard({
-    title: 'Polarizadas',
+  const polarizedCard = createQuestionCategoryCard<PolarizedQuestion>({
+    title: 'Más Polarizadas',
     icon: 'bolt',
     variant: 'polarized',
     questions: topQuestions.polarized,
     emptyMessage: 'Sin preguntas polarizadas',
-    getMetric: (q) => `${Math.round((1 - q.agreement) * 100)}% dispersión`,
+    getMetric: (q) => `Polarización: ${getPolarizationLevelLabel(q.polarizationLevel)}`,
   });
   questionsGrid.appendChild(polarizedCard);
 
-  // Category 3: Low Confidence
-  const lowConfidenceCard = createQuestionCategoryCard({
-    title: 'Baja Confianza',
+  // Category 3: Low Confidence - muestra el valor % real, no una etiqueta
+  const lowConfidenceCard = createQuestionCategoryCard<LowConfidenceQuestion>({
+    title: 'Menor Confianza',
     icon: 'warning',
     variant: 'low-confidence',
     questions: topQuestions.lowConfidence,
     emptyMessage: 'Sin preguntas de baja confianza',
-    getMetric: (q) => `${Math.round(q.confidence * 100)}% confianza`,
+    getMetric: (q) => `Confianza: ${Math.round(q.confidence * 100)}%`,
   });
   questionsGrid.appendChild(lowConfidenceCard);
 
@@ -111,6 +120,7 @@ function calculateTopQuestions(questionAnalyses: QuestionAnalysis[]): TopQuestio
       text: q.questionText,
       agreement: q.metrics!.dominantPercentage / 100,
       confidence: q.metrics!.averageConfidence,
+      dominantPercentage: q.metrics!.dominantPercentage,
     }));
 
   // Polarized: high entropy (> 0.7) indicating divided opinions
@@ -123,6 +133,8 @@ function calculateTopQuestions(questionAnalyses: QuestionAnalysis[]): TopQuestio
       text: q.questionText,
       agreement: 1 - q.metrics!.entropy, // Lower agreement = higher polarization
       confidence: q.metrics!.averageConfidence,
+      polarizationLevel: q.metrics!.polarizationLevel,
+      entropy: q.metrics!.entropy,
     }));
 
   // Low Confidence: confidence below threshold
@@ -143,7 +155,7 @@ function calculateTopQuestions(questionAnalyses: QuestionAnalysis[]): TopQuestio
 /**
  * Crea una tarjeta de categoría de preguntas
  */
-function createQuestionCategoryCard({
+function createQuestionCategoryCard<T extends { questionId: string; text: string; confidence: number }>({
   title,
   icon,
   variant,
@@ -154,14 +166,9 @@ function createQuestionCategoryCard({
   title: string;
   icon: string;
   variant: 'consensus' | 'polarized' | 'low-confidence';
-  questions: Array<{
-    questionId: string;
-    text: string;
-    agreement: number;
-    confidence: number;
-  }>;
+  questions: T[];
   emptyMessage: string;
-  getMetric: (q: { agreement: number; confidence: number }) => string;
+  getMetric: (q: T) => string;
 }): HTMLElement {
   const card = document.createElement('div');
   card.className = `question-category-card question-category-card--${variant}`;
@@ -207,23 +214,24 @@ function createQuestionCategoryCard({
 /**
  * Crea un item de pregunta individual
  */
-function createQuestionItem(
-  question: {
-    questionId: string;
-    text: string;
-    agreement: number;
-    confidence: number;
-  },
+function createQuestionItem<T extends { questionId: string; text: string; confidence: number }>(
+  question: T,
   rank: number,
-  getMetric: (q: { agreement: number; confidence: number }) => string
+  getMetric: (q: T) => string
 ): HTMLElement {
   const item = document.createElement('div');
   item.className = 'question-item';
 
+  // Truncar texto para mostrar, pero mantener completo en title
+  const displayText = question.text.length > 90
+    ? question.text.substring(0, 90) + '...'
+    : question.text;
+  const fullText = question.text;
+
   item.innerHTML = `
     <div class="question-rank">${rank}</div>
     <div class="question-content">
-      <div class="question-text">${escapeHtml(question.text)}</div>
+      <div class="question-text" title="${escapeHtml(fullText)}">${escapeHtml(displayText)}</div>
       <div class="question-meta">
         <span class="question-metric">
           <strong>${getMetric(question)}</strong>
