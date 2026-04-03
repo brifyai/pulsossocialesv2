@@ -234,10 +234,13 @@ function generateGlobalInsights(
     if (questionAnalysis.insights && questionAnalysis.insights.length > 0) {
       for (const insight of questionAnalysis.insights) {
         // Adaptar el insight individual para mostrarlo en contexto global
+        const truncatedText = questionAnalysis.questionText.length > 60
+          ? questionAnalysis.questionText.substring(0, 60) + '...'
+          : questionAnalysis.questionText;
         insights.push({
           ...insight,
           title: `${insight.title}`,
-          description: `${insight.description} (Pregunta: "${questionAnalysis.questionText.substring(0, 80)}${questionAnalysis.questionText.length > 80 ? '...' : ''}")`,
+          description: `${insight.description} [Pregunta: "${truncatedText}"]`,
         });
       }
     }
@@ -359,6 +362,19 @@ function calculateOverallConsensusLevel(
   if (highPolarization > supported.length * 0.4) return 'low';
   if (highDominance > supported.length * 0.3) return 'medium';
   return 'mixed';
+}
+
+/**
+ * Traduce el nivel de consenso a español para mostrar en UI.
+ */
+export function getConsensusLevelLabel(level: 'high' | 'medium' | 'low' | 'mixed'): string {
+  const labels: Record<string, string> = {
+    high: 'Alto',
+    medium: 'Medio',
+    low: 'Bajo',
+    mixed: 'Mixto',
+  };
+  return labels[level] ?? level;
 }
 
 // ===========================================

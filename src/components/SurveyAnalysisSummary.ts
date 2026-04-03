@@ -115,7 +115,7 @@ function createKPICard({
 function getConfidenceLabel(confidence: number): string {
   if (confidence >= 0.8) return 'Alta confianza';
   if (confidence >= 0.6) return 'Confianza media';
-  return 'Revisar datos';
+  return 'Verificar calidad de datos';
 }
 
 /**

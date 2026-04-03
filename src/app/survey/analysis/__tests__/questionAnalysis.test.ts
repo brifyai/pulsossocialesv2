@@ -259,7 +259,7 @@ describe('analyzeQuestionResult', () => {
       const analysis = analyzeQuestionResult(result);
 
       const tendencyInsight = analysis.insights?.find(
-        (i) => i.type === 'dominance' && i.title?.includes('altos')
+        (i) => i.type === 'dominance' && i.title?.includes('alta')
       );
       expect(tendencyInsight).toBeDefined();
     });
@@ -282,7 +282,7 @@ describe('analyzeQuestionResult', () => {
       const analysis = analyzeQuestionResult(result);
 
       const tendencyInsight = analysis.insights?.find(
-        (i) => i.type === 'dominance' && i.title?.includes('bajos')
+        (i) => i.type === 'dominance' && i.title?.includes('baja')
       );
       expect(tendencyInsight).toBeDefined();
     });
@@ -305,7 +305,7 @@ describe('analyzeQuestionResult', () => {
       const analysis = analyzeQuestionResult(result);
 
       const tendencyInsight = analysis.insights?.find((i) =>
-        i.title?.includes('altos') || i.title?.includes('bajos')
+        i.title?.includes('alta') || i.title?.includes('baja')
       );
       expect(tendencyInsight).toBeUndefined();
     });

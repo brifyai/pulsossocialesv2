@@ -74,7 +74,7 @@ export function renderSurveyTopQuestions(analysis: SurveyAnalysis): HTMLElement 
     variant: 'polarized',
     questions: topQuestions.polarized,
     emptyMessage: 'Sin preguntas polarizadas',
-    getMetric: (q) => `${Math.round((1 - q.agreement) * 100)}% divergencia`,
+    getMetric: (q) => `${Math.round((1 - q.agreement) * 100)}% dispersión`,
   });
   questionsGrid.appendChild(polarizedCard);
 
