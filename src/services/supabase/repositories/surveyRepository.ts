@@ -90,6 +90,7 @@ function toDbSurveyDefinition(def: Omit<SurveyDefinition, 'id' | 'createdAt'> & 
     created_by: null,
     updated_by: null,
     published_at: null,
+    deleted_at: null,
   };
 }
 
@@ -308,9 +309,10 @@ export async function getSurveyDefinitionByIdIncludingDeleted(id: string): Promi
  */
 export async function deleteSurveyDefinition(id: string): Promise<boolean> {
   return safeQuery(async (client) => {
+    const updateData: { deleted_at: string } = { deleted_at: new Date().toISOString() };
     const { error } = await client
       .from('survey_definitions')
-      .update({ deleted_at: new Date().toISOString() })
+      .update(updateData as never)
       .eq('id', id);
     
     if (error) {
@@ -350,9 +352,10 @@ export async function hardDeleteSurveyDefinition(id: string): Promise<boolean> {
  */
 export async function restoreSurveyDefinition(id: string): Promise<boolean> {
   return safeQuery(async (client) => {
+    const updateData: { deleted_at: null } = { deleted_at: null };
     const { error } = await client
       .from('survey_definitions')
-      .update({ deleted_at: null })
+      .update(updateData as never)
       .eq('id', id);
     
     if (error) {
