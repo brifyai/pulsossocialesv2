@@ -414,6 +414,7 @@ function attachSurveyListListeners(list: HTMLElement): void {
   // Delete survey
   list.querySelectorAll('.btn-delete').forEach(btn => {
     btn.addEventListener('click', async (e) => {
+      e.stopPropagation(); // Prevent menu from closing before action
       const id = (e.currentTarget as HTMLElement).dataset.id;
       if (id && confirm('¿Eliminar esta encuesta? Esta acción no se puede deshacer.')) {
         try {
@@ -456,6 +457,7 @@ function attachSurveyListListeners(list: HTMLElement): void {
   // Duplicar encuesta
   list.querySelectorAll('.btn-duplicate').forEach(btn => {
     btn.addEventListener('click', async (e) => {
+      e.stopPropagation(); // Prevent menu from closing before action
       const id = (e.currentTarget as HTMLElement).dataset.id;
       if (!id) return;
       
