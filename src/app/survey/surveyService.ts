@@ -398,16 +398,66 @@ export async function runSurvey(
   const results = generateSurveyResults(survey, localRun);
   surveyResults.set(results.surveyId, results);
   
-  // 8. Intentar persistir resultados en DB (Sprint 11C)
+  // 8. Persistir resultados en DB con retry y verificación (Sprint 11C - FIX PREVENTIVO)
   const isResultsDbAvailable = await isSurveyResultPersistenceAvailable();
   if (isResultsDbAvailable) {
-    try {
-      const saved = await saveSurveyResultsDb(results);
-      if (saved) {
-        console.log(`  📊 Survey results persisted to DB for run: ${localRun.id}`);
+    let resultsSaved = false;
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    // Retry con backoff exponencial: 500ms, 1000ms, 2000ms
+    while (!resultsSaved && retryCount < maxRetries) {
+      try {
+        resultsSaved = await saveSurveyResultsDb(results);
+        if (resultsSaved) {
+          console.log(`  📊 Survey results persisted to DB for run: ${localRun.id}`);
+        } else {
+          console.warn(`[SurveyService] Attempt ${retryCount + 1}/${maxRetries}: saveSurveyResultsDb returned false`);
+        }
+      } catch (error) {
+        retryCount++;
+        console.warn(`[SurveyService] Attempt ${retryCount}/${maxRetries} failed to persist results:`, error);
+        
+        if (retryCount < maxRetries) {
+          const backoffMs = 500 * Math.pow(2, retryCount - 1); // 500ms, 1000ms, 2000ms
+          console.log(`[SurveyService] Retrying in ${backoffMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+        }
       }
-    } catch (error) {
-      console.warn('[SurveyService] Failed to persist results to DB:', error);
+    }
+    
+    // 9. Verificación post-persistencia: confirmar que los resultados existen en DB
+    if (resultsSaved) {
+      try {
+        // Pequeña espera para asegurar que la DB haya procesado el insert
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        const verifyResult = await getSurveyResultsByRunId(localRun.id);
+        if (!verifyResult) {
+          console.error(`[SurveyService] CRITICAL: Results verification failed for run ${localRun.id}. Results were reported as saved but cannot be retrieved.`);
+          resultsSaved = false;
+        } else {
+          console.log(`  ✅ Results verified in DB for run: ${localRun.id}`);
+        }
+      } catch (verifyError) {
+        console.error(`[SurveyService] CRITICAL: Error verifying results for run ${localRun.id}:`, verifyError);
+        resultsSaved = false;
+      }
+    }
+    
+    // 10. Si después de todo no se pudieron guardar/verificar los resultados, lanzar error
+    // Esto evita que el run sea tratado como exitoso cuando está incompleto
+    if (!resultsSaved) {
+      console.error(`[SurveyService] CRITICAL: Survey run ${localRun.id} completed but results could not be persisted to DB.`);
+      console.error(`[SurveyService] Run details: surveyId=${survey.id}, totalAgents=${localRun.totalAgents}, responses=${responses.length}`);
+      
+      // Lanzar error para evitar que el run sea tratado como exitoso
+      // Esto rompe el flujo y obliga al llamador a manejar el fallo
+      throw new Error(
+        `Survey run failed: results could not be persisted after ${maxRetries} attempts. ` +
+        `Run ID: ${localRun.id}, Survey: ${survey.name}. ` +
+        `The run has been saved but results are missing. Please check the logs and retry.`
+      );
     }
   }
   
