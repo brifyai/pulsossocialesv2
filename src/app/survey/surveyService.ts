@@ -1700,21 +1700,33 @@ export async function getSurveyAnalysisByRun(runId: string): Promise<SurveyAnaly
   // 3. Cargar respuestas individuales desde DB si no están en caché
   // Esto es necesario para calcular métricas como confidence
   if (!run.responses || run.responses.length === 0) {
+    console.log(`[SurveyService] No responses in cache for run ${runId}, attempting to load from DB...`);
     try {
       const isAvailable = await isSurveyResponsePersistenceAvailable();
+      console.log(`[SurveyService] Survey response persistence available: ${isAvailable}`);
       if (isAvailable) {
         const responses = await getSurveyResponsesByRunId(runId);
+        console.log(`[SurveyService] DB returned ${responses?.length || 0} responses for run ${runId}`);
         if (responses && responses.length > 0) {
           run.responses = responses;
           console.log(`[SurveyService] Loaded ${responses.length} responses from DB for run ${runId}`);
         } else {
           console.warn(`[SurveyService] No responses found in DB for run ${runId}`);
+          console.log(`[SurveyService] Run ID being queried: "${runId}"`);
+          console.log(`[SurveyService] Run object:`, { 
+            id: run.id, 
+            surveyId: run.surveyId, 
+            totalAgents: run.totalAgents,
+            responsesCount: run.responses?.length 
+          });
         }
       }
     } catch (error) {
       console.warn(`[SurveyService] Error loading responses for run ${runId}:`, error);
       // Continuar sin respuestas - el análisis funcionará pero sin confidence
     }
+  } else {
+    console.log(`[SurveyService] Using ${run.responses.length} responses from cache for run ${runId}`);
   }
 
   // 4. Generar análisis enriquecido

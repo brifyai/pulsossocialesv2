@@ -708,6 +708,8 @@ export async function getSurveyResponsesByRunId(
   options?: { limit?: number; offset?: number }
 ): Promise<AgentResponse[]> {
   return safeQuery(async (client) => {
+    console.log(`[SurveyRepository] Fetching responses for runId: ${runId}`);
+    
     let query = client
       .from('survey_responses')
       .select('*')
@@ -726,6 +728,21 @@ export async function getSurveyResponsesByRunId(
     if (error) {
       console.error('[SurveyRepository] Error fetching responses:', error);
       return [];
+    }
+    
+    console.log(`[SurveyRepository] Found ${data?.length || 0} responses for runId: ${runId}`);
+    
+    if (!data || data.length === 0) {
+      // Intentar verificar si hay respuestas con run_id similar
+      const { data: allData, error: allError } = await client
+        .from('survey_responses')
+        .select('run_id')
+        .limit(10);
+      
+      if (!allError && allData && allData.length > 0) {
+        const uniqueRunIds = [...new Set(allData.map((r: DbSurveyResponse) => r.run_id))];
+        console.log(`[SurveyRepository] Available run_ids in DB:`, uniqueRunIds);
+      }
     }
     
     return (data || []).map((db: DbSurveyResponse) => ({

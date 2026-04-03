@@ -15,6 +15,19 @@ export function renderQuestionAnalysisList(analysis: SurveyAnalysis): HTMLElemen
   const container = document.createElement('section');
   container.className = 'dashboard-section';
 
+  // Validación defensiva
+  if (!analysis) {
+    console.error('[QuestionAnalysisList] No analysis provided');
+    container.innerHTML = '<div class="error-state">Error: No hay datos de análisis</div>';
+    return container;
+  }
+
+  if (!analysis.questionAnalyses || !Array.isArray(analysis.questionAnalyses)) {
+    console.error('[QuestionAnalysisList] Invalid questionAnalyses:', analysis.questionAnalyses);
+    container.innerHTML = '<div class="error-state">Error: Datos de preguntas inválidos</div>';
+    return container;
+  }
+
   // Header de la sección
   const header = document.createElement('div');
   header.className = 'dashboard-section-header';
@@ -67,9 +80,16 @@ function createQuestionDetailCard(question: QuestionAnalysis, rank: number): HTM
   const card = document.createElement('div');
   card.className = 'question-detail-card';
 
-  // Determinar estado de la pregunta
-  const isSupported = question.supported;
-  const hasMetrics = question.metrics !== undefined;
+  // Validación defensiva de la pregunta
+  if (!question) {
+    console.error('[QuestionAnalysisList] Question is null/undefined');
+    card.innerHTML = '<div class="question-detail-unsupported">Error: Datos de pregunta inválidos</div>';
+    return card;
+  }
+
+  // Determinar estado de la pregunta con valores por defecto seguros
+  const isSupported = question.supported ?? false;
+  const hasMetrics = question.metrics != null;
 
   // Header colapsable
   const header = document.createElement('div');
