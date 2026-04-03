@@ -230,6 +230,7 @@ export interface DbSyntheticAgentBatch {
  * Supabase: Sí
  * 
  * CADEM v1.1 - Añadido engine_mode y persist_state
+ * Soft Delete - Añadido deleted_at
  */
 export interface DbSurveyDefinition {
   id: string;                    // UUID primary key
@@ -270,6 +271,9 @@ export interface DbSurveyDefinition {
   created_at: string;
   updated_at: string;
   published_at: string | null;
+  
+  // Soft Delete - NULL = activa, timestamp = eliminada
+  deleted_at: string | null;
 }
 
 /**

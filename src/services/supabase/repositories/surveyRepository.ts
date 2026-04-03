@@ -222,13 +222,14 @@ export async function createSurveyDefinition(
 }
 
 /**
- * Obtiene todas las definiciones de encuestas
+ * Obtiene todas las definiciones de encuestas activas (no eliminadas)
  */
 export async function getSurveyDefinitions(): Promise<SurveyDefinition[]> {
   return safeQuery(async (client) => {
     const { data, error } = await client
       .from('survey_definitions')
       .select('*')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
     
     if (error) {
@@ -241,7 +242,7 @@ export async function getSurveyDefinitions(): Promise<SurveyDefinition[]> {
 }
 
 /**
- * Obtiene una definición de encuesta por ID
+ * Obtiene una definición de encuesta por ID (solo si no está eliminada)
  */
 export async function getSurveyDefinitionById(id: string): Promise<SurveyDefinition | null> {
   return safeQuery(async (client) => {
@@ -249,6 +250,7 @@ export async function getSurveyDefinitionById(id: string): Promise<SurveyDefinit
       .from('survey_definitions')
       .select('*')
       .eq('id', id)
+      .is('deleted_at', null)
       .single();
     
     if (error) {
@@ -261,9 +263,72 @@ export async function getSurveyDefinitionById(id: string): Promise<SurveyDefinit
 }
 
 /**
- * Elimina una definición de encuesta
+ * Obtiene todas las encuestas eliminadas (para administración)
+ */
+export async function getDeletedSurveyDefinitions(): Promise<SurveyDefinition[]> {
+  return safeQuery(async (client) => {
+    const { data, error } = await client
+      .from('survey_definitions')
+      .select('*')
+      .not('deleted_at', 'is', null)
+      .order('deleted_at', { ascending: false });
+    
+    if (error) {
+      console.error('[SurveyRepository] Error fetching deleted surveys:', error);
+      return [];
+    }
+    
+    return (data || []).map(fromDbSurveyDefinition);
+  }, []);
+}
+
+/**
+ * Obtiene una encuesta por ID incluyendo las eliminadas (para administración)
+ */
+export async function getSurveyDefinitionByIdIncludingDeleted(id: string): Promise<SurveyDefinition | null> {
+  return safeQuery(async (client) => {
+    const { data, error } = await client
+      .from('survey_definitions')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      console.error('[SurveyRepository] Error fetching survey (including deleted):', error);
+      return null;
+    }
+    
+    return data ? fromDbSurveyDefinition(data) : null;
+  }, null);
+}
+
+/**
+ * Soft delete de una definición de encuesta
+ * En lugar de eliminar físicamente, marca la encuesta como eliminada
  */
 export async function deleteSurveyDefinition(id: string): Promise<boolean> {
+  return safeQuery(async (client) => {
+    const { error } = await client
+      .from('survey_definitions')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id);
+    
+    if (error) {
+      console.error('[SurveyRepository] Error soft-deleting survey:', error);
+      return false;
+    }
+    
+    console.log('🗑️ [SurveyRepository] Survey soft-deleted from DB:', id);
+    return true;
+  }, false);
+}
+
+/**
+ * Hard delete de una definición de encuesta (solo para administración)
+ * Elimina físicamente la encuesta de la base de datos
+ * @deprecated Usar deleteSurveyDefinition (soft delete) en su lugar
+ */
+export async function hardDeleteSurveyDefinition(id: string): Promise<boolean> {
   return safeQuery(async (client) => {
     const { error } = await client
       .from('survey_definitions')
@@ -271,11 +336,31 @@ export async function deleteSurveyDefinition(id: string): Promise<boolean> {
       .eq('id', id);
     
     if (error) {
-      console.error('[SurveyRepository] Error deleting survey:', error);
+      console.error('[SurveyRepository] Error hard-deleting survey:', error);
       return false;
     }
     
-    console.log('🗑️ [SurveyRepository] Survey deleted from DB:', id);
+    console.log('🗑️ [SurveyRepository] Survey hard-deleted from DB:', id);
+    return true;
+  }, false);
+}
+
+/**
+ * Restaura una encuesta eliminada (soft delete revert)
+ */
+export async function restoreSurveyDefinition(id: string): Promise<boolean> {
+  return safeQuery(async (client) => {
+    const { error } = await client
+      .from('survey_definitions')
+      .update({ deleted_at: null })
+      .eq('id', id);
+    
+    if (error) {
+      console.error('[SurveyRepository] Error restoring survey:', error);
+      return false;
+    }
+    
+    console.log('♻️ [SurveyRepository] Survey restored:', id);
     return true;
   }, false);
 }

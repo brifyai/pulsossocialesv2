@@ -189,24 +189,25 @@ export async function getAllSurveys(): Promise<SurveyDefinition[]> {
 }
 
 /**
- * Elimina una encuesta
- * Elimina de DB si está disponible, y siempre de cache local
+ * Elimina una encuesta (Soft Delete)
+ * Marca la encuesta como eliminada en DB (soft delete), y siempre de cache local
+ * Las encuestas eliminadas no se muestran en la lista pero permanecen en la base de datos
  */
 export async function deleteSurvey(id: string): Promise<boolean> {
   await syncFromDatabase();
   
-  // Intentar eliminar de DB primero
+  // Intentar soft delete en DB primero
   const isAvailable = await isSurveyPersistenceAvailable();
   if (isAvailable) {
     try {
       const dbDeleted = await deleteSurveyDefinition(id);
       if (!dbDeleted) {
-        console.error('[SurveyService] Failed to delete survey from DB');
+        console.error('[SurveyService] Failed to soft-delete survey from DB');
         return false;
       }
-      console.log(`🗑️ Survey deleted from DB: ${id}`);
+      console.log(`🗑️ Survey soft-deleted from DB: ${id}`);
     } catch (error) {
-      console.error('[SurveyService] Error deleting from DB:', error);
+      console.error('[SurveyService] Error soft-deleting from DB:', error);
       return false;
     }
   }
@@ -214,7 +215,7 @@ export async function deleteSurvey(id: string): Promise<boolean> {
   // Siempre eliminar de cache local
   const deleted = surveys.delete(id);
   if (deleted) {
-    console.log(`🗑️ Survey deleted from cache: ${id}`);
+    console.log(`🗑️ Survey removed from cache: ${id}`);
   }
   return deleted;
 }
