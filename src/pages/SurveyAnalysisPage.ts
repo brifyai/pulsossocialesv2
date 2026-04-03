@@ -11,6 +11,7 @@ import { navigateTo, getParams } from '../router';
 import { renderSurveyAnalysisSummary } from '../components/SurveyAnalysisSummary';
 import { renderSurveyInsightsList } from '../components/SurveyInsightsList';
 import { renderSurveyTopQuestions } from '../components/SurveyTopQuestions';
+import { renderQuestionAnalysisList } from '../components/QuestionAnalysisList';
 
 // ===========================================
 // Types
@@ -202,6 +203,9 @@ function renderSuccess(analysis: SurveyAnalysis): void {
 
   // 3. Top Questions (using extracted component)
   content.appendChild(renderSurveyTopQuestions(analysis));
+
+  // 4. Question Detail List (detalle por pregunta)
+  content.appendChild(renderQuestionAnalysisList(analysis));
 
   pageContainer!.appendChild(content);
 }

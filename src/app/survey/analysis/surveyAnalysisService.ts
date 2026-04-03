@@ -234,8 +234,8 @@ function generateGlobalInsights(
     if (questionAnalysis.insights && questionAnalysis.insights.length > 0) {
       for (const insight of questionAnalysis.insights) {
         // Adaptar el insight individual para mostrarlo en contexto global
-        const truncatedText = questionAnalysis.questionText.length > 60
-          ? questionAnalysis.questionText.substring(0, 60) + '...'
+        const truncatedText = questionAnalysis.questionText.length > 90
+          ? questionAnalysis.questionText.substring(0, 90) + '...'
           : questionAnalysis.questionText;
         insights.push({
           ...insight,
@@ -372,7 +372,31 @@ export function getConsensusLevelLabel(level: 'high' | 'medium' | 'low' | 'mixed
     high: 'Alto',
     medium: 'Medio',
     low: 'Bajo',
-    mixed: 'Mixto',
+    mixed: 'Consenso parcial',
+  };
+  return labels[level] ?? level;
+}
+
+/**
+ * Traduce el nivel de polarización a español para mostrar en UI.
+ */
+export function getPolarizationLevelLabel(level: 'low' | 'medium' | 'high'): string {
+  const labels: Record<string, string> = {
+    low: 'Baja',
+    medium: 'Media',
+    high: 'Alta',
+  };
+  return labels[level] ?? level;
+}
+
+/**
+ * Traduce el nivel de confianza a español para mostrar en UI.
+ */
+export function getConfidenceLevelLabel(level: 'high' | 'medium' | 'low'): string {
+  const labels: Record<string, string> = {
+    high: 'Alta',
+    medium: 'Media',
+    low: 'Baja',
   };
   return labels[level] ?? level;
 }
